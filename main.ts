@@ -1346,6 +1346,11 @@ export class SectionCardsView extends ItemView {
 		card.parentElement?.insertBefore(marker, card);
 
 		const overlay = this.contentEl.createDiv({ cls: "section-cards-overlay" });
+		// The locked view keeps its scroll offset, and an absolutely-positioned overlay
+		// lives in content coordinates — pin it to the visible box, or it opens above the
+		// viewport whenever the wall is scrolled (a certainty in the Horizontal layout).
+		overlay.style.top = `${this.contentEl.scrollTop}px`;
+		overlay.style.height = `${this.contentEl.clientHeight}px`;
 		overlay.addEventListener("click", (evt) => {
 			if (evt.target === overlay) this.closeMaximized();
 		});
