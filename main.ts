@@ -53,6 +53,8 @@ export type Placement = "top" | "logical" | "bottom";
  */
 export type Layout = "grid" | "aligned" | "tight" | "horizontal" | "vertical";
 
+const SORT_LABELS: Record<SortOrder, string> = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
+
 /** [value, toolbar label, tooltip] */
 const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["grid", "Grid", "Masonry columns"],
@@ -545,6 +547,73 @@ export function sectionDeleteRange(lines: string[], target: Section): [number, n
 	return [target.startLine, end];
 }
 
+/**
+ * Move the section at fromIndex so it sits before the section at toBeforeIndex
+ * (toBeforeIndex === sections.length means the end of the file). The moved chunk keeps
+ * its own lines byte-for-byte; blank separators are added or dropped only at the seams.
+ * Returns null for out-of-range indices or a move that changes nothing.
+ */
+export function moveSection(
+	lines: string[],
+	level: number,
+	fromIndex: number,
+	toBeforeIndex: number,
+): string[] | null {
+	const sections = parseSections(lines, level);
+	if (fromIndex < 0 || fromIndex >= sections.length) return null;
+	if (toBeforeIndex < 0 || toBeforeIndex > sections.length) return null;
+	if (toBeforeIndex === fromIndex || toBeforeIndex === fromIndex + 1) return null;
+
+	// Reordering must not change how the file ends (e.g. its trailing newline).
+	let tailBlanks = 0;
+	while (tailBlanks < lines.length && lines[lines.length - 1 - tailBlanks].trim() === "") tailBlanks++;
+
+	const [start, end] = sectionDeleteRange(lines, sections[fromIndex]);
+	const chunk = lines.slice(start, end);
+
+	const insertLine = toBeforeIndex === sections.length ? lines.length : sections[toBeforeIndex].startLine;
+	const rest = lines.slice(0, start).concat(lines.slice(end));
+	const target = Math.min(insertLine > start ? insertLine - (end - start) : insertLine, rest.length);
+
+	// Blank separators exist at both seams of the new position...
+	if (chunk.length && chunk[chunk.length - 1].trim() !== "") chunk.push("");
+	if (target > 0 && rest[target - 1].trim() !== "") chunk.unshift("");
+	rest.splice(target, 0, ...chunk);
+
+	// ...and the file's tail is normalised back to what it was.
+	while (rest.length && rest[rest.length - 1].trim() === "") rest.pop();
+	for (let i = 0; i < tailBlanks; i++) rest.push("");
+	return rest;
+}
+
+/** Reorder at write time, re-locating both sections like every other write. */
+async function moveSectionInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	moved: Section,
+	targetSection: Section,
+	before: boolean,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const sections = parseSections(lines, level);
+		const from = locateSection(sections, moved);
+		const to = locateSection(sections, targetSection);
+		if (!from || !to) {
+			ok = false;
+			return data;
+		}
+		const result = moveSection(lines, level, from.index, to.index + (before ? 0 : 1));
+		return result ? result.join(eol) : data; // null = no-op move, not an error
+	});
+
+	return ok;
+}
+
 /** Remove a section from the file, re-locating it at write time like every other write. */
 async function deleteSection(app: App, file: TFile, level: number, original: Section): Promise<boolean> {
 	let ok = true;
@@ -671,6 +740,10 @@ export class SectionCardsView extends ItemView {
 		marker: Comment;
 		bodyMaxHeight: string;
 	} | null = null;
+	/** The card being dragged for reordering, if any. */
+	private dragging: { section: Section } | null = null;
+	/** The card currently showing a drop indicator. */
+	private dropMarker: HTMLElement | null = null;
 	/** Heading of a just-created section, to be opened for editing after the next render. */
 	private pendingEditHeading: string | null = null;
 	/** Heading of a card that should still be blown up after the next render. */
@@ -1374,6 +1447,54 @@ export class SectionCardsView extends ItemView {
 			this.startEditing(card, file, holder.section);
 		});
 
+		// Drag a card onto another to reorder the sections in the file. Only meaningful
+		// when the display mirrors the file, i.e. Document order — other sorts recompute
+		// the position immediately, so a drag there offers to switch first.
+		card.draggable = true;
+		card.addEventListener("dragstart", (evt) => {
+			if (card.hasClass("is-editing") || this.isMaximized()) {
+				evt.preventDefault();
+				return;
+			}
+			if (this.sortOrder !== "doc") {
+				evt.preventDefault();
+				new SwitchToDocumentOrderModal(this.app, SORT_LABELS[this.sortOrder], async () => {
+					this.sortOrder = "doc";
+					this.rememberView();
+					await this.syncView();
+					this.app.workspace.requestSaveLayout();
+				}).open();
+				return;
+			}
+			this.dragging = holder;
+			card.addClass("is-dragging");
+			if (evt.dataTransfer) {
+				evt.dataTransfer.effectAllowed = "move";
+				evt.dataTransfer.setData("text/plain", holder.section.headingRaw);
+			}
+		});
+		card.addEventListener("dragend", () => {
+			card.removeClass("is-dragging");
+			this.setDropMarker(null, false);
+			this.dragging = null;
+		});
+		card.addEventListener("dragover", (evt) => {
+			if (!this.dragging || this.dragging === holder) return;
+			evt.preventDefault();
+			if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
+			this.setDropMarker(card, this.isDropBefore(evt, card));
+		});
+		card.addEventListener("drop", (evt) => {
+			if (!this.dragging || this.dragging === holder) return;
+			evt.preventDefault();
+			evt.stopPropagation();
+			const moved = this.dragging.section;
+			const before = this.isDropBefore(evt, card);
+			this.setDropMarker(null, false);
+			this.dragging = null;
+			void this.completeDrag(file, moved, holder.section, before);
+		});
+
 		return { el: card, scope, holder, raw: section.raw, renderBody };
 	}
 
@@ -1465,6 +1586,34 @@ export class SectionCardsView extends ItemView {
 		this.insertRowRules();
 	}
 
+	/** Which side of a card the pointer is on, along the layout's flow axis. */
+	private isDropBefore(evt: DragEvent, card: HTMLElement): boolean {
+		const rect = card.getBoundingClientRect();
+		// Horizontal flows top-to-bottom (one card per row); everything else row-major.
+		return this.layout === "horizontal"
+			? evt.clientY < rect.top + rect.height / 2
+			: evt.clientX < rect.left + rect.width / 2;
+	}
+
+	private setDropMarker(card: HTMLElement | null, before: boolean): void {
+		if (this.dropMarker && this.dropMarker !== card) {
+			this.dropMarker.removeClass("sc-drop-before");
+			this.dropMarker.removeClass("sc-drop-after");
+		}
+		this.dropMarker = card;
+		if (!card) return;
+		card.toggleClass("sc-drop-before", before);
+		card.toggleClass("sc-drop-after", !before);
+	}
+
+	private async completeDrag(file: TFile, moved: Section, target: Section, before: boolean): Promise<void> {
+		const ok = await moveSectionInFile(this.app, file, this.headingLevel, moved, target, before);
+		if (!ok) {
+			new Notice("Single File Section Cards: couldn't reorder — the file changed on disk.");
+		}
+		await this.refresh();
+	}
+
 	/** Toggle the clicked task's line in the file, matching checkbox position to task order. */
 	private async toggleTask(
 		card: HTMLElement,
@@ -1506,6 +1655,8 @@ export class SectionCardsView extends ItemView {
 
 	private startEditing(card: HTMLElement, file: TFile, section: Section) {
 		card.addClass("is-editing");
+		// A draggable ancestor turns textarea text-selection into drags; disable while editing.
+		card.draggable = false;
 		this.editingKey = section.headingRaw;
 
 		const bodyEl = card.querySelector(".section-card-body") as HTMLElement | null;
@@ -1633,6 +1784,42 @@ class ConfirmDeleteModal extends Modal {
 						this.onConfirm();
 					});
 				// Enter confirms, Esc (the modal's own handling) cancels.
+				b.buttonEl.focus();
+			});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+class SwitchToDocumentOrderModal extends Modal {
+	private readonly currentLabel: string;
+	private readonly onSwitch: () => void;
+
+	constructor(app: App, currentLabel: string, onSwitch: () => void) {
+		super(app);
+		this.currentLabel = currentLabel;
+		this.onSwitch = onSwitch;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Reorder cards" });
+		contentEl.createEl("p", {
+			text: `Dragging reorders the sections in the note itself, so the cards must be shown in Document order — this view is sorted ${this.currentLabel}.`,
+		});
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => {
+				b.setButtonText("Switch to Document order")
+					.setCta()
+					.onClick(() => {
+						this.close();
+						this.onSwitch();
+					});
+				// Enter switches, Esc cancels.
 				b.buttonEl.focus();
 			});
 	}

@@ -28,6 +28,9 @@ the source `.md` file.
 - **Today's card is highlighted** in the theme's highlight colour, when the note's headings are dates.
 - **Sorting** — alphanumeric ascending or descending (natural order, so dates sort chronologically),
   or document order.
+- **Drag to reorder.** In Document order, drag a card onto another to move that section in the
+  note — an accent edge shows which side it will land on. In the sorted views a drag offers to
+  switch to Document order first (the display has to mirror the file for a manual order to stick).
 - **Five layouts**, switchable from the toolbar (see below).
 - **Per-note memory.** Layout, heading level and sort are remembered for each note, stored in the
   plugin's own data — never in your notes. Notes with nothing saved open in Grid.

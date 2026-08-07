@@ -1,4 +1,4 @@
-import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit } from "./.tmp/main.js";
+import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -539,6 +539,57 @@ t("indenting skips empty lines so blank separators stay blank", () => {
   const text = "aa\n\nbb";
   const e = computeTabEdit(text, 0, text.length, false);
   assert.equal(applyEdit(text, e), "\taa\n\n\tbb");
+});
+
+// ---------- drag to reorder ----------
+
+const T3 = "### a\n1\n\n### b\n2\n\n### c\n3";
+
+t("moveSection moves a section down, keeping every section's text exact", () => {
+  const out = moveSection(L(T3), 3, 0, 2);              // a before c
+  assert.equal(out.join("\n"), "### b\n2\n\n### a\n1\n\n### c\n3");
+});
+
+t("moveSection moves a section up", () => {
+  const out = moveSection(L(T3), 3, 2, 0);              // c to the top
+  assert.equal(out.join("\n"), "### c\n3\n\n### a\n1\n\n### b\n2");
+});
+
+t("moveSection to the end drops dangling separators; from the end gains one", () => {
+  const toEnd = moveSection(L(T3), 3, 0, 3);            // a to the end
+  assert.equal(toEnd.join("\n"), "### b\n2\n\n### c\n3\n\n### a\n1");
+  const fromEnd = moveSection(L(T3), 3, 2, 1);          // c (no trailing blank) above b
+  assert.equal(fromEnd.join("\n"), "### a\n1\n\n### c\n3\n\n### b\n2");
+});
+
+t("moveSection returns null for no-op or out-of-range moves", () => {
+  assert.equal(moveSection(L(T3), 3, 1, 1), null);      // before itself
+  assert.equal(moveSection(L(T3), 3, 1, 2), null);      // before its own successor
+  assert.equal(moveSection(L(T3), 3, 5, 0), null);
+  assert.equal(moveSection(L(T3), 3, 0, 9), null);
+});
+
+t("sample vault: every (from, to) move preserves all sections and hits the right slot", () => {
+  const lines = fs.readFileSync(SAMPLE_NOTE, "utf8").split(/\r?\n/);
+  const before = parseSections(lines, 3);
+  const raws = before.map((s) => s.raw);
+  let moves = 0;
+  for (let from = 0; from < before.length; from++) {
+    for (const to of [0, Math.floor(before.length / 2), before.length]) {
+      const out = moveSection(lines, 3, from, to);
+      if (out === null) continue;                       // no-op combinations
+      const after = parseSections(out, 3);
+      assert.equal(after.length, before.length, `count kept for ${from}->${to}`);
+      // same sections, byte-identical, just reordered
+      assert.deepEqual([...after.map((s) => s.raw)].sort(), [...raws].sort(), `content kept for ${from}->${to}`);
+      // the moved section landed where asked (index shifts down when passing its old slot)
+      const expectedIndex = to > from ? to - 1 : to;
+      assert.equal(after[expectedIndex].raw, raws[from], `position for ${from}->${to}`);
+      assert.ok(!/\n\s*\n\s*\n\s*\n/.test(out.join("\n")), `no blank pile-up for ${from}->${to}`);
+      moves++;
+    }
+  }
+  assert.ok(moves > 40, "exercised " + moves + " real moves");
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

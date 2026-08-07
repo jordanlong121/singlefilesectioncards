@@ -363,6 +363,30 @@
 	flex: 0 0 auto;
 }
 
+/* ---------- drag to reorder (Document order only) ---------- */
+
+.section-card.is-dragging {
+	opacity: 0.45;
+}
+
+/* Accent edge on the drop side: left/right along the row-major flow,
+   top/bottom in the one-card-per-row Horizontal layout. */
+.section-card.sc-drop-before {
+	box-shadow: -4px 0 0 var(--interactive-accent), var(--sc-shadow);
+}
+
+.section-card.sc-drop-after {
+	box-shadow: 4px 0 0 var(--interactive-accent), var(--sc-shadow);
+}
+
+.is-layout-horizontal .section-card.sc-drop-before {
+	box-shadow: 0 -4px 0 var(--interactive-accent), var(--sc-shadow);
+}
+
+.is-layout-horizontal .section-card.sc-drop-after {
+	box-shadow: 0 4px 0 var(--interactive-accent), var(--sc-shadow);
+}
+
 /* Flash for the card you arrived at from a [[Note#Heading]] link. */
 .section-card.is-linked {
 	border-color: var(--interactive-accent);
