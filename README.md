@@ -31,6 +31,13 @@ the source `.md` file.
 - **Per-note memory.** Layout, heading level and sort are remembered for each note, stored in the
   plugin's own data — never in your notes. Notes with nothing saved open in Grid.
 - **↗ on a card** opens the note in a normal editor tab with the cursor on that heading.
+- **Wikilinks open as cards.** Clicking a `[[Note]]` link inside a card opens that note in the card
+  view using its own remembered view, rather than as a markdown tab. `[[Note#Heading]]` scrolls to
+  that heading's card and flashes it. Ctrl/⌘/Shift/Alt-click keeps Obsidian's normal behaviour, and
+  external links still open in your browser.
+- **Sensible level for new notes.** A note you haven't set a view for opens at your configured
+  heading level if it has one, otherwise at whichever level has the most sections — so a note
+  without H3s doesn't open as an empty wall.
 - Cards refresh when the file changes on disk, and re-pack when the pane resizes.
 
 ## Layouts

@@ -295,6 +295,28 @@
 	font-weight: 700;
 }
 
+/* Flash for the card you arrived at from a [[Note#Heading]] link. */
+.section-card.is-linked {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px var(--interactive-accent), var(--sc-shadow);
+	animation: sc-linked-flash 1.6s ease-out;
+}
+
+@keyframes sc-linked-flash {
+	0%,
+	40% {
+		background-color: var(--sc-surface-hover);
+	}
+	100% {
+		background-color: var(--sc-surface);
+	}
+}
+
+/* Links inside a card open the linked note as cards, so show the click target. */
+.section-card-body a.internal-link {
+	cursor: pointer;
+}
+
 /* The editor stays inside its own column. Spanning it full-width forced the band to
    clear every column, which opened 300-600px holes in the masonry. */
 .section-card.is-editing {

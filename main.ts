@@ -340,6 +340,33 @@ async function toggleTaskInFile(
 }
 
 /**
+ * Heading level to show a note at. Honours `preferred` whenever that level exists in the
+ * note; otherwise falls back to the level with the most sections (ties go to the shallower
+ * one), so a note that has no H3s doesn't open as an empty card wall.
+ */
+export function pickHeadingLevel(lines: string[], preferred: number): number {
+	if (parseSections(lines, preferred).length > 0) return preferred;
+
+	let best = preferred;
+	let bestCount = 0;
+	for (let level = 1; level <= 6; level++) {
+		const count = parseSections(lines, level).length;
+		if (count > bestCount) {
+			best = level;
+			bestCount = count;
+		}
+	}
+	return bestCount > 0 ? best : preferred;
+}
+
+/** Split a wikilink target into its file path and its `#heading` subpath. */
+export function splitLinktext(linktext: string): [string, string] {
+	const hash = linktext.indexOf("#");
+	if (hash < 0) return [linktext.trim(), ""];
+	return [linktext.slice(0, hash).trim(), linktext.slice(hash + 1).trim()];
+}
+
+/**
  * Which view a note opens with: its remembered settings first, then whatever the
  * workspace restored for this tab, then the global defaults (layout "grid" out of the box).
  */
@@ -816,7 +843,18 @@ export class SectionCardsView extends ItemView {
 
 		this.filePath = file.path;
 		const content = await this.app.vault.cachedRead(file);
-		const sections = parseSections(content.split(/\r?\n/), this.headingLevel);
+		const lines = content.split(/\r?\n/);
+
+		// A note the user hasn't set a view for opens at a level that actually has headings.
+		if (!this.plugin.getStoredView(file.path)) {
+			const level = pickHeadingLevel(lines, this.headingLevel);
+			if (level !== this.headingLevel) {
+				this.headingLevel = level;
+				this.buildToolbar();
+			}
+		}
+
+		const sections = parseSections(lines, this.headingLevel);
 		const ordered = sortSections(sections, this.sortOrder);
 
 		this.countEl?.setText(
@@ -911,6 +949,30 @@ export class SectionCardsView extends ItemView {
 			bodyEl.createDiv({ cls: "section-card-placeholder", text: "Empty section — click to add content." });
 		}
 
+		// A wikilink to another note opens that note as cards, in its own remembered view.
+		bodyEl.addEventListener("click", (evt) => {
+			const anchor = (evt.target as HTMLElement | null)?.closest<HTMLAnchorElement>("a");
+			if (!anchor || card.hasClass("is-editing")) return;
+			// Modifier-clicks keep Obsidian's own behaviour (new tab / new pane / editor).
+			if (evt.metaKey || evt.ctrlKey || evt.shiftKey || evt.altKey) return;
+			// External links belong to the browser.
+			if (anchor.hasClass("external-link") || /^[a-z]+:\/\//i.test(anchor.getAttribute("href") ?? "")) return;
+
+			const linktext = anchor.dataset.href ?? anchor.getAttribute("href");
+			if (!linktext) return;
+
+			const [linkpath, subpath] = splitLinktext(linktext);
+			const target = linkpath
+				? this.app.metadataCache.getFirstLinkpathDest(linkpath, this.filePath)
+				: file;
+			// Unresolved links, or links to anything that isn't a note, fall through to Obsidian.
+			if (!target || target.extension !== "md") return;
+
+			evt.preventDefault();
+			evt.stopPropagation();
+			void this.plugin.openCardsView(target.path, subpath);
+		});
+
 		// Checkbox clicks toggle the task in the file instead of opening the editor.
 		bodyEl.addEventListener("click", (evt) => {
 			const box = (evt.target as HTMLElement).closest<HTMLInputElement>("input[type=checkbox]");
@@ -928,6 +990,22 @@ export class SectionCardsView extends ItemView {
 			if (card.hasClass("is-editing")) return;
 			this.startEditing(card, file, section);
 		});
+	}
+
+	/**
+	 * Scroll a card into view and flash it — used when arriving from a `[[Note#Heading]]`
+	 * link. Silently does nothing if that heading isn't a card at the current level.
+	 */
+	revealCard(heading: string): void {
+		if (!heading) return;
+		const wanted = heading.replace(/^#+\s*/, "").trim().toLowerCase();
+		for (const { el, section } of this.cardsByHeading.values()) {
+			if (section.title.trim().toLowerCase() !== wanted) continue;
+			el.scrollIntoView({ block: "center", inline: "center" });
+			el.addClass("is-linked");
+			window.setTimeout(() => el.removeClass("is-linked"), 1600);
+			return;
+		}
 	}
 
 	/** Toggle the clicked task's line in the file, matching checkbox position to task order. */
@@ -1340,7 +1418,7 @@ export default class SectionCardsPlugin extends Plugin {
 		this.addSettingTab(new SectionCardsSettingTab(this.app, this));
 	}
 
-	async openCardsView(filePath?: string): Promise<void> {
+	async openCardsView(filePath?: string, revealHeading?: string): Promise<void> {
 		const path = filePath ?? this.settings.filePath;
 
 		const existing = this.app.workspace
@@ -1349,7 +1427,9 @@ export default class SectionCardsPlugin extends Plugin {
 
 		if (existing) {
 			this.app.workspace.revealLeaf(existing);
-			void (existing.view as SectionCardsView).refresh();
+			const view = existing.view as SectionCardsView;
+			await view.refresh();
+			if (revealHeading) view.revealCard(revealHeading);
 			return;
 		}
 
@@ -1365,6 +1445,9 @@ export default class SectionCardsPlugin extends Plugin {
 			},
 		});
 		this.app.workspace.revealLeaf(leaf);
+
+		// setViewState has already rendered via setState -> syncView.
+		if (revealHeading) (leaf.view as SectionCardsView).revealCard(revealHeading);
 	}
 
 	getStoredView(path: string): ViewSettings | undefined {

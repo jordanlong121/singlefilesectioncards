@@ -1,4 +1,4 @@
-import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically } from "./.tmp/main.js";
+import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -347,6 +347,67 @@ t("canScrollVertically implements scroll chaining at both ends", () => {
   assert.ok(!canScrollVertically(fits, 120), "a card that fits never takes the wheel");
   assert.ok(!canScrollVertically(mid, 0), "no delta, no claim");
 });
+
+// ---------- wikilinks in cards ----------
+
+t("splitLinktext separates the note from its heading", () => {
+  assert.deepEqual(splitLinktext("Project Notes"), ["Project Notes", ""]);
+  assert.deepEqual(splitLinktext("Project Notes#Sed Posuere"), ["Project Notes", "Sed Posuere"]);
+  assert.deepEqual(splitLinktext("folder/Note#Heading With Spaces"), ["folder/Note", "Heading With Spaces"]);
+  assert.deepEqual(splitLinktext("#Local Heading"), ["", "Local Heading"]);   // same-note link
+  assert.deepEqual(splitLinktext("  Padded  #  Heading  "), ["Padded", "Heading"]);
+  assert.deepEqual(splitLinktext("Note#^blockid"), ["Note", "^blockid"]);     // block ref, no card match
+});
+
+t("sample vault: its wikilinks resolve to sibling notes", () => {
+  const data = fs.readFileSync(SAMPLE_NOTE, "utf8");
+  const links = [...data.matchAll(/\[\[([^\]]+)\]\]/g)].map((m) => splitLinktext(m[1])[0]);
+  assert.ok(links.length >= 4, "sample daily notes should link to other notes");
+  const dir = SAMPLE_NOTE.replace(/[^/]+$/, "");
+  for (const name of new Set(links))
+    assert.ok(fs.existsSync(dir + name + ".md"), "link target exists: " + name);
+});
+
+// ---------- choosing a heading level for a note with no saved view ----------
+
+t("pickHeadingLevel keeps the preferred level when the note has it", () => {
+  const lines = L(`# Top\n## Mid\n### Deep\n### Deep 2`);
+  assert.equal(pickHeadingLevel(lines, 3), 3);
+  assert.equal(pickHeadingLevel(lines, 2), 2);
+  assert.equal(pickHeadingLevel(lines, 1), 1);
+});
+
+t("pickHeadingLevel falls back to the densest level when the preferred one is absent", () => {
+  const lines = L(`# One\nbody\n# Two\nbody\n# Three\nbody`);
+  assert.equal(pickHeadingLevel(lines, 3), 1, "no H3s, so use the H1s");
+  const mixed = L(`# Top\n## A\n## B\n## C`);
+  assert.equal(pickHeadingLevel(mixed, 4), 2, "H2 is densest");
+});
+
+t("pickHeadingLevel leaves the preference alone for a note with no headings at all", () => {
+  assert.equal(pickHeadingLevel(L("just prose\nand more prose"), 3), 3);
+});
+
+t("sample vault: every note opens at a level that renders cards", () => {
+  const dir = SAMPLE_NOTE.replace(/[^/]+$/, "");
+  // With a global preference of H3: notes that have H3s keep it, notes that don't
+  // fall back to their densest level. Either way nothing opens empty.
+  const expected = {
+    "Daily Notes 2026.md": 3,   // has H3 days
+    "Meeting Minutes.md": 3,    // has H3 subsections under two meetings
+    "Field Log.md": 3,          // has H3 visits
+    "Handbook.md": 3,           // has H3 sections
+    "Reading List.md": 3,       // has H3 notes
+    "Project Notes.md": 1,      // H1/H2 only -> densest level, H1
+  };
+  for (const [name, level] of Object.entries(expected)) {
+    const lines = fs.readFileSync(dir + name, "utf8").split(/\r?\n/);
+    const chosen = pickHeadingLevel(lines, 3);
+    assert.equal(chosen, level, name + " should open at H" + level + ", got H" + chosen);
+    assert.ok(parseSections(lines, chosen).length > 0, name + " must render at least one card");
+  }
+});
+
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
