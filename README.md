@@ -92,11 +92,33 @@ whose content overflows keeps the wheel until it reaches its end.
 
 ## Install
 
-Not in the community plugin browser yet. To install manually:
+Not in the community plugin browser yet, so pick one of these.
 
-1. Download `main.js`, `manifest.json` and `styles.css` from a release (or build them, below).
+### With BRAT (recommended — it keeps itself updated)
+
+[BRAT](https://github.com/TfTHacker/obsidian42-brat) installs plugins straight from GitHub and
+updates them as new versions are released.
+
+1. Install **BRAT** (Obsidian42 - BRAT) from Settings → Community plugins → Browse, and enable it.
+2. Open the command palette and run **BRAT: Plugins: Add a beta plugin for testing**.
+3. Paste this repository:
+
+   ```
+   jordanlong121/singlefilesectioncards
+   ```
+
+4. Leave the version as *latest* and confirm. BRAT downloads the plugin into your vault.
+5. Enable **Single File Section Cards** in Settings → Community plugins.
+
+BRAT then checks for new releases each time Obsidian starts. To update by hand, run
+**BRAT: Plugins: Check for updates to all beta plugins**; to stop tracking it, use
+**BRAT: Plugins: Remove a beta plugin**.
+
+### Manually
+
+1. Download `main.js`, `manifest.json` and `styles.css` from the latest release (or build them, below).
 2. Put them in `<vault>/.obsidian/plugins/single-file-section-cards/`.
-3. Enable **Single File Section Cards** in Settings → Community plugins.
+3. Reload Obsidian, then enable **Single File Section Cards** in Settings → Community plugins.
 
 ## Sample vault
 
