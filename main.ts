@@ -11,6 +11,7 @@ import {
 	Plugin,
 	PluginSettingTab,
 	Setting,
+	type SettingDefinitionItem,
 	setIcon,
 	TFile,
 	WorkspaceLeaf,
@@ -1794,7 +1795,8 @@ class ConfirmDeleteModal extends Modal {
 			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
 			.addButton((b) => {
 				b.setButtonText("Delete")
-					.setWarning()
+					.setDestructive()
+					.setCta()
 					.onClick(() => {
 						this.close();
 						void this.onConfirm();
@@ -1964,161 +1966,127 @@ class SectionCardsSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
+	/** Declarative settings (Obsidian 1.13+), so every setting is findable in settings search. */
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				name: "Default note",
+				desc: "Note opened by the ribbon icon and command.",
+				control: {
+					type: "file",
+					key: "filePath",
+					placeholder: "Daily Notes 2026.md",
+					filter: (file: TFile) => file.extension === "md",
+				},
+			},
+			{
+				name: "Heading level",
+				desc: "Which heading rank becomes a card.",
+				control: {
+					type: "dropdown",
+					key: "headingLevel",
+					options: { "1": "Heading 1", "2": "Heading 2", "3": "Heading 3", "4": "Heading 4", "5": "Heading 5", "6": "Heading 6" },
+				},
+			},
+			{
+				name: "Headings contain",
+				desc: "With dates, the card for today is highlighted in the theme's highlight colour.",
+				control: {
+					type: "dropdown",
+					key: "headingType",
+					options: { dates: "Dates", text: "Non-dates (plain text)" },
+				},
+			},
+			{
+				name: "Default layout",
+				desc: "Grid and Tight are masonry columns; Horizontal is full-width rows; Vertical is full-height cards that scroll sideways.",
+				control: {
+					type: "dropdown",
+					key: "layout",
+					options: Object.fromEntries(LAYOUT_OPTIONS.map(([value, label]) => [value, label])),
+				},
+			},
+			{
+				name: "Default sort",
+				control: {
+					type: "dropdown",
+					key: "sortOrder",
+					options: { asc: "Alphanumeric A → Z", desc: "Alphanumeric Z → A", doc: "Document order" },
+				},
+			},
+			{
+				name: "Clicking a card's title bar",
+				desc: "The card body always opens the raw-markdown editor; this is just the title bar.",
+				control: {
+					type: "dropdown",
+					key: "titleBarClick",
+					options: { maximize: "Makes the card big", edit: "Edits the raw markdown" },
+				},
+			},
+			{
+				name: "Completion date on tasks",
+				desc: "When a task checkbox is ticked in a card, append an Obsidian Tasks style done date (✅ 2026-08-06). Unticking removes it.",
+				control: { type: "toggle", key: "taskDoneDate" },
+			},
+			{
+				name: "Cross out items nested under a done task",
+				desc: "When off, ticking a task strikes through only its own line — sub-tasks and notes nested beneath it keep their normal styling until ticked themselves.",
+				control: { type: "toggle", key: "strikeNestedUnderDone" },
+			},
+			{
+				name: "Card height",
+				desc: "Maximum card height in pixels before the card body scrolls.",
+				control: {
+					type: "slider",
+					key: "cardMaxHeight",
+					min: 160,
+					max: 800,
+					step: 20,
+					displayFormat: (value: number) => `${value}px`,
+				},
+			},
+			{
+				type: "group",
+				heading: "New cards",
+				items: [
+					{
+						name: "Default heading name",
+						desc: 'Moment.js date format used to pre-fill "New card". Default: YYYY-MM-DD, dddd',
+						control: { type: "text", key: "newCardFormat", placeholder: "YYYY-MM-DD, dddd" },
+					},
+					{
+						name: "Default placement",
+						desc: "Logical order follows the direction the file's sections already run.",
+						control: {
+							type: "dropdown",
+							key: "newCardPlacement",
+							options: { top: "Append to top", logical: "Add to logical order", bottom: "Add to bottom" },
+						},
+					},
+				],
+			},
+		];
+	}
 
-		new Setting(containerEl)
-			.setName("Default note")
-			.setDesc("Vault-relative path opened by the ribbon icon and command.")
-			.addText((text) =>
-				text
-					.setPlaceholder("Daily Notes 2026.md")
-					.setValue(this.plugin.settings.filePath)
-					.onChange(async (value) => {
-						this.plugin.settings.filePath = value.trim();
-						await this.plugin.saveSettings();
-					}),
-			);
+	/** headingLevel is stored as a number, but dropdown controls speak strings. */
+	getControlValue(key: string): unknown {
+		if (key === "headingLevel") return String(this.plugin.settings.headingLevel);
+		return super.getControlValue(key);
+	}
 
-		new Setting(containerEl)
-			.setName("Heading level")
-			.setDesc("Which heading rank becomes a card.")
-			.addDropdown((dd) => {
-				for (let l = 1; l <= 6; l++) dd.addOption(String(l), `Heading ${l}`);
-				dd.setValue(String(this.plugin.settings.headingLevel)).onChange(async (value) => {
-					this.plugin.settings.headingLevel = Number(value);
-					await this.plugin.saveSettings();
-				});
-			});
-
-		new Setting(containerEl)
-			.setName("Headings contain")
-			.setDesc("With Dates, the card for today is highlighted in the theme's highlight colour.")
-			.addDropdown((dd) =>
-				dd
-					.addOption("dates", "Dates")
-					.addOption("text", "Non-dates (plain text)")
-					.setValue(this.plugin.settings.headingType)
-					.onChange(async (value) => {
-						this.plugin.settings.headingType = value as HeadingType;
-						await this.plugin.saveSettings();
-						this.plugin.refreshAllViews();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Default layout")
-			.setDesc("Grid and Tight are masonry columns; Horizontal is full-width rows; Vertical is full-height cards that scroll sideways.")
-			.addDropdown((dd) => {
-				for (const [value, label] of LAYOUT_OPTIONS) dd.addOption(value, label);
-				dd.setValue(this.plugin.settings.layout).onChange(async (value) => {
-					this.plugin.settings.layout = value as Layout;
-					await this.plugin.saveSettings();
-				});
-			});
-
-		new Setting(containerEl)
-			.setName("Default sort")
-			.addDropdown((dd) =>
-				dd
-					.addOption("asc", "Alphanumeric A → Z")
-					.addOption("desc", "Alphanumeric Z → A")
-					.addOption("doc", "Document order")
-					.setValue(this.plugin.settings.sortOrder)
-					.onChange(async (value) => {
-						this.plugin.settings.sortOrder = value as SortOrder;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl).setName("New cards").setHeading();
-
-		new Setting(containerEl)
-			.setName("Default heading name")
-			.setDesc('Moment.js date format used to pre-fill "New card". Default: YYYY-MM-DD, dddd')
-			.addText((text) =>
-				text
-					.setPlaceholder("YYYY-MM-DD, dddd")
-					.setValue(this.plugin.settings.newCardFormat)
-					.onChange(async (value) => {
-						this.plugin.settings.newCardFormat = value.trim() || DEFAULT_SETTINGS.newCardFormat;
-						await this.plugin.saveSettings();
-					}),
-			)
-			.addExtraButton((b) =>
-				b.setIcon("clock").setTooltip("Preview").onClick(() => {
-					new Notice(mo().format(this.plugin.settings.newCardFormat));
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName("Default placement")
-			.setDesc("Logical order follows the direction the file's sections already run.")
-			.addDropdown((dd) =>
-				dd
-					.addOption("top", "Append to top")
-					.addOption("logical", "Add to logical order")
-					.addOption("bottom", "Add to bottom")
-					.setValue(this.plugin.settings.newCardPlacement)
-					.onChange(async (value) => {
-						this.plugin.settings.newCardPlacement = value as Placement;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Clicking a card's title bar")
-			.setDesc("The card body always opens the raw-markdown editor; this is just the title bar.")
-			.addDropdown((dd) =>
-				dd
-					.addOption("maximize", "Makes the card big")
-					.addOption("edit", "Edits the raw markdown")
-					.setValue(this.plugin.settings.titleBarClick)
-					.onChange(async (value) => {
-						this.plugin.settings.titleBarClick = value as TitleBarClick;
-						await this.plugin.saveSettings();
-						this.plugin.refreshAllViews();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Completion date on tasks")
-			.setDesc(
-				"When a task checkbox is ticked in a card, append an Obsidian Tasks style done date (✅ 2026-08-06). Unticking removes it.",
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.taskDoneDate).onChange(async (value) => {
-					this.plugin.settings.taskDoneDate = value;
-					await this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName("Cross out items nested under a done task")
-			.setDesc(
-				"When off, ticking a task strikes through only its own line — sub-tasks and notes nested beneath it keep their normal styling until ticked themselves.",
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.strikeNestedUnderDone).onChange(async (value) => {
-					this.plugin.settings.strikeNestedUnderDone = value;
-					await this.plugin.saveSettings();
-					this.plugin.applyBodyClasses();
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName("Card height")
-			.setDesc("Maximum card height in pixels before the card body scrolls.")
-			.addSlider((slider) =>
-				slider
-					.setLimits(160, 800, 20)
-					.setValue(this.plugin.settings.cardMaxHeight)
-					.onChange(async (value) => {
-						this.plugin.settings.cardMaxHeight = value;
-						await this.plugin.saveSettings();
-					}),
-			);
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		if (key === "headingLevel") {
+			await super.setControlValue(key, Number(value));
+			return;
+		}
+		if (key === "newCardFormat") {
+			const text = typeof value === "string" ? value.trim() : "";
+			await super.setControlValue(key, text || DEFAULT_SETTINGS.newCardFormat);
+			return;
+		}
+		await super.setControlValue(key, value);
+		if (key === "strikeNestedUnderDone") this.plugin.applyBodyClasses();
+		if (key === "titleBarClick") this.plugin.refreshAllViews();
 	}
 }
 
