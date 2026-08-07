@@ -56,6 +56,9 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["vertical", "Vertical", "Full-height cards side by side, scrolling sideways"],
 ];
 
+/** What clicking a card's title bar does. */
+export type TitleBarClick = "maximize" | "edit";
+
 /** Whether this note's headings are dates (so "today" can be highlighted) or plain text. */
 export type HeadingType = "dates" | "text";
 
@@ -68,6 +71,7 @@ interface SectionCardsSettings {
 	newCardPlacement: Placement;
 	headingType: HeadingType;
 	taskDoneDate: boolean;
+	titleBarClick: TitleBarClick;
 	layout: Layout;
 	/** Remembered view per note, keyed by vault path. Lives here, never in the note. */
 	perFile: Record<string, ViewSettings>;
@@ -89,6 +93,7 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	newCardPlacement: "logical",
 	headingType: "dates",
 	taskDoneDate: true,
+	titleBarClick: "maximize",
 	layout: "grid",
 	perFile: {},
 };
@@ -945,7 +950,19 @@ export class SectionCardsView extends ItemView {
 		}
 
 		const header = card.createDiv({ cls: "section-card-header" });
+		const titleClick = this.plugin.settings.titleBarClick;
+		header.addClass(titleClick === "maximize" ? "is-click-big" : "is-click-edit");
 		header.createDiv({ cls: "section-card-title", text: section.title || "(untitled)" });
+
+		// The title bar's own action. "edit" falls through to the card handler below.
+		if (titleClick === "maximize") {
+			header.addEventListener("click", (evt) => {
+				if (card.hasClass("is-editing")) return;
+				if ((evt.target as HTMLElement | null)?.closest("button")) return;
+				evt.stopPropagation();
+				this.toggleMaximized(card, bodyEl, bigBtn);
+			});
+		}
 
 		const bigBtn = header.createEl("button", { cls: "section-card-big", text: "⤢" });
 		bigBtn.setAttr("aria-label", "Make this card big");
@@ -1388,6 +1405,21 @@ class SectionCardsSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.newCardPlacement = value as Placement;
 						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Clicking a card's title bar")
+			.setDesc("The card body always opens the raw-markdown editor; this is just the title bar.")
+			.addDropdown((dd) =>
+				dd
+					.addOption("maximize", "Makes the card big")
+					.addOption("edit", "Edits the raw markdown")
+					.setValue(this.plugin.settings.titleBarClick)
+					.onChange(async (value) => {
+						this.plugin.settings.titleBarClick = value as TitleBarClick;
+						await this.plugin.saveSettings();
+						this.plugin.refreshAllViews();
 					}),
 			);
 

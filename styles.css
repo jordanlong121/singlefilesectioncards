@@ -382,6 +382,19 @@
 	background-color: var(--sc-header);
 }
 
+/* What the title bar will do, per the "Clicking a card's title bar" setting. */
+.section-card-header.is-click-big {
+	cursor: zoom-in;
+}
+
+.section-card.is-maximized .section-card-header.is-click-big {
+	cursor: zoom-out;
+}
+
+.section-card-header.is-click-edit {
+	cursor: text;
+}
+
 .section-card-title {
 	flex: 1 1 auto;
 	min-width: 0;

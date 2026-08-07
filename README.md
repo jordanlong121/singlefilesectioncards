@@ -16,8 +16,9 @@ the source `.md` file.
 - **One card per section.** Choose which heading level becomes a card (H1–H6). Deeper headings stay
   nested inside their parent card; a shallower heading ends a card. Headings inside code fences and
   frontmatter are ignored.
-- **Click a card to edit it.** The card becomes a raw-markdown editor holding the heading and its
-  body. `Ctrl/⌘+Enter` saves, `Esc` cancels. Only that section's lines are rewritten, and the
+- **Click a card to edit it.** The card body becomes a raw-markdown editor holding the heading and
+  its body. `Ctrl/⌘+Enter` saves, `Esc` cancels. Clicking the **title bar** makes the card big by
+  default; a setting switches it to opening the editor instead. Only that section's lines are rewritten, and the
   section is re-located at save time so it can't clobber changes made elsewhere in the file.
 - **Tick tasks straight from a card.** Clicking a checkbox toggles that task in the file — no edit
   mode. Optionally appends an Obsidian Tasks style done date (`✅ 2026-08-06`).
@@ -97,6 +98,7 @@ until it reaches its end.
 | Default layout | Grid, Grid Aligned, Tight, Horizontal, Vertical |
 | Default heading name | Date format used to pre-fill "New card" |
 | Default placement | Where a new card is inserted |
+| Clicking a card's title bar | Makes the card big (default), or edits the raw markdown |
 | Completion date on tasks | Append `✅ YYYY-MM-DD` when a task is ticked |
 | Card height | Maximum card height before the body scrolls |
 
