@@ -725,6 +725,8 @@ export class SectionCardsView extends ItemView {
 	private renderGeneration = 0;
 	/** Heading raw text of the card currently open in an editor, so refreshes don't nuke it. */
 	private editingKey: string | null = null;
+	/** The open editor's card and its finish function, so clicks elsewhere can commit it. */
+	private activeEditor: { card: HTMLElement; finish: (save: boolean) => Promise<void> } | null = null;
 	/** Watches cards for height changes (async markdown, images, embeds) to re-pack them. */
 	private cardObserver: ResizeObserver | null = null;
 	private repack = debounce(() => {
@@ -839,6 +841,11 @@ export class SectionCardsView extends ItemView {
 		this.contentEl.empty();
 		this.contentEl.addClass("section-cards-view");
 		this.toolbarEl = this.contentEl.createDiv({ cls: "section-cards-toolbar" });
+		// Clicking anywhere in the toolbar returns an editing card to its preview.
+		this.registerDomEvent(this.toolbarEl, "click", () => {
+			const open = this.activeEditor;
+			if (open) void open.finish(true);
+		});
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
 		this.registerWheelPan();
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
@@ -1196,6 +1203,7 @@ export class SectionCardsView extends ItemView {
 		const file = this.getFile();
 		this.cardObserver?.disconnect();
 		this.editingKey = null;
+		this.activeEditor = null;
 
 		if (!file) {
 			this.countEl?.setText("");
@@ -1447,6 +1455,13 @@ export class SectionCardsView extends ItemView {
 			if (target.closest("a")) return;
 			if (target.closest("input[type=checkbox]")) return;
 			if (card.hasClass("is-editing")) return;
+			const open = this.activeEditor;
+			if (open && open.card !== card) {
+				// Click-away commits the other card's edit; the reconciler reuses this
+				// card's element across that refresh, so it can then open as usual.
+				void open.finish(true).then(() => this.startEditing(card, file, holder.section));
+				return;
+			}
 			this.startEditing(card, file, holder.section);
 		});
 
@@ -1682,6 +1697,7 @@ export class SectionCardsView extends ItemView {
 		const finish = async (save: boolean) => {
 			if (settled) return;
 			settled = true;
+			this.activeEditor = null;
 			// Saving re-renders the card, so remember to blow it back up afterwards.
 			if (this.maximized?.card === card) {
 				const firstLine = textarea.value.split("\n")[0]?.trim();
@@ -1727,6 +1743,7 @@ export class SectionCardsView extends ItemView {
 		});
 		textarea.addEventListener("click", (e) => e.stopPropagation());
 
+		this.activeEditor = { card, finish };
 		textarea.focus();
 		textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 		this.layoutMasonry();
