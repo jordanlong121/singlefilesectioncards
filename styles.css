@@ -1,0 +1,501 @@
+/*
+ * Section Cards
+ *
+ * Two things this file deliberately does NOT do:
+ *
+ * 1. It does not rely on --background-* variables for surfaces. Glass/transparent themes
+ *    legitimately set --background-primary and --background-modifier-border to #00000000,
+ *    which made every card invisible. Surfaces are built from --mono-rgb-0/100 instead,
+ *    which flip with light/dark mode and are always opaque colors.
+ *
+ * 2. It does not put a scrolling grid inside a flex column. Obsidian already makes
+ *    .view-content a scroll container, and nesting an auto-row grid inside a
+ *    height-constrained flex item collapsed every grid row to 0 in Chrome. The view
+ *    itself scrolls and the toolbar is sticky.
+ */
+
+/* The plugin adds .section-cards-view to contentEl (.view-content); the two-class
+   prefix is needed to beat app.css's `.workspace-leaf-content .view-content`. */
+.workspace-leaf-content .view-content.section-cards-view {
+	padding: 0;
+	overflow-x: hidden;
+	overflow-y: auto;
+	display: block;
+	/* Fill whatever the leaf's flex column leaves us, with or without a view header,
+	   rather than hard-coding height: 100%. */
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.section-cards-view {
+	/* Masonry granularity: cards snap to a 4px vertical grid, so at most ~3px of
+	   rounding is added below any card. */
+	--sc-row-unit: 4px;
+	--sc-card-gap: 12px;
+	/* Column width and grid padding; the Tight layout overrides both. */
+	--sc-col-min: 280px;
+	--sc-pad: 14px;
+	/* Dark: a light veil over the (possibly transparent) page. --mono-rgb-100 is the
+	   foreground colour — white in dark mode, black in light mode. */
+	--sc-surface: rgba(var(--mono-rgb-100), 0.055);
+	--sc-surface-hover: rgba(var(--mono-rgb-100), 0.09);
+	--sc-header: rgba(var(--mono-rgb-100), 0.06);
+	--sc-line: rgba(var(--mono-rgb-100), 0.14);
+	--sc-bar: rgba(var(--mono-rgb-0), 0.55);
+	/* Two-layer soft shadow: a tight contact edge plus a wider ambient spread.
+	   --mono-rgb-0 is black in dark mode, so shadows stay black in both themes. */
+	--sc-shadow: 0 1px 2px rgba(var(--mono-rgb-0), 0.3), 0 3px 8px rgba(var(--mono-rgb-0), 0.22);
+	--sc-shadow-hover: 0 2px 4px rgba(var(--mono-rgb-0), 0.34), 0 6px 16px rgba(var(--mono-rgb-0), 0.3);
+	--sc-blur: saturate(1.6) blur(16px);
+}
+
+/* Light: cards are frosted white (--mono-rgb-0 is the background colour, so white here)
+   with a light grey outline. These must be foreground-based (--mono-rgb-100 = black in
+   light mode) or the border is white-on-white and the cards read as edgeless blocks. */
+.theme-light .section-cards-view {
+	--sc-surface: rgba(var(--mono-rgb-0), 0.62);
+	--sc-surface-hover: rgba(var(--mono-rgb-0), 0.82);
+	--sc-header: rgba(var(--mono-rgb-100), 0.045);
+	--sc-line: rgba(var(--mono-rgb-100), 0.18);
+	--sc-bar: rgba(var(--mono-rgb-0), 0.62);
+	--sc-shadow: 0 1px 2px rgba(var(--mono-rgb-100), 0.07), 0 2px 6px rgba(var(--mono-rgb-100), 0.09);
+	--sc-shadow-hover: 0 2px 4px rgba(var(--mono-rgb-100), 0.1), 0 6px 14px rgba(var(--mono-rgb-100), 0.13);
+}
+
+/* ---------- toolbar ---------- */
+
+.section-cards-toolbar {
+	position: sticky;
+	top: 0;
+	z-index: 5;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--sc-line);
+	background-color: var(--sc-bar);
+	background-image: linear-gradient(var(--sc-header), var(--sc-header));
+	backdrop-filter: var(--sc-blur);
+	-webkit-backdrop-filter: var(--sc-blur);
+}
+
+.section-cards-file-btn {
+	font-weight: 600;
+	max-width: 36ch;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.section-cards-spacer {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.section-cards-count {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.section-cards-control {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+}
+
+.section-cards-label {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.section-cards-icon-btn {
+	padding: 4px 9px;
+	line-height: 1;
+}
+
+.section-cards-new-btn {
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+/* ---------- new card modal ---------- */
+
+.section-cards-new-modal .section-cards-heading-setting {
+	display: block;
+}
+
+.section-cards-new-modal .section-cards-heading-setting .setting-item-control {
+	justify-content: flex-start;
+	margin-top: 8px;
+}
+
+.section-cards-new-modal .section-cards-new-input {
+	width: 100%;
+	font-family: var(--font-monospace);
+}
+
+.section-cards-new-modal .setting-item {
+	border-top: none;
+	padding-top: 8px;
+}
+
+/* ---------- grid ---------- */
+
+/* Masonry: many short implicit rows, and main.ts gives each card a
+   `grid-row-end: span N` sized to its own height. Cards therefore stack directly
+   under the card above them instead of aligning to shared row boundaries, so a
+   short card never leaves dead vertical space beneath it. */
+.section-cards-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(var(--sc-col-min), 1fr));
+	grid-auto-rows: var(--sc-row-unit);
+	column-gap: var(--sc-card-gap);
+	row-gap: 0;
+	padding: var(--sc-pad);
+	align-items: start;
+}
+
+/* ---------- layouts ----------
+   The view root carries .is-layout-*; grid/tight/horizontal are masonry variants,
+   vertical switches to a sideways-scrolling flex row. */
+
+.section-cards-view.is-layout-tight {
+	--sc-col-min: 190px;
+	--sc-card-gap: 7px;
+	--sc-pad: 8px;
+}
+
+.is-layout-tight .section-card-header {
+	padding: 5px 9px;
+}
+
+.is-layout-tight .section-card-title {
+	font-size: var(--font-ui-smaller);
+}
+
+.is-layout-tight .section-card-body {
+	padding: 5px 9px 8px;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+}
+
+/* Uniform grid: real auto rows, so every row starts at the same height (the layout
+   this plugin shipped with). Shorter cards leave space below them — that's the point. */
+.is-layout-aligned .section-cards-grid {
+	grid-auto-rows: auto;
+	row-gap: var(--sc-card-gap);
+}
+
+.is-layout-aligned .section-card,
+.is-layout-aligned .section-cards-empty {
+	grid-row-end: auto;
+}
+
+/* Row separators. main.ts inserts these after every Nth card (N = column count),
+   which both draws the divider and enforces rows of N. */
+.section-cards-row-rule {
+	grid-column: 1 / -1;
+	height: 1px;
+	background-color: var(--sc-line);
+	pointer-events: none;
+}
+
+.section-cards-view:not(.is-layout-aligned) .section-cards-row-rule {
+	display: none;
+}
+
+/* One card per row, full width. */
+.is-layout-horizontal .section-cards-grid {
+	grid-template-columns: 1fr;
+}
+
+/* Full-height cards side by side; the row scrolls sideways instead of the page. */
+.workspace-leaf-content .view-content.section-cards-view.is-layout-vertical {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.is-layout-vertical .section-cards-toolbar {
+	position: static;
+	flex: 0 0 auto;
+}
+
+.is-layout-vertical .section-cards-grid {
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	gap: var(--sc-card-gap);
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+}
+
+.is-layout-vertical .section-card {
+	flex: 0 0 auto;
+	width: var(--sc-col-min);
+	max-width: 90vw;
+}
+
+.is-layout-vertical .section-card-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	max-height: none;
+}
+
+.is-layout-vertical .section-cards-empty {
+	margin: auto;
+}
+
+/* Safety net: if the span pass hasn't run yet, cards get a roomy default instead
+   of collapsing onto each other. */
+.section-card,
+.section-cards-empty {
+	grid-row-end: span 60;
+}
+
+.section-card {
+	display: flex;
+	flex-direction: column;
+	background-color: var(--sc-surface);
+	backdrop-filter: var(--sc-blur);
+	-webkit-backdrop-filter: var(--sc-blur);
+	border: 1px solid var(--sc-line);
+	border-radius: var(--radius-m, 8px);
+	box-shadow: var(--sc-shadow);
+	cursor: pointer;
+	overflow: hidden;
+	transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease,
+		transform 120ms ease;
+}
+
+.section-card:hover {
+	background-color: var(--sc-surface-hover);
+	border-color: var(--interactive-accent);
+	box-shadow: var(--sc-shadow-hover);
+	transform: translateY(-1px);
+}
+
+/* Today's card, when the note's headings are dates. --text-highlight-bg is the
+   theme's own highlight colour (what ==marks== use). */
+.section-card.is-today {
+	border-color: var(--text-highlight-bg, var(--interactive-accent));
+	box-shadow: 0 0 0 1px var(--text-highlight-bg, var(--interactive-accent)), var(--sc-shadow);
+}
+
+.section-card.is-today .section-card-header {
+	background-color: var(--text-highlight-bg, var(--interactive-accent));
+	border-bottom-color: var(--text-highlight-bg, var(--interactive-accent));
+}
+
+.section-card.is-today .section-card-title {
+	color: var(--text-normal);
+	font-weight: 700;
+}
+
+/* The editor stays inside its own column. Spanning it full-width forced the band to
+   clear every column, which opened 300-600px holes in the masonry. */
+.section-card.is-editing {
+	cursor: default;
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 1px var(--interactive-accent), var(--sc-shadow);
+	transform: none;
+}
+
+.section-card-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--sc-line);
+	background-color: var(--sc-header);
+}
+
+.section-card-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-weight: 600;
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.section-card-open {
+	flex: 0 0 auto;
+	padding: 2px 7px;
+	line-height: 1;
+	opacity: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+}
+
+.section-card:hover .section-card-open,
+.section-card-open:focus-visible {
+	opacity: 1;
+}
+
+.section-card-open:hover {
+	color: var(--text-accent);
+}
+
+.section-card-body {
+	padding: 8px 12px 12px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	font-size: var(--font-ui-small);
+	line-height: 1.5;
+	color: var(--text-normal);
+	/* Long URLs and code must wrap rather than force a horizontal scrollbar. */
+	overflow-wrap: anywhere;
+}
+
+/* Rendered markdown inside a card: tighten it up. */
+.section-card-body > *:first-child {
+	margin-top: 0;
+}
+
+.section-card-body > *:last-child {
+	margin-bottom: 0;
+}
+
+.section-card-body p {
+	margin: 0.3em 0;
+}
+
+.section-card-body ul,
+.section-card-body ol {
+	padding-inline-start: 1.4em;
+	margin: 0.2em 0;
+}
+
+.section-card-body li {
+	margin: 0.1em 0;
+}
+
+.section-card-body h1,
+.section-card-body h2,
+.section-card-body h3,
+.section-card-body h4,
+.section-card-body h5,
+.section-card-body h6 {
+	margin: 0.7em 0 0.2em;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.3;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+/* Checkboxes are live: a click toggles the task in the file rather than opening the editor. */
+.section-card-body input[type="checkbox"] {
+	cursor: pointer;
+	pointer-events: auto;
+}
+
+.section-card-body input[type="checkbox"]:hover {
+	box-shadow: 0 0 0 2px var(--interactive-accent);
+	border-radius: 3px;
+}
+
+/* Brief accent flash confirming the write went to the file. */
+.section-card.is-toggling {
+	border-color: var(--interactive-accent);
+}
+
+.section-card-body img {
+	max-width: 100%;
+}
+
+.section-card-body pre,
+.section-card-body table {
+	max-width: 100%;
+	overflow-x: auto;
+}
+
+.section-card-placeholder {
+	color: var(--text-faint);
+	font-style: italic;
+}
+
+/* ---------- inline editor ---------- */
+
+.section-card-editor {
+	width: 100%;
+	min-height: 140px;
+	resize: vertical;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.5;
+	tab-size: 4;
+}
+
+.section-card-footer {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.section-card-hint {
+	flex: 1 1 auto;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+/* ---------- empty state ---------- */
+
+.section-cards-empty {
+	grid-column: 1 / -1;
+	padding: 32px;
+	text-align: center;
+	color: var(--text-muted);
+}
+
+/* ---------- scrollbars ----------
+   Several popular themes hide every scrollbar globally
+   (`::-webkit-scrollbar { visibility: hidden }`). Opt ours back in. */
+
+.section-cards-view::-webkit-scrollbar,
+.section-cards-grid::-webkit-scrollbar,
+.section-card-body::-webkit-scrollbar {
+	visibility: visible !important;
+	width: 12px;
+	height: 12px;
+}
+
+.section-cards-view::-webkit-scrollbar-track,
+.section-cards-grid::-webkit-scrollbar-track,
+.section-card-body::-webkit-scrollbar-track {
+	visibility: visible !important;
+	background-color: transparent;
+}
+
+.section-cards-view::-webkit-scrollbar-thumb,
+.section-cards-grid::-webkit-scrollbar-thumb,
+.section-card-body::-webkit-scrollbar-thumb {
+	visibility: visible !important;
+	background-color: rgba(var(--mono-rgb-100), 0.25);
+	background-clip: content-box;
+	border: 3px solid transparent;
+	border-radius: 8px;
+	min-height: 32px;
+}
+
+.section-cards-view::-webkit-scrollbar-thumb:hover,
+.section-cards-grid::-webkit-scrollbar-thumb:hover,
+.section-card-body::-webkit-scrollbar-thumb:hover {
+	background-color: rgba(var(--mono-rgb-100), 0.45);
+	background-clip: content-box;
+}
+
+.section-cards-view,
+.section-cards-grid,
+.section-card-body {
+	scrollbar-width: thin;
+	scrollbar-color: rgba(var(--mono-rgb-100), 0.3) transparent;
+}
