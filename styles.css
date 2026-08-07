@@ -478,7 +478,8 @@
 	color: var(--text-accent);
 }
 
-.section-card-delete svg {
+.section-card-delete svg,
+.section-card-big svg {
 	width: 13px;
 	height: 13px;
 }

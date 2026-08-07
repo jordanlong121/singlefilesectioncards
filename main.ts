@@ -1380,8 +1380,11 @@ export class SectionCardsView extends ItemView {
 			}).open();
 		});
 
-		const bigBtn = header.createEl("button", { cls: "section-card-big", text: "⤢" });
-		bigBtn.setAttr("aria-label", "Make this card big");
+		const bigBtn = header.createEl("button", { cls: "section-card-big" });
+		// The four-way move icon covers both of this button's jobs: click to make the card
+		// big, or use it as the natural grab point for drag-to-reorder.
+		setIcon(bigBtn, "move");
+		bigBtn.setAttr("aria-label", "Make this card big · drag to reorder");
 		bigBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
 			this.toggleMaximized(card);
@@ -1560,7 +1563,7 @@ export class SectionCardsView extends ItemView {
 		overlay.appendChild(card);
 		card.addClass("is-maximized");
 		body.style.maxHeight = "";
-		button.setText("⤡");
+		setIcon(button, "shrink");
 		button.setAttr("aria-label", "Shrink this card");
 		restoreCaret(caret);
 	}
@@ -1572,8 +1575,8 @@ export class SectionCardsView extends ItemView {
 
 		open.card.removeClass("is-maximized");
 		open.body.style.maxHeight = open.bodyMaxHeight;
-		open.button.setText("⤢");
-		open.button.setAttr("aria-label", "Make this card big");
+		setIcon(open.button, "move");
+		open.button.setAttr("aria-label", "Make this card big · drag to reorder");
 
 		const caret = captureCaret(open.card);
 		open.marker.parentElement?.insertBefore(open.card, open.marker);
