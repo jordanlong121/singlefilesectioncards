@@ -70,8 +70,9 @@ One card per row, full pane width.
 
 ### Vertical
 
-Full-height cards side by side. The row scrolls sideways — and the mouse wheel pans it, while a card
-whose content overflows keeps the wheel until it reaches its end.
+Full-height cards side by side. The row scrolls sideways, and the mouse wheel pans it from anywhere
+in the view — over the cards or over the toolbar. A card whose content overflows keeps the wheel
+until it reaches its end.
 
 ![Vertical](screenshots/vertical.png)
 

@@ -593,15 +593,17 @@ export class SectionCardsView extends ItemView {
 
 	/**
 	 * Vertical layout only: the wheel pans the row sideways, since there is nothing to
-	 * scroll vertically. A card body that can still scroll keeps the wheel first, so a
-	 * long day's tasks stay readable; once it hits its end the row takes over.
+	 * scroll vertically. Bound to the whole view rather than just the card row, so it also
+	 * works with the pointer over the toolbar (file picker and view dropdowns). A card body
+	 * that can still scroll keeps the wheel first, so a long day's tasks stay readable;
+	 * once it hits its end the row takes over.
 	 */
 	private registerWheelPan(): void {
 		this.registerDomEvent(
-			this.gridEl,
+			this.contentEl,
 			"wheel",
 			(evt: WheelEvent) => {
-				if (this.layout !== "vertical") return;
+				if (this.layout !== "vertical" || !this.gridEl) return;
 				if (evt.ctrlKey || evt.metaKey) return; // zoom gestures
 
 				const step = wheelDeltaToPixels(evt, this.gridEl.clientWidth);
