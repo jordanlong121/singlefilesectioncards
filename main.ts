@@ -19,6 +19,11 @@ import {
 
 export const VIEW_TYPE_SECTION_CARDS = "section-cards-view";
 
+/** Bodies rendered synchronously on open — roughly two screenfuls. The rest render in
+ * idle-time batches so a year-long note paints its first cards immediately. */
+const INITIAL_RENDER_COUNT = 24;
+const DEFERRED_RENDER_BATCH = 12;
+
 export const DECK_ICON = "section-cards-deck";
 
 /**
@@ -160,10 +165,13 @@ export function parseSections(lines: string[], level: number): Section[] {
 		}
 	}
 
+	// Starts are in ascending line order, so a single pointer replaces a scan per start.
+	let closerIndex = 0;
 	for (let s = 0; s < starts.length; s++) {
 		const start = starts[s];
 		const nextStart = s + 1 < starts.length ? starts[s + 1].line : lines.length;
-		const nextCloser = closers.find((c) => c > start.line);
+		while (closerIndex < closers.length && closers[closerIndex] <= start.line) closerIndex++;
+		const nextCloser = closerIndex < closers.length ? closers[closerIndex] : undefined;
 		const end = Math.min(nextStart, nextCloser ?? lines.length);
 		const bodyLines = lines.slice(start.line + 1, end);
 
@@ -350,18 +358,67 @@ async function toggleTaskInFile(
  * one), so a note that has no H3s doesn't open as an empty card wall.
  */
 export function pickHeadingLevel(lines: string[], preferred: number): number {
-	if (parseSections(lines, preferred).length > 0) return preferred;
+	// One scan tallies every level at once; parseSections per level cost up to 7 passes.
+	const counts = [0, 0, 0, 0, 0, 0, 0];
+	let inFence = false;
+	let inFrontmatter = false;
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		if (i === 0 && line.trim() === "---") {
+			inFrontmatter = true;
+			continue;
+		}
+		if (inFrontmatter) {
+			if (line.trim() === "---") inFrontmatter = false;
+			continue;
+		}
+		if (FENCE_RE.test(line)) {
+			inFence = !inFence;
+			continue;
+		}
+		if (inFence) continue;
+		const match = HEADING_RE.exec(line);
+		if (match) counts[match[1].length]++;
+	}
+
+	if (counts[preferred] > 0) return preferred;
 
 	let best = preferred;
 	let bestCount = 0;
 	for (let level = 1; level <= 6; level++) {
-		const count = parseSections(lines, level).length;
-		if (count > bestCount) {
+		if (counts[level] > bestCount) {
 			best = level;
-			bestCount = count;
+			bestCount = counts[level];
 		}
 	}
 	return bestCount > 0 ? best : preferred;
+}
+
+/**
+ * Which existing cards a re-render can keep. Cards are matched to sections by exact raw
+ * text, FIFO for duplicates; the result maps each next-section index to the previous card
+ * index it can reuse, or -1 when it must be built. Reuse means an edit to one section
+ * re-renders one card instead of the whole wall.
+ */
+export function planCardReuse(prevRaws: string[], nextRaws: string[]): number[] {
+	const pool = new Map<string, number[]>();
+	prevRaws.forEach((raw, i) => {
+		const list = pool.get(raw);
+		if (list) list.push(i);
+		else pool.set(raw, [i]);
+	});
+	return nextRaws.map((raw) => pool.get(raw)?.shift() ?? -1);
+}
+
+/**
+ * The editor pads the section with a trailing newline so typing starts on a fresh line;
+ * this strips that padding (and any other trailing blank lines) back off before saving,
+ * matching how parseSections trims sections. An untouched editor therefore saves nothing.
+ */
+export function trimTrailingBlankLines(text: string): string {
+	const lines = text.split(/\r?\n/);
+	while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
+	return lines.join("\n");
 }
 
 /**
@@ -486,6 +543,16 @@ async function writeSection(
 	return ok;
 }
 
+/** A rendered card. `holder.section` is swapped on reuse so closures never go stale. */
+interface CardEntry {
+	el: HTMLElement;
+	scope: Component;
+	holder: { section: Section };
+	raw: string;
+	/** Set while the body's markdown render is still owed; null once started. */
+	renderBody: (() => Promise<void>) | null;
+}
+
 interface CardsViewState {
 	filePath?: string;
 	headingLevel?: number;
@@ -504,7 +571,10 @@ export class SectionCardsView extends ItemView {
 	private toolbarEl!: HTMLElement;
 	private gridEl!: HTMLElement;
 	private countEl!: HTMLElement;
-	private renderScope: Component | null = null;
+	/** One entry per card in DOM order: element, its render scope, and its section. */
+	private cardEntries: CardEntry[] = [];
+	/** Bumped per render; in-flight async work from an older render aborts on mismatch. */
+	private renderGeneration = 0;
 	/** Heading raw text of the card currently open in an editor, so refreshes don't nuke it. */
 	private editingKey: string | null = null;
 	/** Watches cards for height changes (async markdown, images, embeds) to re-pack them. */
@@ -666,9 +736,84 @@ export class SectionCardsView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
-		this.clearRenderScope();
+		for (const entry of this.cardEntries) this.removeChild(entry.scope);
+		this.cardEntries = [];
 		this.cardObserver?.disconnect();
 		this.cardObserver = null;
+	}
+
+	private discardCard(entry: CardEntry): void {
+		this.removeChild(entry.scope);
+		entry.el.remove();
+	}
+
+	private clearAllCards(): void {
+		for (const entry of this.cardEntries) this.removeChild(entry.scope);
+		this.cardEntries = [];
+		this.cardsByHeading.clear();
+		this.gridEl.empty();
+	}
+
+	/** Today's date keys, computed once per render instead of once per card. */
+	private todayKeys(): { iso: string; formatted: string } | null {
+		if (this.plugin.settings.headingType !== "dates") return null;
+		const now = mo();
+		return { iso: now.format("YYYY-MM-DD"), formatted: now.format(this.plugin.settings.newCardFormat) };
+	}
+
+	/** The card-body height cap for the current layout; also re-applied to reused cards. */
+	private applyBodyHeight(bodyEl: HTMLElement | null): void {
+		if (!bodyEl) return;
+		if (this.layout === "vertical") {
+			bodyEl.style.maxHeight = "";
+			return;
+		}
+		const cap = this.plugin.settings.cardMaxHeight;
+		bodyEl.style.maxHeight = `${this.layout === "tight" ? Math.min(cap, 190) : cap}px`;
+	}
+
+	/** Rendered task checkboxes come back disabled, and disabled inputs never fire clicks. */
+	private enableCheckboxes(): void {
+		for (const box of Array.from(
+			this.gridEl.querySelectorAll<HTMLInputElement>(".section-card-body input[type=checkbox]"),
+		)) {
+			box.removeAttribute("disabled");
+			box.removeAttribute("readonly");
+		}
+	}
+
+	/** Run a card's owed body render, exactly once, unless the card became an editor. */
+	private async runBodyRender(entry: CardEntry): Promise<void> {
+		const run = entry.renderBody;
+		if (!run) return;
+		// An editing card's body is a textarea; the card is rebuilt after the edit anyway.
+		if (entry.el.hasClass("is-editing")) return;
+		entry.renderBody = null;
+		await run();
+	}
+
+	/**
+	 * Render the bodies that didn't make the synchronous budget, a batch per idle slot.
+	 * The ResizeObserver already re-packs as their heights land. Aborts (leaving each
+	 * card's renderBody owed for the next render) if a newer render supersedes this one.
+	 */
+	private scheduleDeferredRenders(entries: CardEntry[], gen: number): void {
+		const idle: (cb: () => void) => void =
+			typeof window.requestIdleCallback === "function"
+				? (cb) => window.requestIdleCallback(cb, { timeout: 200 })
+				: (cb) => window.setTimeout(cb, 16);
+		const step = (): void => {
+			if (gen !== this.renderGeneration) return;
+			const batch = entries.splice(0, DEFERRED_RENDER_BATCH);
+			if (!batch.length) return;
+			void Promise.all(batch.map((entry) => this.runBodyRender(entry))).then(() => {
+				if (gen !== this.renderGeneration) return;
+				this.enableCheckboxes();
+				this.repack();
+				if (entries.length) idle(step);
+			});
+		};
+		idle(step);
 	}
 
 	/**
@@ -693,14 +838,18 @@ export class SectionCardsView extends ItemView {
 		const gap = parseFloat(style.rowGap) || 0;
 		const cardGap = parseFloat(style.getPropertyValue("--sc-card-gap")) || 12;
 
-		for (const card of Array.from(grid.children) as HTMLElement[]) {
-			if (!card.hasClass("section-card")) continue;
-			// Cards are `align-items: start` grid items, so their box height is their
-			// content height regardless of the span currently assigned.
-			const height = card.getBoundingClientRect().height;
-			const span = Math.max(1, Math.ceil((height + cardGap) / (rowHeight + gap)));
+		// Read every height first, then write every span. Interleaving the two forces a
+		// full reflow per card — ~150 reflows per pack on a year of daily notes.
+		// (Cards are `align-items: start` grid items, so their box height is their content
+		// height regardless of the span currently assigned.)
+		const cards = (Array.from(grid.children) as HTMLElement[]).filter((card) =>
+			card.hasClass("section-card"),
+		);
+		const heights = cards.map((card) => card.getBoundingClientRect().height);
+		cards.forEach((card, i) => {
+			const span = Math.max(1, Math.ceil((heights[i] + cardGap) / (rowHeight + gap)));
 			card.style.gridRowEnd = `span ${span}`;
-		}
+		});
 	}
 
 	/**
@@ -743,13 +892,6 @@ export class SectionCardsView extends ItemView {
 		}
 		// The grid itself changes width when the pane resizes, which changes column count.
 		this.cardObserver.observe(this.gridEl);
-	}
-
-	private clearRenderScope() {
-		if (this.renderScope) {
-			this.removeChild(this.renderScope);
-			this.renderScope = null;
-		}
 	}
 
 	private buildToolbar() {
@@ -869,14 +1011,15 @@ export class SectionCardsView extends ItemView {
 		if (!this.gridEl) return;
 
 		this.closeMaximized();
+		const gen = ++this.renderGeneration;
+
 		const file = this.getFile();
-		this.gridEl.empty();
-		this.clearRenderScope();
 		this.cardObserver?.disconnect();
 		this.editingKey = null;
 
 		if (!file) {
 			this.countEl?.setText("");
+			this.clearAllCards();
 			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
 			empty.createEl("p", { text: `Can't find "${this.filePath}".` });
 			empty.createEl("p", { text: "Pick a note from the toolbar, or set a default in the plugin settings." });
@@ -885,6 +1028,7 @@ export class SectionCardsView extends ItemView {
 
 		this.filePath = file.path;
 		const content = await this.app.vault.cachedRead(file);
+		if (gen !== this.renderGeneration) return;
 		const lines = content.split(/\r?\n/);
 
 		// A note the user hasn't set a view for opens at a level that actually has headings.
@@ -904,38 +1048,94 @@ export class SectionCardsView extends ItemView {
 		);
 
 		if (!ordered.length) {
+			this.clearAllCards();
 			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
 			empty.createEl("p", { text: `No level-${this.headingLevel} headings in ${file.basename}.` });
 			empty.createEl("p", { text: "Try a different heading level in the toolbar." });
 			return;
 		}
 
-		const scope = new Component();
-		this.addChild(scope);
-		this.renderScope = scope;
-
-		const renders: Promise<void>[] = [];
-		this.cardsByHeading.clear();
-		for (const section of ordered) {
-			this.renderCard(this.gridEl, file, section, scope, renders);
+		// Helper elements go; the cards themselves are reconciled below, so an edit to one
+		// section rebuilds one card and every other card's rendered markdown is kept.
+		for (const stray of Array.from(
+			this.gridEl.querySelectorAll(".section-cards-row-rule, .section-cards-empty"),
+		)) {
+			stray.remove();
 		}
 
-		// Pack once with what's laid out, again once the async markdown has landed.
+		// Cards mid-edit are always rebuilt, so a cancelled editor resets to rendered markdown.
+		const reusable: CardEntry[] = [];
+		const discards: CardEntry[] = [];
+		for (const entry of this.cardEntries) {
+			(entry.el.hasClass("is-editing") ? discards : reusable).push(entry);
+		}
+
+		const plan = planCardReuse(
+			reusable.map((entry) => entry.raw),
+			ordered.map((section) => section.raw),
+		);
+
+		const today = this.todayKeys();
+		const renders: Promise<void>[] = [];
+		const deferred: CardEntry[] = [];
+		let immediateBudget = INITIAL_RENDER_COUNT;
+		const queueBody = (entry: CardEntry) => {
+			if (!entry.renderBody) return;
+			if (immediateBudget > 0) {
+				immediateBudget--;
+				renders.push(this.runBodyRender(entry));
+			} else {
+				deferred.push(entry);
+			}
+		};
+
+		this.cardsByHeading.clear();
+		const claimed = new Set<number>();
+		const nextEntries: CardEntry[] = [];
+
+		ordered.forEach((section, i) => {
+			const prevIndex = plan[i];
+			let entry: CardEntry;
+			if (prevIndex >= 0) {
+				claimed.add(prevIndex);
+				entry = reusable[prevIndex];
+				entry.holder.section = section;
+				entry.el.toggleClass("is-today", !!today && isTodayTitle(section.title, today.iso, today.formatted));
+				this.applyBodyHeight(entry.el.querySelector<HTMLElement>(".section-card-body"));
+			} else {
+				entry = this.renderCard(file, section, today);
+			}
+			queueBody(entry);
+			nextEntries.push(entry);
+			this.cardsByHeading.set(section.headingRaw, { el: entry.el, section });
+		});
+
+		for (let i = 0; i < reusable.length; i++) {
+			if (!claimed.has(i)) discards.push(reusable[i]);
+		}
+		for (const entry of discards) this.discardCard(entry);
+		this.cardEntries = nextEntries;
+
+		// Put the DOM in section order; an unchanged run of cards doesn't move at all.
+		let cursor: ChildNode | null = this.gridEl.firstChild;
+		for (const entry of nextEntries) {
+			if (entry.el === cursor) {
+				cursor = cursor.nextSibling;
+				continue;
+			}
+			this.gridEl.insertBefore(entry.el, cursor);
+		}
+
+		// Pack once with what's laid out, again once the first markdown batch has landed.
 		this.layoutMasonry();
 		await Promise.all(renders);
+		if (gen !== this.renderGeneration) return;
 
-		// Rendered task checkboxes can come back disabled, and disabled inputs never fire
-		// click events — enable them so they can be ticked straight from the card.
-		for (const box of Array.from(
-			this.gridEl.querySelectorAll<HTMLInputElement>(".section-card-body input[type=checkbox]"),
-		)) {
-			box.removeAttribute("disabled");
-			box.removeAttribute("readonly");
-		}
-
+		this.enableCheckboxes();
 		this.layoutMasonry();
 		this.insertRowRules();
 		this.observeCards();
+		if (deferred.length) this.scheduleDeferredRenders(deferred, gen);
 
 		if (this.pendingEditHeading) {
 			const target = this.cardsByHeading.get(this.pendingEditHeading);
@@ -956,21 +1156,17 @@ export class SectionCardsView extends ItemView {
 		(this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
 	}
 
-	private renderCard(
-		parent: HTMLElement,
-		file: TFile,
-		section: Section,
-		scope: Component,
-		renders: Promise<void>[],
-	) {
-		const card = parent.createDiv({ cls: "section-card" });
-		this.cardsByHeading.set(section.headingRaw, { el: card, section });
+	private renderCard(file: TFile, section: Section, today: { iso: string; formatted: string } | null): CardEntry {
+		const holder = { section };
+		const scope = new Component();
+		this.addChild(scope);
 
-		if (this.plugin.settings.headingType === "dates") {
-			const today = mo();
-			if (isTodayTitle(section.title, today.format("YYYY-MM-DD"), today.format(this.plugin.settings.newCardFormat))) {
-				card.addClass("is-today");
-			}
+		// Built detached; refresh's ordering pass inserts it at the right position.
+		const card = document.createElement("div");
+		card.className = "section-card";
+
+		if (today && isTodayTitle(section.title, today.iso, today.formatted)) {
+			card.addClass("is-today");
 		}
 
 		const header = card.createDiv({ cls: "section-card-header" });
@@ -998,19 +1194,16 @@ export class SectionCardsView extends ItemView {
 		openBtn.setAttr("aria-label", "Open this section in the note");
 		openBtn.addEventListener("click", async (evt) => {
 			evt.stopPropagation();
-			await this.plugin.revealSection(file, section.headingLine);
+			await this.plugin.revealSection(file, holder.section.headingLine);
 		});
 
 		// markdown-rendered lets Obsidian's own reading-view CSS style lists, tasks, tags, etc.
 		const bodyEl = card.createDiv({ cls: "section-card-body markdown-rendered" });
-		// Vertical cards fill their column, so the cap would fight the layout.
-		if (this.layout !== "vertical") {
-			const cap = this.plugin.settings.cardMaxHeight;
-			bodyEl.style.maxHeight = `${this.layout === "tight" ? Math.min(cap, 190) : cap}px`;
-		}
+		this.applyBodyHeight(bodyEl);
 
+		let renderBody: (() => Promise<void>) | null = null;
 		if (section.body.trim()) {
-			renders.push(MarkdownRenderer.render(this.app, section.body, bodyEl, file.path, scope));
+			renderBody = () => MarkdownRenderer.render(this.app, holder.section.body, bodyEl, file.path, scope);
 		} else {
 			bodyEl.createDiv({ cls: "section-card-placeholder", text: "Empty section — click to add content." });
 		}
@@ -1045,7 +1238,7 @@ export class SectionCardsView extends ItemView {
 			if (!box || card.hasClass("is-editing")) return;
 			evt.stopPropagation();
 			evt.preventDefault();
-			void this.toggleTask(card, file, section, bodyEl, box);
+			void this.toggleTask(card, file, holder.section, bodyEl, box);
 		});
 
 		card.addEventListener("click", (evt) => {
@@ -1054,8 +1247,10 @@ export class SectionCardsView extends ItemView {
 			if (target.closest("a")) return;
 			if (target.closest("input[type=checkbox]")) return;
 			if (card.hasClass("is-editing")) return;
-			this.startEditing(card, file, section);
+			this.startEditing(card, file, holder.section);
 		});
+
+		return { el: card, scope, holder, raw: section.raw, renderBody };
 	}
 
 	/**
@@ -1104,6 +1299,10 @@ export class SectionCardsView extends ItemView {
 		});
 
 		this.maximized = { card, body, button, overlay, marker, bodyMaxHeight: body.style.maxHeight };
+
+		// If this card's body render was deferred past the initial batch, do it now.
+		const owed = this.cardEntries.find((entry) => entry.el === card);
+		if (owed) void this.runBodyRender(owed).then(() => this.repack());
 
 		// Scrolling is locked while blown up, so the overlay's inset covers the visible tab.
 		this.contentEl.addClass("has-maximized-card");
@@ -1186,8 +1385,10 @@ export class SectionCardsView extends ItemView {
 		bodyEl.style.maxHeight = "";
 
 		const textarea = bodyEl.createEl("textarea", { cls: "section-card-editor" });
-		textarea.value = section.raw;
-		textarea.rows = Math.min(Math.max(section.raw.split("\n").length + 1, 4), 30);
+		// Pad with a newline so typing starts on a fresh line under the existing content
+		// (for a brand-new card, directly under its title). Trimmed back off on save.
+		textarea.value = section.raw + "\n";
+		textarea.rows = Math.min(Math.max(section.raw.split("\n").length + 2, 4), 30);
 
 		const footer = bodyEl.createDiv({ cls: "section-card-footer" });
 		footer.createSpan({ cls: "section-card-hint", text: "Ctrl/⌘+Enter to save · Esc to cancel" });
@@ -1203,8 +1404,9 @@ export class SectionCardsView extends ItemView {
 				const firstLine = textarea.value.split("\n")[0]?.trim();
 				this.pendingMaximizeHeading = save && firstLine ? firstLine : section.headingRaw;
 			}
-			if (save && textarea.value !== section.raw) {
-				const written = await writeSection(this.app, file, this.headingLevel, section, textarea.value);
+			const edited = trimTrailingBlankLines(textarea.value);
+			if (save && edited !== section.raw) {
+				const written = await writeSection(this.app, file, this.headingLevel, section, edited);
 				if (written) new Notice(`Saved “${section.title}” to ${file.basename}`);
 			}
 			this.editingKey = null;

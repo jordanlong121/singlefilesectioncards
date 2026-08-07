@@ -1,4 +1,4 @@
-import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel } from "./.tmp/main.js";
+import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -408,6 +408,55 @@ t("sample vault: every note opens at a level that renders cards", () => {
   }
 });
 
+// ---------- incremental re-render planning ----------
+
+t("planCardReuse keeps unchanged cards and rebuilds only what changed", () => {
+  assert.deepEqual(planCardReuse(["a", "b", "c"], ["a", "b", "c"]), [0, 1, 2]);   // no change
+  assert.deepEqual(planCardReuse(["a", "b", "c"], ["a", "B", "c"]), [0, -1, 2]);  // one edit
+  assert.deepEqual(planCardReuse(["a", "b", "c"], ["c", "a", "b"]), [2, 0, 1]);   // resort reuses all
+  assert.deepEqual(planCardReuse(["a", "b"], ["x", "a", "b"]), [-1, 0, 1]);       // insertion
+  assert.deepEqual(planCardReuse(["a", "b", "c"], ["a", "c"]), [0, 2]);           // deletion
+  assert.deepEqual(planCardReuse(["d", "d"], ["d", "d", "d"]), [0, 1, -1]);       // duplicates FIFO
+  assert.deepEqual(planCardReuse([], ["a"]), [-1]);                               // first render
+});
+
+t("sample vault: a one-section edit reuses every other card", () => {
+  const lines = fs.readFileSync(SAMPLE_NOTE, "utf8").split(/\r?\n/);
+  const before = parseSections(lines, 3);
+  const after = lines.slice();
+  after.splice(before[4].startLine + 1, 0, "- [ ] a brand new task");
+  const next = parseSections(after, 3);
+  const plan = planCardReuse(before.map((s) => s.raw), next.map((s) => s.raw));
+  assert.equal(plan.filter((i) => i === -1).length, 1, "exactly one card rebuilds");
+  assert.equal(plan.length, before.length);
+});
+
+t("parseSections stays exact on a large doc with a closer between every section", () => {
+  const lines = [];
+  for (let i = 0; i < 1500; i++) lines.push("## month " + i, "### day " + i, "- [ ] item " + i, "");
+  const secs = parseSections(lines, 3);
+  assert.equal(secs.length, 1500);
+  for (const s of secs) assert.equal(s.raw, lines.slice(s.startLine, s.endLine).join("\n"));
+  assert.equal(secs[7].body, "- [ ] item 7");
+});
+
+// ---------- editor newline padding ----------
+
+t("trimTrailingBlankLines strips the editor's padding and nothing else", () => {
+  assert.equal(trimTrailingBlankLines("### h\n- [ ] a\n"), "### h\n- [ ] a");
+  assert.equal(trimTrailingBlankLines("### h\n- [ ] a\n\n  \n"), "### h\n- [ ] a");
+  assert.equal(trimTrailingBlankLines("### h\n\n- [ ] a"), "### h\n\n- [ ] a");  // interior blank kept
+  assert.equal(trimTrailingBlankLines("### h"), "### h");
+  assert.equal(trimTrailingBlankLines(""), "");
+});
+
+t("an untouched editor round-trips to no change", () => {
+  const lines = fs.readFileSync(SAMPLE_NOTE, "utf8").split(/\r?\n/);
+  for (const section of parseSections(lines, 3).slice(0, 5)) {
+    const editorValue = section.raw + "\n";              // what startEditing shows
+    assert.equal(trimTrailingBlankLines(editorValue), section.raw, "no-op edit saves nothing");
+  }
+});
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

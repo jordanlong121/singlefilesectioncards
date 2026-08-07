@@ -183,6 +183,13 @@ LAYOUT=grid SORT=desc node tools/preview-harness.mjs out/harness.html
 
 ### Notes for contributors
 
+- `refresh()` reconciles instead of rebuilding: cards are matched to sections by exact raw text
+  (`planCardReuse`) and only changed sections re-render their markdown, so saving an edit or
+  ticking a checkbox re-renders one card, not the wall. Each card owns a `Component` scope that is
+  unloaded when the card is discarded.
+- On first render only the first ~24 card bodies render synchronously; the rest render in
+  idle-time batches, so a year-long note paints immediately. A generation counter aborts stale
+  async work when renders overlap.
 - Card surfaces are built from `--mono-rgb-0` / `--mono-rgb-100` rather than `--background-*`,
   because glass and transparent themes legitimately set those to `#00000000`, which made every
   card invisible.
