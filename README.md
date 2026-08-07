@@ -98,7 +98,9 @@ until it reaches its end.
   - `Single File Section Cards: Open section cards (default note)`
   - `Single File Section Cards: Open section cards for the active note`
   - `Single File Section Cards: Create new card`
-- The toolbar button switches notes by fuzzy search; the dropdowns set layout, heading level and sort.
+- The toolbar button switches notes: your default note, notes you've viewed as cards, and recently
+  opened notes are suggested; any other note can be reached by typing its name or path. (The plugin
+  deliberately never enumerates the vault.)
 
 ## Settings
 

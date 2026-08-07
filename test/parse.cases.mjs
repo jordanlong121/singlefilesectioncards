@@ -1,4 +1,4 @@
-import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection } from "./.tmp/main.js";
+import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -590,6 +590,55 @@ t("sample vault: every (from, to) move preserves all sections and hits the right
     }
   }
   assert.ok(moves > 40, "exercised " + moves + " real moves");
+});
+
+// ---------- the card editor's owned undo history ----------
+
+const snap = (value, sel = value.length) => ({ value, selStart: sel, selEnd: sel });
+
+t("undo walks back through recorded states; redo walks forward", () => {
+  const h = new EditorHistory(snap("a"));
+  h.record(snap("ab"));
+  h.record(snap("abc"));
+  assert.equal(h.undo().value, "ab");
+  assert.equal(h.undo().value, "a");
+  assert.equal(h.undo(), null, "stops at the initial state");
+  assert.equal(h.redo().value, "ab");
+  assert.equal(h.redo().value, "abc");
+  assert.equal(h.redo(), null, "stops at the newest state");
+});
+
+t("a new edit after undo discards the redo branch", () => {
+  const h = new EditorHistory(snap("a"));
+  h.record(snap("ab"));
+  h.undo();
+  h.record(snap("aX"));
+  assert.equal(h.redo(), null);
+  assert.equal(h.undo().value, "a");
+});
+
+t("same-text records only refresh the selection", () => {
+  const h = new EditorHistory(snap("abc", 0));
+  h.record({ value: "abc", selStart: 2, selEnd: 3 });   // caret moved, no text change
+  assert.equal(h.undo(), null, "no extra state was pushed");
+});
+
+t("a Tab edit round-trips through undo", () => {
+  const text = "### h\n- [ ] a";
+  const h = new EditorHistory(snap(text));
+  const e = computeTabEdit(text, 8, 8, false);
+  const after = text.slice(0, e.start) + e.insert + text.slice(e.end);
+  h.record({ value: after, selStart: e.selStart, selEnd: e.selEnd });
+  assert.equal(h.undo().value, text, "undo restores the pre-indent text");
+  assert.equal(h.redo().value, after);
+});
+
+t("history is capped, dropping the oldest states", () => {
+  const h = new EditorHistory(snap("0"));
+  for (let i = 1; i <= 250; i++) h.record(snap("v" + i));
+  let steps = 0;
+  while (h.undo()) steps++;
+  assert.ok(steps <= 200, "walked back " + steps + " steps");
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

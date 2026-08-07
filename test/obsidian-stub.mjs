@@ -17,3 +17,4 @@ export class Modal {}
 export const moment = () => ({ format: (f) => "STUB-" + f });
 export const addIcon = () => {};
 export const setIcon = () => {};
+export class SuggestModal { setPlaceholder() {} }

@@ -1,7 +1,7 @@
 import {
 	App,
 	Component,
-	FuzzySuggestModal,
+	SuggestModal,
 	addIcon,
 	ItemView,
 	MarkdownRenderer,
@@ -471,6 +471,56 @@ export function computeTabEdit(text: string, selStart: number, selEnd: number, o
 		return { start: lineStart, end: regionEnd, insert, selStart: caret, selEnd: caret };
 	}
 	return { start: lineStart, end: regionEnd, insert, selStart: lineStart, selEnd: lineStart + insert.length };
+}
+
+/** One editor state: full text plus selection. */
+export interface EditorSnapshot {
+	value: string;
+	selStart: number;
+	selEnd: number;
+}
+
+/**
+ * Undo/redo for the card editor's textarea. The editor owns its history because the
+ * only alternative for keeping programmatic edits (Tab indentation) undoable was a
+ * deprecated document API. Every change — typed or programmatic — is recorded,
+ * and the editor's keydown/beforeinput handlers route undo/redo here.
+ */
+export class EditorHistory {
+	private past: EditorSnapshot[];
+	private future: EditorSnapshot[] = [];
+
+	constructor(initial: EditorSnapshot) {
+		this.past = [initial];
+	}
+
+	/** Record the state after a change. Same-text records just refresh the selection. */
+	record(snap: EditorSnapshot): void {
+		const top = this.past[this.past.length - 1];
+		if (top.value === snap.value) {
+			top.selStart = snap.selStart;
+			top.selEnd = snap.selEnd;
+			return;
+		}
+		this.past.push(snap);
+		if (this.past.length > 200) this.past.shift();
+		this.future = [];
+	}
+
+	/** The state to restore, or null when at the beginning. */
+	undo(): EditorSnapshot | null {
+		if (this.past.length < 2) return null;
+		this.future.push(this.past.pop() as EditorSnapshot);
+		return this.past[this.past.length - 1];
+	}
+
+	/** The state to restore, or null when there is nothing to redo. */
+	redo(): EditorSnapshot | null {
+		const next = this.future.pop();
+		if (!next) return null;
+		this.past.push(next);
+		return next;
+	}
 }
 
 /**
@@ -1063,7 +1113,7 @@ export class SectionCardsView extends ItemView {
 		fileBtn.setAttr("aria-label", "Pick a different note");
 		fileBtn.createSpan({ text: this.filePath || "(no file)" });
 		fileBtn.addEventListener("click", () => {
-			new FileSuggestModal(this.app, (file) => void this.navigateTo(file.path)).open();
+			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path)).open();
 		});
 
 		const spacer = bar.createDiv({ cls: "section-cards-spacer" });
@@ -1685,6 +1735,20 @@ export class SectionCardsView extends ItemView {
 		textarea.value = section.raw + "\n";
 		textarea.rows = Math.min(Math.max(section.raw.split("\n").length + 2, 4), 30);
 
+		// The editor owns its undo history so programmatic edits (Tab) stay undoable
+		// without deprecated document APIs, at the cost of superseding native undo.
+		const snapshot = (): EditorSnapshot => ({
+			value: textarea.value,
+			selStart: textarea.selectionStart,
+			selEnd: textarea.selectionEnd,
+		});
+		const restore = (snap: EditorSnapshot | null): void => {
+			if (!snap) return;
+			textarea.value = snap.value;
+			textarea.setSelectionRange(snap.selStart, snap.selEnd);
+		};
+		const history = new EditorHistory(snapshot());
+
 		const footer = bodyEl.createDiv({ cls: "section-card-footer" });
 		footer.createSpan({ cls: "section-card-hint", text: "Ctrl/⌘+Enter to save · Esc to cancel" });
 		const cancelBtn = footer.createEl("button", { text: "Cancel" });
@@ -1729,15 +1793,29 @@ export class SectionCardsView extends ItemView {
 				e.preventDefault();
 				const edit = computeTabEdit(textarea.value, textarea.selectionStart, textarea.selectionEnd, e.shiftKey);
 				if (!edit) return;
-				textarea.setSelectionRange(edit.start, edit.end);
-				// execCommand keeps the platform undo stack intact, unlike setRangeText.
-				const applied = edit.insert
-					? document.execCommand("insertText", false, edit.insert)
-					: document.execCommand("delete");
-				if (!applied) textarea.setRangeText(edit.insert, edit.start, edit.end, "end");
+				textarea.setRangeText(edit.insert, edit.start, edit.end, "end");
 				textarea.setSelectionRange(edit.selStart, edit.selEnd);
+				history.record(snapshot());
+			} else if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "z") {
+				e.preventDefault();
+				restore(e.shiftKey ? history.redo() : history.undo());
+			} else if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "y") {
+				e.preventDefault();
+				restore(history.redo());
 			}
 		});
+
+		// Menu- and gesture-driven undo (mobile, Edit menu) arrives as beforeinput.
+		textarea.addEventListener("beforeinput", (e) => {
+			if (e.inputType === "historyUndo") {
+				e.preventDefault();
+				restore(history.undo());
+			} else if (e.inputType === "historyRedo") {
+				e.preventDefault();
+				restore(history.redo());
+			}
+		});
+		textarea.addEventListener("input", () => history.record(snapshot()));
 		textarea.addEventListener("click", (e) => e.stopPropagation());
 
 		this.activeEditor = { card, finish };
@@ -1752,25 +1830,59 @@ export class SectionCardsView extends ItemView {
 	}
 }
 
-class FileSuggestModal extends FuzzySuggestModal<TFile> {
-	onChoose: (file: TFile) => void;
+class FileSuggestModal extends SuggestModal<string> {
+	private readonly plugin: SectionCardsPlugin;
+	private readonly onChoose: (path: string) => void;
 
-	constructor(app: App, onChoose: (file: TFile) => void) {
+	constructor(app: App, plugin: SectionCardsPlugin, onChoose: (path: string) => void) {
 		super(app);
+		this.plugin = plugin;
 		this.onChoose = onChoose;
-		this.setPlaceholder("Show sections of which note?");
+		this.setPlaceholder("Recent note, or type a name or path…");
+		this.emptyStateText = "No match — type the note's name or vault path.";
 	}
 
-	getItems(): TFile[] {
-		return this.app.vault.getMarkdownFiles();
+	/** Adds a path if it names a real markdown file that isn't already listed. */
+	private addCandidate(out: string[], seen: Set<string>, path: string | null | undefined): void {
+		if (!path) return;
+		const normalized = path.endsWith(".md") ? path : `${path}.md`;
+		if (seen.has(normalized)) return;
+		if (!(this.app.vault.getAbstractFileByPath(normalized) instanceof TFile)) return;
+		seen.add(normalized);
+		out.push(normalized);
 	}
 
-	getItemText(file: TFile): string {
-		return file.path;
+	/**
+	 * Suggestions come only from notes the user has already touched — the configured
+	 * default, notes with a remembered cards view, recently opened notes — plus whatever
+	 * the query itself names. The vault is deliberately never enumerated.
+	 */
+	getSuggestions(query: string): string[] {
+		const typed: string[] = [];
+		const known: string[] = [];
+		const seen = new Set<string>();
+
+		const q = query.trim();
+		if (q) {
+			this.addCandidate(typed, seen, q);
+			const resolved = this.app.metadataCache.getFirstLinkpathDest(q.replace(/\.md$/, ""), "");
+			this.addCandidate(typed, seen, resolved?.path);
+		}
+
+		this.addCandidate(known, seen, this.plugin.settings.filePath);
+		for (const path of Object.keys(this.plugin.settings.perFile ?? {})) this.addCandidate(known, seen, path);
+		for (const path of this.app.workspace.getLastOpenFiles()) this.addCandidate(known, seen, path);
+
+		const needle = q.toLowerCase();
+		return typed.concat(needle ? known.filter((path) => path.toLowerCase().includes(needle)) : known);
 	}
 
-	onChooseItem(file: TFile): void {
-		this.onChoose(file);
+	renderSuggestion(path: string, el: HTMLElement): void {
+		el.setText(path);
+	}
+
+	onChooseSuggestion(path: string): void {
+		this.onChoose(path);
 	}
 }
 
