@@ -295,6 +295,53 @@
 	font-weight: 700;
 }
 
+/* ---------- one card, blown up over the others ----------
+   The view stops scrolling while a card is maximized, so the overlay's inset:0
+   covers exactly the visible tab area. */
+
+.workspace-leaf-content .view-content.section-cards-view.has-maximized-card {
+	overflow: hidden;
+	position: relative;
+}
+
+.section-cards-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 30;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 3% 4%;
+	background-color: rgba(var(--mono-rgb-0), 0.55);
+	backdrop-filter: blur(2px);
+	-webkit-backdrop-filter: blur(2px);
+}
+
+.section-card.is-maximized {
+	width: 100%;
+	max-width: 1100px;
+	height: 100%;
+	cursor: default;
+	transform: none;
+	box-shadow: 0 8px 32px rgba(var(--mono-rgb-0), 0.45);
+	border-color: var(--interactive-accent);
+}
+
+.section-card.is-maximized:hover {
+	transform: none;
+}
+
+.section-card.is-maximized .section-card-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	max-height: none;
+	font-size: var(--font-ui-medium, var(--font-ui-small));
+}
+
+.section-card.is-maximized .section-card-title {
+	font-size: var(--font-ui-medium, var(--font-ui-small));
+}
+
 /* Flash for the card you arrived at from a [[Note#Heading]] link. */
 .section-card.is-linked {
 	border-color: var(--interactive-accent);
@@ -346,6 +393,7 @@
 	white-space: nowrap;
 }
 
+.section-card-big,
 .section-card-open {
 	flex: 0 0 auto;
 	padding: 2px 7px;
@@ -356,11 +404,15 @@
 	color: var(--text-muted);
 }
 
+.section-card:hover .section-card-big,
 .section-card:hover .section-card-open,
-.section-card-open:focus-visible {
+.section-card-big:focus-visible,
+.section-card-open:focus-visible,
+.section-card.is-maximized .section-card-big {
 	opacity: 1;
 }
 
+.section-card-big:hover,
 .section-card-open:hover {
 	color: var(--text-accent);
 }

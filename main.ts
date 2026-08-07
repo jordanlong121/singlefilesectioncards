@@ -492,6 +492,15 @@ export class SectionCardsView extends ItemView {
 		this.layoutMasonry();
 		this.insertRowRules();
 	}, 60, true);
+	/** The card currently blown up over the others, if any. */
+	private maximized: {
+		card: HTMLElement;
+		body: HTMLElement;
+		button: HTMLElement;
+		overlay: HTMLElement;
+		marker: Comment;
+		bodyMaxHeight: string;
+	} | null = null;
 	/** Heading of a just-created section, to be opened for editing after the next render. */
 	private pendingEditHeading: string | null = null;
 	private cardsByHeading = new Map<string, { el: HTMLElement; section: Section }>();
@@ -587,6 +596,13 @@ export class SectionCardsView extends ItemView {
 		this.toolbarEl = this.contentEl.createDiv({ cls: "section-cards-toolbar" });
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
 		this.registerWheelPan();
+		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
+			if (evt.key !== "Escape" || !this.maximized) return;
+			// A card editor's own Escape handling wins.
+			if ((evt.target as HTMLElement | null)?.tagName === "TEXTAREA") return;
+			evt.preventDefault();
+			this.closeMaximized();
+		});
 		this.applyStoredView();
 		await this.syncView();
 	}
@@ -829,6 +845,7 @@ export class SectionCardsView extends ItemView {
 	async refresh(): Promise<void> {
 		if (!this.gridEl) return;
 
+		this.closeMaximized();
 		const file = this.getFile();
 		this.gridEl.empty();
 		this.clearRenderScope();
@@ -930,6 +947,13 @@ export class SectionCardsView extends ItemView {
 		const header = card.createDiv({ cls: "section-card-header" });
 		header.createDiv({ cls: "section-card-title", text: section.title || "(untitled)" });
 
+		const bigBtn = header.createEl("button", { cls: "section-card-big", text: "⤢" });
+		bigBtn.setAttr("aria-label", "Make this card big");
+		bigBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.toggleMaximized(card, bodyEl, bigBtn);
+		});
+
 		const openBtn = header.createEl("button", { cls: "section-card-open", text: "↗" });
 		openBtn.setAttr("aria-label", "Open this section in the note");
 		openBtn.addEventListener("click", async (evt) => {
@@ -1008,6 +1032,56 @@ export class SectionCardsView extends ItemView {
 			window.setTimeout(() => el.removeClass("is-linked"), 1600);
 			return;
 		}
+	}
+
+	isMaximized(): boolean {
+		return this.maximized !== null;
+	}
+
+	private toggleMaximized(card: HTMLElement, body: HTMLElement, button: HTMLElement): void {
+		if (this.maximized?.card === card) {
+			this.closeMaximized();
+			return;
+		}
+		this.closeMaximized();
+
+		// A comment node holds the card's place in the grid so it goes back where it was.
+		const marker = document.createComment("section-card");
+		card.parentElement?.insertBefore(marker, card);
+
+		const overlay = this.contentEl.createDiv({ cls: "section-cards-overlay" });
+		overlay.addEventListener("click", (evt) => {
+			if (evt.target === overlay) this.closeMaximized();
+		});
+
+		this.maximized = { card, body, button, overlay, marker, bodyMaxHeight: body.style.maxHeight };
+
+		// Scrolling is locked while blown up, so the overlay's inset covers the visible tab.
+		this.contentEl.addClass("has-maximized-card");
+		overlay.appendChild(card);
+		card.addClass("is-maximized");
+		body.style.maxHeight = "";
+		button.setText("⤡");
+		button.setAttr("aria-label", "Shrink this card");
+	}
+
+	private closeMaximized(): void {
+		const open = this.maximized;
+		if (!open) return;
+		this.maximized = null;
+
+		open.card.removeClass("is-maximized");
+		open.body.style.maxHeight = open.bodyMaxHeight;
+		open.button.setText("⤢");
+		open.button.setAttr("aria-label", "Make this card big");
+
+		open.marker.parentElement?.insertBefore(open.card, open.marker);
+		open.marker.remove();
+		open.overlay.remove();
+		this.contentEl.removeClass("has-maximized-card");
+
+		this.layoutMasonry();
+		this.insertRowRules();
 	}
 
 	/** Toggle the clicked task's line in the file, matching checkbox position to task order. */
@@ -1389,7 +1463,7 @@ export default class SectionCardsPlugin extends Plugin {
 			(file: TFile) => {
 				for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
 					const view = leaf.view as SectionCardsView;
-					if (view.filePath === file.path && !view.isEditing()) void view.refresh();
+					if (view.filePath === file.path && !view.isEditing() && !view.isMaximized()) void view.refresh();
 				}
 			},
 			400,
