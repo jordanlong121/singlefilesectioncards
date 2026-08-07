@@ -1057,13 +1057,37 @@ export class SectionCardsView extends ItemView {
 			this.plugin.settings.newCardPlacement,
 			async (typed, placement) => {
 				const headingRaw = normalizeHeading(typed, this.headingLevel);
-				const { level, duplicate } = await insertSection(this.app, file, headingRaw, placement);
+				const level = (/^#+/.exec(headingRaw)?.[0] ?? "###").length;
+				const title = headingRaw.replace(/^#+\s*/, "").trim();
 
+				// A section with this heading may already exist — creating a second one is
+				// almost never what was meant, so offer to edit the existing card instead.
+				const content = await this.app.vault.cachedRead(file);
+				const existing = parseSections(content.split(/\r?\n/), level).find(
+					(section) => section.title === title,
+				);
+				if (existing) {
+					new DuplicateCardModal(this.app, title, async () => {
+						if (level === this.headingLevel) {
+							this.pendingEditHeading = existing.headingRaw;
+							await this.refresh();
+						} else {
+							// The existing section isn't a card at this view's level;
+							// edit it in the note instead.
+							await this.plugin.revealSection(file, existing.headingLine);
+						}
+					}).open();
+					return;
+				}
+
+				const { level: written, duplicate } = await insertSection(this.app, file, headingRaw, placement);
+
+				// Backstop: the file can change between the check above and the write.
 				if (duplicate) {
 					new Notice(`Heading already existed in ${file.basename} — added a second one.`);
 				}
-				if (level !== this.headingLevel) {
-					new Notice(`Created an H${level} section; this view is showing H${this.headingLevel}.`);
+				if (written !== this.headingLevel) {
+					new Notice(`Created an H${written} section; this view is showing H${this.headingLevel}.`);
 				}
 
 				// Open the new card's editor once it has been re-rendered.
@@ -1609,6 +1633,42 @@ class ConfirmDeleteModal extends Modal {
 						this.onConfirm();
 					});
 				// Enter confirms, Esc (the modal's own handling) cancels.
+				b.buttonEl.focus();
+			});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+class DuplicateCardModal extends Modal {
+	private readonly title: string;
+	private readonly onEdit: () => void;
+
+	constructor(app: App, title: string, onEdit: () => void) {
+		super(app);
+		this.title = title;
+		this.onEdit = onEdit;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Card already exists" });
+		contentEl.createEl("p", {
+			text: `“${this.title}” is already a section in this note. Nothing was created.`,
+		});
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => {
+				b.setButtonText("Edit existing")
+					.setCta()
+					.onClick(() => {
+						this.close();
+						this.onEdit();
+					});
+				// Enter edits the existing card, Esc cancels.
 				b.buttonEl.focus();
 			});
 	}
