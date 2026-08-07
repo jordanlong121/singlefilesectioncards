@@ -143,6 +143,20 @@ BRAT then checks for new releases each time Obsidian starts. To update by hand, 
 
 The screenshots above were rendered from that vault with the default Obsidian theme.
 
+## FAQ
+
+**Is this vibe-coded?**
+Yes!
+
+**Will you maintain this?**
+Don't know, but I use it every day so probably.
+
+**Are there other plugins like it?**
+I don't know, that's why I wrote it.
+
+**Do you need the [Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes) plugin for this to work?**
+No, but you should use it because it's cool.
+
 ## Development
 
 ```bash
