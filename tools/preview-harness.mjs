@@ -39,7 +39,7 @@ function renderBody(md) {
 const cardHtml = (s) => `<div class="section-card">
 	<div class="section-card-header">
 		<div class="section-card-title">${esc(s.title || "(untitled)")}</div>
-		<button class="section-card-open">⤢</button>
+		<button class="section-card-open">↗</button>
 	</div>
 	<div class="section-card-body markdown-rendered" style="max-height: 320px;">${renderBody(s.body) || '<div class="section-card-placeholder">Empty section — click to add content.</div>'}</div>
 </div>`;
@@ -47,7 +47,7 @@ const cardHtml = (s) => `<div class="section-card">
 const editorCardHtml = (s) => `<div class="section-card is-editing">
 	<div class="section-card-header">
 		<div class="section-card-title">${esc(s.title)}</div>
-		<button class="section-card-open">⤢</button>
+		<button class="section-card-open">↗</button>
 	</div>
 	<div class="section-card-body markdown-rendered">
 		<textarea class="section-card-editor" rows="8">${esc(s.raw)}</textarea>

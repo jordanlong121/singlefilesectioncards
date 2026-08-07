@@ -30,7 +30,7 @@ the source `.md` file.
 - **Five layouts**, switchable from the toolbar (see below).
 - **Per-note memory.** Layout, heading level and sort are remembered for each note, stored in the
   plugin's own data — never in your notes. Notes with nothing saved open in Grid.
-- **⤢ on a card** opens the note in a normal editor tab with the cursor on that heading.
+- **↗ on a card** opens the note in a normal editor tab with the cursor on that heading.
 - Cards refresh when the file changes on disk, and re-pack when the pane resizes.
 
 ## Layouts

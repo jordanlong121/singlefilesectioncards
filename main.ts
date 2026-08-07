@@ -890,7 +890,7 @@ export class SectionCardsView extends ItemView {
 		const header = card.createDiv({ cls: "section-card-header" });
 		header.createDiv({ cls: "section-card-title", text: section.title || "(untitled)" });
 
-		const openBtn = header.createEl("button", { cls: "section-card-open", text: "⤢" });
+		const openBtn = header.createEl("button", { cls: "section-card-open", text: "↗" });
 		openBtn.setAttr("aria-label", "Open this section in the note");
 		openBtn.addEventListener("click", async (evt) => {
 			evt.stopPropagation();
