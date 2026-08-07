@@ -342,6 +342,22 @@
 	font-size: var(--font-ui-medium, var(--font-ui-small));
 }
 
+/* Editing a blown-up card: the textarea takes the height, footer pinned beneath it. */
+.section-card.is-maximized.is-editing .section-card-body {
+	display: flex;
+	flex-direction: column;
+}
+
+.section-card.is-maximized .section-card-editor {
+	flex: 1 1 auto;
+	height: auto;
+	resize: none;
+}
+
+.section-card.is-maximized .section-card-footer {
+	flex: 0 0 auto;
+}
+
 /* Flash for the card you arrived at from a [[Note#Heading]] link. */
 .section-card.is-linked {
 	border-color: var(--interactive-accent);

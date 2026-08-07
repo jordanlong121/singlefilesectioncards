@@ -364,6 +364,22 @@ export function pickHeadingLevel(lines: string[], preferred: number): number {
 	return bestCount > 0 ? best : preferred;
 }
 
+/**
+ * Moving a node in the DOM drops focus, which would eject you from a card editor when the
+ * card is blown up. These remember the focused textarea and its selection, and put them back.
+ */
+function captureCaret(within: HTMLElement): { el: HTMLTextAreaElement; start: number; end: number } | null {
+	const active = within.ownerDocument.activeElement;
+	if (!(active instanceof HTMLTextAreaElement) || !within.contains(active)) return null;
+	return { el: active, start: active.selectionStart, end: active.selectionEnd };
+}
+
+function restoreCaret(caret: { el: HTMLTextAreaElement; start: number; end: number } | null): void {
+	if (!caret) return;
+	caret.el.focus();
+	caret.el.setSelectionRange(caret.start, caret.end);
+}
+
 /** Split a wikilink target into its file path and its `#heading` subpath. */
 export function splitLinktext(linktext: string): [string, string] {
 	const hash = linktext.indexOf("#");
@@ -508,6 +524,8 @@ export class SectionCardsView extends ItemView {
 	} | null = null;
 	/** Heading of a just-created section, to be opened for editing after the next render. */
 	private pendingEditHeading: string | null = null;
+	/** Heading of a card that should still be blown up after the next render. */
+	private pendingMaximizeHeading: string | null = null;
 	private cardsByHeading = new Map<string, { el: HTMLElement; section: Section }>();
 
 	constructor(leaf: WorkspaceLeaf, plugin: SectionCardsPlugin) {
@@ -928,6 +946,12 @@ export class SectionCardsView extends ItemView {
 			}
 		}
 
+		if (this.pendingMaximizeHeading) {
+			const target = this.cardsByHeading.get(this.pendingMaximizeHeading);
+			this.pendingMaximizeHeading = null;
+			if (target) this.toggleMaximized(target.el);
+		}
+
 		// Keep the tab title in sync with the note being shown (undocumented but stable API).
 		(this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
 	}
@@ -957,10 +981,9 @@ export class SectionCardsView extends ItemView {
 		// The title bar's own action. "edit" falls through to the card handler below.
 		if (titleClick === "maximize") {
 			header.addEventListener("click", (evt) => {
-				if (card.hasClass("is-editing")) return;
 				if ((evt.target as HTMLElement | null)?.closest("button")) return;
 				evt.stopPropagation();
-				this.toggleMaximized(card, bodyEl, bigBtn);
+				this.toggleMaximized(card);
 			});
 		}
 
@@ -968,7 +991,7 @@ export class SectionCardsView extends ItemView {
 		bigBtn.setAttr("aria-label", "Make this card big");
 		bigBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
-			this.toggleMaximized(card, bodyEl, bigBtn);
+			this.toggleMaximized(card);
 		});
 
 		const openBtn = header.createEl("button", { cls: "section-card-open", text: "↗" });
@@ -1055,12 +1078,21 @@ export class SectionCardsView extends ItemView {
 		return this.maximized !== null;
 	}
 
-	private toggleMaximized(card: HTMLElement, body: HTMLElement, button: HTMLElement): void {
+	/**
+	 * Blow a card up over the others, or put it back. Whatever mode the card is in —
+	 * reading or editing raw markdown — is carried across untouched: the card element is
+	 * moved rather than re-rendered, and an in-progress edit keeps its text, caret and focus.
+	 */
+	private toggleMaximized(card: HTMLElement): void {
 		if (this.maximized?.card === card) {
 			this.closeMaximized();
 			return;
 		}
 		this.closeMaximized();
+
+		const body = card.querySelector<HTMLElement>(".section-card-body");
+		const button = card.querySelector<HTMLElement>(".section-card-big");
+		if (!body || !button) return;
 
 		// A comment node holds the card's place in the grid so it goes back where it was.
 		const marker = document.createComment("section-card");
@@ -1075,11 +1107,13 @@ export class SectionCardsView extends ItemView {
 
 		// Scrolling is locked while blown up, so the overlay's inset covers the visible tab.
 		this.contentEl.addClass("has-maximized-card");
+		const caret = captureCaret(card);
 		overlay.appendChild(card);
 		card.addClass("is-maximized");
 		body.style.maxHeight = "";
 		button.setText("⤡");
 		button.setAttr("aria-label", "Shrink this card");
+		restoreCaret(caret);
 	}
 
 	private closeMaximized(): void {
@@ -1092,10 +1126,12 @@ export class SectionCardsView extends ItemView {
 		open.button.setText("⤢");
 		open.button.setAttr("aria-label", "Make this card big");
 
+		const caret = captureCaret(open.card);
 		open.marker.parentElement?.insertBefore(open.card, open.marker);
 		open.marker.remove();
 		open.overlay.remove();
 		this.contentEl.removeClass("has-maximized-card");
+		restoreCaret(caret);
 
 		this.layoutMasonry();
 		this.insertRowRules();
@@ -1162,6 +1198,11 @@ export class SectionCardsView extends ItemView {
 		const finish = async (save: boolean) => {
 			if (settled) return;
 			settled = true;
+			// Saving re-renders the card, so remember to blow it back up afterwards.
+			if (this.maximized?.card === card) {
+				const firstLine = textarea.value.split("\n")[0]?.trim();
+				this.pendingMaximizeHeading = save && firstLine ? firstLine : section.headingRaw;
+			}
 			if (save && textarea.value !== section.raw) {
 				const written = await writeSection(this.app, file, this.headingLevel, section, textarea.value);
 				if (written) new Notice(`Saved “${section.title}” to ${file.basename}`);
