@@ -12,7 +12,7 @@
     "obsidian-plugin"
   ],
   "author": "Jordan Long",
-  "license": "GPL-3.0",
+  "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
     "@types/node": "^26.1.2",

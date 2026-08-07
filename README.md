@@ -202,4 +202,4 @@ LAYOUT=grid SORT=desc node tools/preview-harness.mjs out/harness.html
 
 ## License
 
-[GPL-3.0](LICENSE)
+[MIT](LICENSE)
