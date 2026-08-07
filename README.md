@@ -108,6 +108,7 @@ until it reaches its end.
 | Default placement | Where a new card is inserted |
 | Clicking a card's title bar | Makes the card big (default), or edits the raw markdown |
 | Completion date on tasks | Append `✅ YYYY-MM-DD` when a task is ticked |
+| Cross out nested items | Whether ticking a task also strikes through the items nested beneath it |
 | Card height | Maximum card height before the body scrolls |
 
 ## Install

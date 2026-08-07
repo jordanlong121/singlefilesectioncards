@@ -77,6 +77,8 @@ interface SectionCardsSettings {
 	newCardPlacement: Placement;
 	headingType: HeadingType;
 	taskDoneDate: boolean;
+	/** Whether ticking a task also strikes through the items nested beneath it. */
+	strikeNestedUnderDone: boolean;
 	titleBarClick: TitleBarClick;
 	layout: Layout;
 	/** Remembered view per note, keyed by vault path. Lives here, never in the note. */
@@ -99,6 +101,7 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	newCardPlacement: "logical",
 	headingType: "dates",
 	taskDoneDate: true,
+	strikeNestedUnderDone: true,
 	titleBarClick: "maximize",
 	layout: "grid",
 	perFile: {},
@@ -420,6 +423,51 @@ export function trimTrailingBlankLines(text: string): string {
 	const lines = text.split(/\r?\n/);
 	while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
 	return lines.join("\n");
+}
+
+/** A single indentation edit for the card editor's textarea. */
+export interface TabEdit {
+	/** Replace [start, end) of the text with `insert`... */
+	start: number;
+	end: number;
+	insert: string;
+	/** ...then select this range. */
+	selStart: number;
+	selEnd: number;
+}
+
+/**
+ * What pressing Tab (or Shift+Tab) in the editor should do to the text. A bare caret gets
+ * a tab character; a selection (or any Shift+Tab) indents or outdents whole lines, one tab
+ * — or up to four leading spaces — per line. Returns null when the edit would change nothing.
+ */
+export function computeTabEdit(text: string, selStart: number, selEnd: number, outdent: boolean): TabEdit | null {
+	if (!outdent && selStart === selEnd) {
+		return { start: selStart, end: selEnd, insert: "\t", selStart: selStart + 1, selEnd: selStart + 1 };
+	}
+
+	// Whole lines: from the start of the line containing selStart to the end of the line
+	// containing selEnd — except a selection ending exactly at a line start leaves that
+	// line out, which is how every code editor treats it.
+	const lineStart = text.lastIndexOf("\n", selStart - 1) + 1;
+	const effEnd = selEnd > selStart && text[selEnd - 1] === "\n" ? selEnd - 1 : selEnd;
+	const lineEndIdx = text.indexOf("\n", effEnd);
+	const regionEnd = lineEndIdx === -1 ? text.length : lineEndIdx;
+
+	const lines = text.slice(lineStart, regionEnd).split("\n");
+	const newLines = outdent
+		? lines.map((line) => (line.startsWith("\t") ? line.slice(1) : line.replace(/^ {1,4}/, "")))
+		: lines.map((line) => (line.length ? "\t" + line : line));
+	const insert = newLines.join("\n");
+	if (insert === text.slice(lineStart, regionEnd)) return null;
+
+	if (selStart === selEnd) {
+		// Caret-only outdent: keep the caret on the same spot in the line.
+		const removed = lines[0].length - newLines[0].length;
+		const caret = Math.max(lineStart, selStart - removed);
+		return { start: lineStart, end: regionEnd, insert, selStart: caret, selEnd: caret };
+	}
+	return { start: lineStart, end: regionEnd, insert, selStart: lineStart, selEnd: lineStart + insert.length };
 }
 
 /**
@@ -1485,6 +1533,18 @@ export class SectionCardsView extends ItemView {
 			} else if (e.key === "Escape") {
 				e.preventDefault();
 				void finish(false);
+			} else if (e.key === "Tab") {
+				// Tab indents instead of leaving the field — nested tasks need it.
+				e.preventDefault();
+				const edit = computeTabEdit(textarea.value, textarea.selectionStart, textarea.selectionEnd, e.shiftKey);
+				if (!edit) return;
+				textarea.setSelectionRange(edit.start, edit.end);
+				// execCommand keeps the platform undo stack intact, unlike setRangeText.
+				const applied = edit.insert
+					? document.execCommand("insertText", false, edit.insert)
+					: document.execCommand("delete");
+				if (!applied) textarea.setRangeText(edit.insert, edit.start, edit.end, "end");
+				textarea.setSelectionRange(edit.selStart, edit.selEnd);
 			}
 		});
 		textarea.addEventListener("click", (e) => e.stopPropagation());
@@ -1772,6 +1832,19 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName("Cross out items nested under a done task")
+			.setDesc(
+				"When off, ticking a task strikes through only its own line — sub-tasks and notes nested beneath it keep their normal styling until ticked themselves.",
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.strikeNestedUnderDone).onChange(async (value) => {
+					this.plugin.settings.strikeNestedUnderDone = value;
+					await this.plugin.saveSettings();
+					this.plugin.applyBodyClasses();
+				}),
+			);
+
+		new Setting(containerEl)
 			.setName("Card height")
 			.setDesc("Maximum card height in pixels before the card body scrolls.")
 			.addSlider((slider) =>
@@ -1869,6 +1942,16 @@ export default class SectionCardsPlugin extends Plugin {
 		);
 
 		this.addSettingTab(new SectionCardsSettingTab(this.app, this));
+		this.applyBodyClasses();
+	}
+
+	onunload(): void {
+		document.body.removeClass("sfsc-no-nested-strike");
+	}
+
+	/** Global styling switches live as body classes so every cards view picks them up. */
+	applyBodyClasses(): void {
+		document.body.toggleClass("sfsc-no-nested-strike", !this.settings.strikeNestedUnderDone);
 	}
 
 	/**

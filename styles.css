@@ -511,6 +511,20 @@
 	letter-spacing: 0.04em;
 }
 
+/* Optional (settings → "Cross out items nested under a done task", off): ticking a task
+   strikes only its own line. text-decoration propagates to every in-flow descendant and
+   cannot be cancelled on them — but it does not propagate into inline-block boxes, so the
+   nested list becomes one. The colour reset undoes the inherited done-task dimming; nested
+   items that are themselves ticked still get their own strikethrough and dimming. */
+body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ul,
+body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
+	display: inline-block;
+	width: 100%;
+	vertical-align: top;
+	text-decoration: none;
+	color: var(--text-normal);
+}
+
 /* Checkboxes are live: a click toggles the task in the file rather than opening the editor. */
 .section-card-body input[type="checkbox"] {
 	cursor: pointer;

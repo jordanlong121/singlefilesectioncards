@@ -1,4 +1,4 @@
-import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange } from "./.tmp/main.js";
+import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -493,6 +493,52 @@ t("sample vault: deleting any one section keeps every other section intact", () 
     // no run of 3+ blank lines introduced
     assert.ok(!/\n\s*\n\s*\n\s*\n/.test(out.join("\n")), "no blank pile-up when deleting #" + i);
   }
+});
+
+// ---------- Tab in the card editor ----------
+
+const applyEdit = (text, e) => text.slice(0, e.start) + e.insert + text.slice(e.end);
+
+t("Tab at a bare caret inserts a tab character", () => {
+  const e = computeTabEdit("- [ ] task", 6, 6, false);
+  assert.deepEqual(e, { start: 6, end: 6, insert: "\t", selStart: 7, selEnd: 7 });
+  assert.equal(applyEdit("- [ ] task", e), "- [ ] \ttask");
+});
+
+t("Tab with a multi-line selection indents whole lines", () => {
+  const text = "### h\n- [ ] a\n- [ ] b\n- [ ] c";
+  const e = computeTabEdit(text, 8, 24, false);              // selection inside a..c
+  assert.equal(applyEdit(text, e), "### h\n\t- [ ] a\n\t- [ ] b\n\t- [ ] c");
+  assert.equal(e.selStart, 6, "whole region selected after");
+});
+
+t("a selection ending exactly at a line start leaves that line alone", () => {
+  const text = "aa\nbb\ncc";
+  const e = computeTabEdit(text, 0, 6, false);               // ends right after bb's newline
+  assert.equal(applyEdit(text, e), "\taa\n\tbb\ncc");
+});
+
+t("Shift+Tab removes one tab or up to four leading spaces per line", () => {
+  const text = "\t- [ ] a\n    - [ ] b\n- [ ] c";
+  const e = computeTabEdit(text, 0, text.length, true);
+  assert.equal(applyEdit(text, e), "- [ ] a\n- [ ] b\n- [ ] c");
+});
+
+t("Shift+Tab at a caret outdents its line and keeps the caret in place", () => {
+  const text = "\t- [ ] nested";
+  const e = computeTabEdit(text, 5, 5, true);
+  assert.equal(applyEdit(text, e), "- [ ] nested");
+  assert.equal(e.selStart, 4, "caret follows the text it sat in");
+});
+
+t("Shift+Tab on unindented text is a no-op, not a broken edit", () => {
+  assert.equal(computeTabEdit("- [ ] plain", 3, 3, true), null);
+});
+
+t("indenting skips empty lines so blank separators stay blank", () => {
+  const text = "aa\n\nbb";
+  const e = computeTabEdit(text, 0, text.length, false);
+  assert.equal(applyEdit(text, e), "\taa\n\n\tbb");
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
