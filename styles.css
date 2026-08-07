@@ -150,8 +150,7 @@
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(var(--sc-col-min), 1fr));
 	grid-auto-rows: var(--sc-row-unit);
-	column-gap: var(--sc-card-gap);
-	row-gap: 0;
+	gap: 0 var(--sc-card-gap);
 	padding: var(--sc-pad);
 	align-items: start;
 }
@@ -619,25 +618,25 @@ body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
    Several popular themes hide every scrollbar globally
    (`::-webkit-scrollbar { visibility: hidden }`). Opt ours back in. */
 
-.section-cards-view::-webkit-scrollbar,
-.section-cards-grid::-webkit-scrollbar,
-.section-card-body::-webkit-scrollbar {
-	visibility: visible !important;
+.view-content.section-cards-view::-webkit-scrollbar,
+.section-cards-view .section-cards-grid::-webkit-scrollbar,
+.section-cards-view .section-card-body::-webkit-scrollbar {
+	visibility: visible;
 	width: 12px;
 	height: 12px;
 }
 
-.section-cards-view::-webkit-scrollbar-track,
-.section-cards-grid::-webkit-scrollbar-track,
-.section-card-body::-webkit-scrollbar-track {
-	visibility: visible !important;
+.view-content.section-cards-view::-webkit-scrollbar-track,
+.section-cards-view .section-cards-grid::-webkit-scrollbar-track,
+.section-cards-view .section-card-body::-webkit-scrollbar-track {
+	visibility: visible;
 	background-color: transparent;
 }
 
-.section-cards-view::-webkit-scrollbar-thumb,
-.section-cards-grid::-webkit-scrollbar-thumb,
-.section-card-body::-webkit-scrollbar-thumb {
-	visibility: visible !important;
+.view-content.section-cards-view::-webkit-scrollbar-thumb,
+.section-cards-view .section-cards-grid::-webkit-scrollbar-thumb,
+.section-cards-view .section-card-body::-webkit-scrollbar-thumb {
+	visibility: visible;
 	background-color: rgba(var(--mono-rgb-100), 0.25);
 	background-clip: content-box;
 	border: 3px solid transparent;
@@ -645,9 +644,9 @@ body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
 	min-height: 32px;
 }
 
-.section-cards-view::-webkit-scrollbar-thumb:hover,
-.section-cards-grid::-webkit-scrollbar-thumb:hover,
-.section-card-body::-webkit-scrollbar-thumb:hover {
+.view-content.section-cards-view::-webkit-scrollbar-thumb:hover,
+.section-cards-view .section-cards-grid::-webkit-scrollbar-thumb:hover,
+.section-cards-view .section-card-body::-webkit-scrollbar-thumb:hover {
 	background-color: rgba(var(--mono-rgb-100), 0.45);
 	background-clip: content-box;
 }
