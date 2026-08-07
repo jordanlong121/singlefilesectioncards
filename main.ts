@@ -924,11 +924,11 @@ export class SectionCardsView extends ItemView {
 	private applyBodyHeight(bodyEl: HTMLElement | null): void {
 		if (!bodyEl) return;
 		if (this.layout === "vertical") {
-			bodyEl.style.maxHeight = "";
+			bodyEl.setCssStyles({ maxHeight: "" });
 			return;
 		}
 		const cap = this.plugin.settings.cardMaxHeight;
-		bodyEl.style.maxHeight = `${this.layout === "tight" ? Math.min(cap, 190) : cap}px`;
+		bodyEl.setCssStyles({ maxHeight: `${this.layout === "tight" ? Math.min(cap, 190) : cap}px` });
 	}
 
 	/** Rendered task checkboxes come back disabled, and disabled inputs never fire clicks. */
@@ -988,7 +988,7 @@ export class SectionCardsView extends ItemView {
 		// Masonry spans only apply to the packed column layouts. The aligned grid wants
 		// real auto rows, and the sideways layout is a flex row, so clear any leftovers.
 		if (this.layout === "vertical" || this.layout === "aligned") {
-			for (const card of Array.from(grid.children) as HTMLElement[]) card.style.gridRowEnd = "";
+			for (const card of Array.from(grid.children) as HTMLElement[]) card.setCssStyles({ gridRowEnd: "" });
 			return;
 		}
 
@@ -1007,7 +1007,7 @@ export class SectionCardsView extends ItemView {
 		const heights = cards.map((card) => card.getBoundingClientRect().height);
 		cards.forEach((card, i) => {
 			const span = Math.max(1, Math.ceil((heights[i] + cardGap) / (rowHeight + gap)));
-			card.style.gridRowEnd = `span ${span}`;
+			card.setCssStyles({ gridRowEnd: `span ${span}` });
 		});
 	}
 
@@ -1034,7 +1034,7 @@ export class SectionCardsView extends ItemView {
 		if (columns < 1 || columns >= cards.length) return;
 
 		for (let i = columns; i < cards.length; i += columns) {
-			const rule = document.createElement("div");
+			const rule = createDiv();
 			rule.className = "section-cards-row-rule";
 			grid.insertBefore(rule, cards[i]);
 		}
@@ -1075,11 +1075,10 @@ export class SectionCardsView extends ItemView {
 			levelSelect.createEl("option", { text: `H${l}`, value: String(l) });
 		}
 		levelSelect.value = String(this.headingLevel);
-		levelSelect.addEventListener("change", async () => {
+		levelSelect.addEventListener("change", () => {
 			this.headingLevel = Number(levelSelect.value);
 			this.rememberView();
-			await this.refresh();
-			this.app.workspace.requestSaveLayout();
+			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 		});
 
 		const layoutWrap = bar.createDiv({ cls: "section-cards-control" });
@@ -1090,12 +1089,11 @@ export class SectionCardsView extends ItemView {
 			option.title = hint;
 		}
 		layoutSelect.value = this.layout;
-		layoutSelect.addEventListener("change", async () => {
+		layoutSelect.addEventListener("change", () => {
 			this.layout = layoutSelect.value as Layout;
 			this.rememberView();
 			this.applyLayoutClass();
-			await this.refresh();
-			this.app.workspace.requestSaveLayout();
+			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 		});
 
 		const sortWrap = bar.createDiv({ cls: "section-cards-control" });
@@ -1105,11 +1103,10 @@ export class SectionCardsView extends ItemView {
 		sortSelect.createEl("option", { text: "Z → A", value: "desc" });
 		sortSelect.createEl("option", { text: "Document order", value: "doc" });
 		sortSelect.value = this.sortOrder;
-		sortSelect.addEventListener("change", async () => {
+		sortSelect.addEventListener("change", () => {
 			this.sortOrder = sortSelect.value as SortOrder;
 			this.rememberView();
-			await this.refresh();
-			this.app.workspace.requestSaveLayout();
+			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 		});
 
 		const newBtn = bar.createEl("button", { cls: "section-cards-new-btn mod-cta", text: "+ New card" });
@@ -1118,7 +1115,7 @@ export class SectionCardsView extends ItemView {
 
 		const refreshBtn = bar.createEl("button", { cls: "section-cards-icon-btn", text: "↻" });
 		refreshBtn.setAttr("aria-label", "Reload from file");
-		refreshBtn.addEventListener("click", () => this.refresh());
+		refreshBtn.addEventListener("click", () => void this.refresh());
 	}
 
 	/** Ask for a heading and placement, write the new section, then open it for editing. */
@@ -1350,7 +1347,7 @@ export class SectionCardsView extends ItemView {
 		this.addChild(scope);
 
 		// Built detached; refresh's ordering pass inserts it at the right position.
-		const card = document.createElement("div");
+		const card = createDiv();
 		card.className = "section-card";
 
 		if (today && isTodayTitle(section.title, today.iso, today.formatted)) {
@@ -1400,9 +1397,9 @@ export class SectionCardsView extends ItemView {
 
 		const openBtn = header.createEl("button", { cls: "section-card-open", text: "↗" });
 		openBtn.setAttr("aria-label", "Open this section in the note");
-		openBtn.addEventListener("click", async (evt) => {
+		openBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
-			await this.plugin.revealSection(file, holder.section.headingLine);
+			void this.plugin.revealSection(file, holder.section.headingLine);
 		});
 
 		// markdown-rendered lets Obsidian's own reading-view CSS style lists, tasks, tags, etc.
@@ -1560,8 +1557,7 @@ export class SectionCardsView extends ItemView {
 		// The locked view keeps its scroll offset, and an absolutely-positioned overlay
 		// lives in content coordinates — pin it to the visible box, or it opens above the
 		// viewport whenever the wall is scrolled (a certainty in the Horizontal layout).
-		overlay.style.top = `${this.contentEl.scrollTop}px`;
-		overlay.style.height = `${this.contentEl.clientHeight}px`;
+		overlay.setCssStyles({ top: `${this.contentEl.scrollTop}px`, height: `${this.contentEl.clientHeight}px` });
 		overlay.addEventListener("click", (evt) => {
 			if (evt.target === overlay) this.closeMaximized();
 		});
@@ -1577,7 +1573,7 @@ export class SectionCardsView extends ItemView {
 		const caret = captureCaret(card);
 		overlay.appendChild(card);
 		card.addClass("is-maximized");
-		body.style.maxHeight = "";
+		body.setCssStyles({ maxHeight: "" });
 		setIcon(button, "shrink");
 		button.setAttr("aria-label", "Shrink this card");
 		restoreCaret(caret);
@@ -1589,7 +1585,7 @@ export class SectionCardsView extends ItemView {
 		this.maximized = null;
 
 		open.card.removeClass("is-maximized");
-		open.body.style.maxHeight = open.bodyMaxHeight;
+		open.body.setCssStyles({ maxHeight: open.bodyMaxHeight });
 		setIcon(open.button, "move");
 		open.button.setAttr("aria-label", "Make this card big · drag to reorder");
 
@@ -1677,10 +1673,10 @@ export class SectionCardsView extends ItemView {
 		card.draggable = false;
 		this.editingKey = section.headingRaw;
 
-		const bodyEl = card.querySelector(".section-card-body") as HTMLElement | null;
+		const bodyEl = card.querySelector<HTMLElement>(".section-card-body");
 		if (!bodyEl) return;
 		bodyEl.empty();
-		bodyEl.style.maxHeight = "";
+		bodyEl.setCssStyles({ maxHeight: "" });
 
 		const textarea = bodyEl.createEl("textarea", { cls: "section-card-editor" });
 		// Pad with a newline so typing starts on a fresh line under the existing content
@@ -1779,9 +1775,9 @@ class FileSuggestModal extends FuzzySuggestModal<TFile> {
 
 class ConfirmDeleteModal extends Modal {
 	private readonly title: string;
-	private readonly onConfirm: () => void;
+	private readonly onConfirm: () => void | Promise<void>;
 
-	constructor(app: App, title: string, onConfirm: () => void) {
+	constructor(app: App, title: string, onConfirm: () => void | Promise<void>) {
 		super(app);
 		this.title = title;
 		this.onConfirm = onConfirm;
@@ -1801,7 +1797,7 @@ class ConfirmDeleteModal extends Modal {
 					.setWarning()
 					.onClick(() => {
 						this.close();
-						this.onConfirm();
+						void this.onConfirm();
 					});
 				// Enter confirms, Esc (the modal's own handling) cancels.
 				b.buttonEl.focus();
@@ -1815,9 +1811,9 @@ class ConfirmDeleteModal extends Modal {
 
 class SwitchToDocumentOrderModal extends Modal {
 	private readonly currentLabel: string;
-	private readonly onSwitch: () => void;
+	private readonly onSwitch: () => void | Promise<void>;
 
-	constructor(app: App, currentLabel: string, onSwitch: () => void) {
+	constructor(app: App, currentLabel: string, onSwitch: () => void | Promise<void>) {
 		super(app);
 		this.currentLabel = currentLabel;
 		this.onSwitch = onSwitch;
@@ -1837,7 +1833,7 @@ class SwitchToDocumentOrderModal extends Modal {
 					.setCta()
 					.onClick(() => {
 						this.close();
-						this.onSwitch();
+						void this.onSwitch();
 					});
 				// Enter switches, Esc cancels.
 				b.buttonEl.focus();
@@ -1851,9 +1847,9 @@ class SwitchToDocumentOrderModal extends Modal {
 
 class DuplicateCardModal extends Modal {
 	private readonly title: string;
-	private readonly onEdit: () => void;
+	private readonly onEdit: () => void | Promise<void>;
 
-	constructor(app: App, title: string, onEdit: () => void) {
+	constructor(app: App, title: string, onEdit: () => void | Promise<void>) {
 		super(app);
 		this.title = title;
 		this.onEdit = onEdit;
@@ -1873,7 +1869,7 @@ class DuplicateCardModal extends Modal {
 					.setCta()
 					.onClick(() => {
 						this.close();
-						this.onEdit();
+						void this.onEdit();
 					});
 				// Enter edits the existing card, Esc cancels.
 				b.buttonEl.focus();
@@ -1888,13 +1884,13 @@ class DuplicateCardModal extends Modal {
 class NewCardModal extends Modal {
 	private text: string;
 	private placement: Placement;
-	private readonly onSubmit: (heading: string, placement: Placement) => void;
+	private readonly onSubmit: (heading: string, placement: Placement) => void | Promise<void>;
 
 	constructor(
 		app: App,
 		defaultText: string,
 		defaultPlacement: Placement,
-		onSubmit: (heading: string, placement: Placement) => void,
+		onSubmit: (heading: string, placement: Placement) => void | Promise<void>,
 	) {
 		super(app);
 		this.text = defaultText;
@@ -1952,7 +1948,7 @@ class NewCardModal extends Modal {
 			return;
 		}
 		this.close();
-		this.onSubmit(heading, this.placement);
+		void this.onSubmit(heading, this.placement);
 	}
 
 	onClose(): void {
@@ -2036,7 +2032,7 @@ class SectionCardsSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		containerEl.createEl("h4", { text: "New cards" });
+		new Setting(containerEl).setName("New cards").setHeading();
 
 		new Setting(containerEl)
 			.setName("Default heading name")
@@ -2118,7 +2114,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				slider
 					.setLimits(160, 800, 20)
 					.setValue(this.plugin.settings.cardMaxHeight)
-					.setDynamicTooltip()
 					.onChange(async (value) => {
 						this.plugin.settings.cardMaxHeight = value;
 						await this.plugin.saveSettings();
@@ -2235,7 +2230,7 @@ export default class SectionCardsPlugin extends Plugin {
 				.find((leaf) => (leaf.view as SectionCardsView).filePath === path);
 
 			if (existing) {
-				this.app.workspace.revealLeaf(existing);
+				await this.app.workspace.revealLeaf(existing);
 				const view = existing.view as SectionCardsView;
 				await view.refresh();
 				if (revealHeading) view.revealCard(revealHeading);
@@ -2254,7 +2249,7 @@ export default class SectionCardsPlugin extends Plugin {
 				layout: this.settings.layout,
 			},
 		});
-		this.app.workspace.revealLeaf(leaf);
+		await this.app.workspace.revealLeaf(leaf);
 
 		// setViewState has already rendered via setState -> syncView.
 		if (revealHeading) (leaf.view as SectionCardsView).revealCard(revealHeading);
@@ -2301,7 +2296,8 @@ export default class SectionCardsPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const stored = (await this.loadData()) as Partial<SectionCardsSettings> | null;
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, stored);
 	}
 
 	async saveSettings(): Promise<void> {

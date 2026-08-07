@@ -1,12 +1,13 @@
 {
   "name": "obsidian-single-file-section-cards",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Obsidian plugin: view a single note's sections as editable cards",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
-    "test": "node test/run.mjs"
+    "test": "node test/run.mjs",
+    "lint": "eslint main.ts"
   },
   "keywords": [
     "obsidian-plugin"
@@ -18,8 +19,11 @@
     "@types/node": "^26.1.2",
     "builtin-modules": "^5.3.0",
     "esbuild": "^0.28.1",
+    "eslint": "^10.8.0",
+    "eslint-plugin-obsidianmd": "^0.4.1",
     "obsidian": "^1.13.1",
-    "typescript": "^7.0.2"
+    "typescript": "~5.9.0",
+    "typescript-eslint": "^8.66.0"
   },
   "repository": {
     "type": "git",
