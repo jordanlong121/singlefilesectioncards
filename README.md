@@ -36,10 +36,16 @@ the source `.md` file.
   is in comes with it: blow up a card you're editing and the editor grows to fill it, keeping your
   text, caret and focus, and it stays big when you save or cancel.
 - **↗ on a card** opens the note in a normal editor tab with the cursor on that heading.
-- **Wikilinks open as cards.** Clicking a `[[Note]]` link inside a card opens that note in the card
-  view using its own remembered view, rather than as a markdown tab. `[[Note#Heading]]` scrolls to
-  that heading's card and flashes it. Ctrl/⌘/Shift/Alt-click keeps Obsidian's normal behaviour, and
-  external links still open in your browser.
+- **Wikilinks open as cards.** Clicking a `[[Note]]` link inside a card navigates the tab you're in
+  to that note — the way links work in a markdown tab — using the view remembered for it.
+  `[[Note#Heading]]` scrolls to that heading's card and flashes it. Ctrl/⌘/Shift/Alt-click keeps
+  Obsidian's normal behaviour, and external links still open in your browser.
+- **As many cards tabs as you like** — different notes, or several tabs of the same note.
+  Ctrl/⌘-click the ribbon icon or run `Open section cards in a new tab` to add one; Obsidian's
+  native *Duplicate tab* works too. A plain ribbon click still focuses the tab already showing
+  your default note.
+- **Delete a card** — the trash button in a card's header removes that section from the note,
+  after a confirmation dialog. Neighbouring sections and their spacing are left untouched.
 - **Sensible level for new notes.** A note you haven't set a view for opens at your configured
   heading level if it has one, otherwise at whichever level has the most sections — so a note
   without H3s doesn't open as an empty wall.

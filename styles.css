@@ -422,6 +422,7 @@
 	white-space: nowrap;
 }
 
+.section-card-delete,
 .section-card-big,
 .section-card-open {
 	flex: 0 0 auto;
@@ -433,8 +434,10 @@
 	color: var(--text-muted);
 }
 
+.section-card:hover .section-card-delete,
 .section-card:hover .section-card-big,
 .section-card:hover .section-card-open,
+.section-card-delete:focus-visible,
 .section-card-big:focus-visible,
 .section-card-open:focus-visible,
 .section-card.is-maximized .section-card-big {
@@ -444,6 +447,15 @@
 .section-card-big:hover,
 .section-card-open:hover {
 	color: var(--text-accent);
+}
+
+.section-card-delete svg {
+	width: 13px;
+	height: 13px;
+}
+
+.section-card-delete:hover {
+	color: var(--text-error);
 }
 
 .section-card-body {

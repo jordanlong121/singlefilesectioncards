@@ -16,3 +16,4 @@ export class Modal {}
 // Only .format() is exercised by the code under test.
 export const moment = () => ({ format: (f) => "STUB-" + f });
 export const addIcon = () => {};
+export const setIcon = () => {};

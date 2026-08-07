@@ -11,6 +11,7 @@ import {
 	Plugin,
 	PluginSettingTab,
 	Setting,
+	setIcon,
 	TFile,
 	WorkspaceLeaf,
 	debounce,
@@ -486,6 +487,36 @@ export function canScrollVertically(
 	return false;
 }
 
+/**
+ * [start, end) covering a section plus the blank separator lines that followed it, so
+ * deleting a card doesn't leave doubled blank lines between its neighbours.
+ */
+export function sectionDeleteRange(lines: string[], target: Section): [number, number] {
+	let end = target.endLine;
+	while (end < lines.length && lines[end].trim() === "") end++;
+	return [target.startLine, end];
+}
+
+/** Remove a section from the file, re-locating it at write time like every other write. */
+async function deleteSection(app: App, file: TFile, level: number, original: Section): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateSection(parseSections(lines, level), original);
+		if (!target) {
+			ok = false;
+			return data;
+		}
+		const [start, end] = sectionDeleteRange(lines, target);
+		lines.splice(start, end - start);
+		return lines.join(eol);
+	});
+
+	return ok;
+}
+
 /** Insert a new, empty section and return the heading line as written. */
 async function insertSection(
 	app: App,
@@ -903,12 +934,7 @@ export class SectionCardsView extends ItemView {
 		fileBtn.setAttr("aria-label", "Pick a different note");
 		fileBtn.createSpan({ text: this.filePath || "(no file)" });
 		fileBtn.addEventListener("click", () => {
-			new FileSuggestModal(this.app, async (file) => {
-				this.filePath = file.path;
-				this.applyStoredView();
-				await this.syncView();
-				this.app.workspace.requestSaveLayout();
-			}).open();
+			new FileSuggestModal(this.app, (file) => void this.navigateTo(file.path)).open();
 		});
 
 		const spacer = bar.createDiv({ cls: "section-cards-spacer" });
@@ -997,6 +1023,15 @@ export class SectionCardsView extends ItemView {
 				await this.refresh();
 			},
 		).open();
+	}
+
+	/** Point this tab at another note, the way a link navigates a markdown tab. */
+	async navigateTo(path: string, revealHeading?: string): Promise<void> {
+		this.filePath = path;
+		this.applyStoredView();
+		await this.syncView();
+		if (revealHeading) this.revealCard(revealHeading);
+		this.app.workspace.requestSaveLayout();
 	}
 
 	getFile(): TFile | null {
@@ -1183,6 +1218,23 @@ export class SectionCardsView extends ItemView {
 			});
 		}
 
+		const deleteBtn = header.createEl("button", { cls: "section-card-delete" });
+		setIcon(deleteBtn, "trash-2");
+		deleteBtn.setAttr("aria-label", "Delete this card");
+		deleteBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			const target = holder.section;
+			new ConfirmDeleteModal(this.app, target.title || "(untitled)", async () => {
+				const ok = await deleteSection(this.app, file, this.headingLevel, target);
+				if (ok) {
+					new Notice(`Deleted “${target.title || "(untitled)"}” from ${file.basename}`);
+				} else {
+					new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+				}
+				await this.refresh();
+			}).open();
+		});
+
 		const bigBtn = header.createEl("button", { cls: "section-card-big", text: "⤢" });
 		bigBtn.setAttr("aria-label", "Make this card big");
 		bigBtn.addEventListener("click", (evt) => {
@@ -1229,7 +1281,7 @@ export class SectionCardsView extends ItemView {
 
 			evt.preventDefault();
 			evt.stopPropagation();
-			void this.plugin.openCardsView(target.path, subpath);
+			void this.navigateTo(target.path, subpath);
 		});
 
 		// Checkbox clicks toggle the task in the file instead of opening the editor.
@@ -1462,6 +1514,42 @@ class FileSuggestModal extends FuzzySuggestModal<TFile> {
 
 	onChooseItem(file: TFile): void {
 		this.onChoose(file);
+	}
+}
+
+class ConfirmDeleteModal extends Modal {
+	private readonly title: string;
+	private readonly onConfirm: () => void;
+
+	constructor(app: App, title: string, onConfirm: () => void) {
+		super(app);
+		this.title = title;
+		this.onConfirm = onConfirm;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Delete card" });
+		contentEl.createEl("p", {
+			text: `Delete “${this.title}” and everything in it? This removes the section from the note.`,
+		});
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => {
+				b.setButtonText("Delete")
+					.setWarning()
+					.onClick(() => {
+						this.close();
+						this.onConfirm();
+					});
+				// Enter confirms, Esc (the modal's own handling) cancels.
+				b.buttonEl.focus();
+			});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
 	}
 }
 
@@ -1704,12 +1792,21 @@ export default class SectionCardsPlugin extends Plugin {
 
 		this.registerView(VIEW_TYPE_SECTION_CARDS, (leaf) => new SectionCardsView(leaf, this));
 
-		this.addRibbonIcon(DECK_ICON, "Single File Section Cards", () => this.openCardsView());
+		this.addRibbonIcon(DECK_ICON, "Single File Section Cards", (evt) => {
+			// Ctrl/⌘-click opens an additional tab even when one already shows the note.
+			void this.openCardsView(undefined, undefined, evt.ctrlKey || evt.metaKey ? "new" : "reuse");
+		});
 
 		this.addCommand({
 			id: "open-section-cards",
 			name: "Open section cards (default note)",
 			callback: () => this.openCardsView(),
+		});
+
+		this.addCommand({
+			id: "open-section-cards-new-tab",
+			name: "Open section cards in a new tab",
+			callback: () => this.openCardsView(undefined, undefined, "new"),
 		});
 
 		this.addCommand({
@@ -1769,19 +1866,26 @@ export default class SectionCardsPlugin extends Plugin {
 		this.addSettingTab(new SectionCardsSettingTab(this.app, this));
 	}
 
-	async openCardsView(filePath?: string, revealHeading?: string): Promise<void> {
+	/**
+	 * "reuse" reveals an existing cards tab already showing the note; "new" always opens
+	 * another tab, so any number of cards tabs — including several of the same note — can
+	 * be open at once. (Obsidian's native "Duplicate tab" also works on cards tabs.)
+	 */
+	async openCardsView(filePath?: string, revealHeading?: string, mode: "reuse" | "new" = "reuse"): Promise<void> {
 		const path = filePath ?? this.settings.filePath;
 
-		const existing = this.app.workspace
-			.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)
-			.find((leaf) => (leaf.view as SectionCardsView).filePath === path);
+		if (mode === "reuse") {
+			const existing = this.app.workspace
+				.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)
+				.find((leaf) => (leaf.view as SectionCardsView).filePath === path);
 
-		if (existing) {
-			this.app.workspace.revealLeaf(existing);
-			const view = existing.view as SectionCardsView;
-			await view.refresh();
-			if (revealHeading) view.revealCard(revealHeading);
-			return;
+			if (existing) {
+				this.app.workspace.revealLeaf(existing);
+				const view = existing.view as SectionCardsView;
+				await view.refresh();
+				if (revealHeading) view.revealCard(revealHeading);
+				return;
+			}
 		}
 
 		const leaf = this.app.workspace.getLeaf("tab");

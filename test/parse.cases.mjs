@@ -1,4 +1,4 @@
-import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines } from "./.tmp/main.js";
+import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -455,6 +455,43 @@ t("an untouched editor round-trips to no change", () => {
   for (const section of parseSections(lines, 3).slice(0, 5)) {
     const editorValue = section.raw + "\n";              // what startEditing shows
     assert.equal(trimTrailingBlankLines(editorValue), section.raw, "no-op edit saves nothing");
+  }
+});
+
+// ---------- delete card ----------
+
+t("sectionDeleteRange takes the section plus its trailing blank separators", () => {
+  const lines = L(`### a\n1\n\n### b\n2\n\n\n### c\n3`);
+  const secs = parseSections(lines, 3);
+  assert.deepEqual(sectionDeleteRange(lines, secs[0]), [0, 3]);   // heading, body, one blank
+  assert.deepEqual(sectionDeleteRange(lines, secs[1]), [3, 7]);   // heading, body, two blanks
+  assert.deepEqual(sectionDeleteRange(lines, secs[2]), [7, 9]);   // last section, no trailing
+});
+
+t("deleting a middle section leaves the neighbours byte-identical, no doubled blanks", () => {
+  const lines = L(`### a\n1\n\n### b\n2\n\n### c\n3`);
+  const secs = parseSections(lines, 3);
+  const [start, end] = sectionDeleteRange(lines, secs[1]);
+  const out = lines.slice(); out.splice(start, end - start);
+  assert.equal(out.join("\n"), "### a\n1\n\n### c\n3");
+  const after = parseSections(out, 3);
+  assert.equal(after.length, 2);
+  assert.equal(after[0].raw, secs[0].raw);
+  assert.equal(after[1].raw, secs[2].raw);
+});
+
+t("sample vault: deleting any one section keeps every other section intact", () => {
+  const lines = fs.readFileSync(SAMPLE_NOTE, "utf8").split(/\r?\n/);
+  const secs = parseSections(lines, 3);
+  for (let i = 0; i < secs.length; i++) {
+    const [start, end] = sectionDeleteRange(lines, secs[i]);
+    const out = lines.slice(); out.splice(start, end - start);
+    const after = parseSections(out, 3);
+    assert.equal(after.length, secs.length - 1, "one fewer section when deleting #" + i);
+    const kept = secs.filter((_, j) => j !== i).map((s) => s.raw);
+    assert.deepEqual(after.map((s) => s.raw), kept, "others unchanged when deleting #" + i);
+    // no run of 3+ blank lines introduced
+    assert.ok(!/\n\s*\n\s*\n\s*\n/.test(out.join("\n")), "no blank pile-up when deleting #" + i);
   }
 });
 
