@@ -9,6 +9,8 @@ the source `.md` file.
 > day. This plugin turns those headings into a card wall you can scan, sort, and tick off. It works
 > on any note with headings, but that's the setup it was built for.
 
+**[Install it from the Obsidian community plugin directory →](https://community.obsidian.md/plugins/single-file-section-cards)**
+
 ![Grid view](screenshots/grid.png)
 
 ## What it does
@@ -120,27 +122,18 @@ until it reaches its end.
 
 ## Install
 
-Not in the community plugin browser yet, so pick one of these.
+### From the community plugin directory (recommended)
 
-### With BRAT (recommended — it keeps itself updated)
+The plugin is listed in the
+[Obsidian community plugin directory](https://community.obsidian.md/plugins/single-file-section-cards):
+in Obsidian, open **Settings → Community plugins → Browse**, search for **Single File Section
+Cards**, install, and enable. Updates arrive through Obsidian's normal plugin updater.
 
-[BRAT](https://github.com/TfTHacker/obsidian42-brat) installs plugins straight from GitHub and
-updates them as new versions are released.
+### With BRAT (pre-release versions)
 
-1. Install **BRAT** (Obsidian42 - BRAT) from Settings → Community plugins → Browse, and enable it.
-2. Open the command palette and run **BRAT: Plugins: Add a beta plugin for testing**.
-3. Paste this repository:
-
-   ```
-   jordanlong121/singlefilesectioncards
-   ```
-
-4. Leave the version as *latest* and confirm. BRAT downloads the plugin into your vault.
-5. Enable **Single File Section Cards** in Settings → Community plugins.
-
-BRAT then checks for new releases each time Obsidian starts. To update by hand, run
-**BRAT: Plugins: Check for updates to all beta plugins**; to stop tracking it, use
-**BRAT: Plugins: Remove a beta plugin**.
+To track releases straight from this repository — useful for trying fixes before they reach the
+directory — add `jordanlong121/singlefilesectioncards` as a beta plugin in
+[BRAT](https://github.com/TfTHacker/obsidian42-brat).
 
 ### Manually
 
