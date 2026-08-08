@@ -1442,7 +1442,11 @@ export class SectionCardsView extends ItemView {
 		if (!this.gridEl) return;
 
 		if (typeof ResizeObserver === "undefined") return;
-		this.cardObserver = new ResizeObserver(() => this.repack());
+		this.cardObserver = new ResizeObserver(() => {
+			// Resize feedback must be immediate; the debounced repack settles it after.
+			if (this.layout === "custom") this.previewCustomResize();
+			this.repack();
+		});
 		for (const card of Array.from(this.gridEl.children)) {
 			if ((card as HTMLElement).hasClass("section-card")) this.cardObserver.observe(card);
 		}
@@ -2140,6 +2144,27 @@ export class SectionCardsView extends ItemView {
 		return dom.includes(key);
 	}
 
+	/** Dashed rectangle showing where a drag or resize will snap to. */
+	private snapPreviewEl: HTMLElement | null = null;
+
+	private showSnapPreview(rect: CardRect, nudged: boolean): void {
+		if (!this.snapPreviewEl) {
+			this.snapPreviewEl = this.gridEl.createDiv({ cls: "sc-snap-preview" });
+		}
+		this.snapPreviewEl.toggleClass("is-nudged", nudged);
+		this.snapPreviewEl.setCssStyles({
+			left: `${rect.x}px`,
+			top: `${rect.y}px`,
+			width: `${rect.w}px`,
+			height: `${rect.h}px`,
+		});
+	}
+
+	private hideSnapPreview(): void {
+		this.snapPreviewEl?.remove();
+		this.snapPreviewEl = null;
+	}
+
 	/** Every placed rect except the one being moved. */
 	private otherPlacements(except: string): CardRect[] {
 		return Object.entries(this.customPlacements)
@@ -2201,6 +2226,22 @@ export class SectionCardsView extends ItemView {
 		const overCanvas =
 			evt.clientX >= canvas.left && evt.clientX <= canvas.right && evt.clientY >= canvas.top && evt.clientY <= canvas.bottom;
 		this.gridEl.toggleClass("is-drop-target", overCanvas);
+
+		// Show exactly where the card will land — the same math the drop uses.
+		if (overCanvas) {
+			const px = evt.clientX - canvas.left + this.gridEl.scrollLeft;
+			const py = evt.clientY - canvas.top + this.gridEl.scrollTop;
+			const want = snapRect(
+				{ x: px - Math.min(drag.offX, 140), y: py - Math.min(drag.offY, 20), w: drag.w, h: drag.h },
+				CUSTOM_SNAP,
+				CUSTOM_MIN_W,
+				CUSTOM_MIN_H,
+			);
+			const spot = findFreeSpot(want, this.otherPlacements(drag.key), CUSTOM_GAP, CUSTOM_SNAP);
+			this.showSnapPreview(spot, spot.x !== want.x || spot.y !== want.y);
+		} else {
+			this.hideSnapPreview();
+		}
 	}
 
 	private pointerDragEnd(evt: PointerEvent): void {
@@ -2212,6 +2253,7 @@ export class SectionCardsView extends ItemView {
 		window.removeEventListener("pointercancel", drag.onUp);
 		drag.ghost?.remove();
 		this.gridEl.removeClass("is-drop-target");
+		this.hideSnapPreview();
 		if (!drag.active) return; // it was just a click — let it be one
 
 		this.swallowNextClick = true;
@@ -2305,8 +2347,25 @@ export class SectionCardsView extends ItemView {
 		this.gridEl.setCssStyles({ minHeight: `${maxBottom + 80}px`, minWidth: `${maxRight + 40}px` });
 	}
 
+	/** While a canvas card is being resized, preview the size it will snap to. */
+	private previewCustomResize(): void {
+		for (const entry of this.cardEntries) {
+			const key = entry.holder.section.headingRaw;
+			const stored = this.customPlacements[key];
+			if (!stored || !entry.el.hasClass("is-placed")) continue;
+			const w = entry.el.offsetWidth;
+			const h = entry.el.offsetHeight;
+			if (Math.abs(w - stored.w) < 2 && Math.abs(h - stored.h) < 2) continue;
+			const proposed = snapRect({ ...stored, w, h }, CUSTOM_SNAP, CUSTOM_MIN_W, CUSTOM_MIN_H);
+			const colliding = this.otherPlacements(key).some((other) => rectsCollide(proposed, other, CUSTOM_GAP));
+			this.showSnapPreview(proposed, colliding);
+			return; // only one card resizes at a time
+		}
+	}
+
 	/** Custom Grid: snap a card's CSS resize to the grid, or revert it if it would collide. */
 	private validateCustomSizes(): void {
+		this.hideSnapPreview();
 		let changed = false;
 		for (const entry of this.cardEntries) {
 			const key = entry.holder.section.headingRaw;

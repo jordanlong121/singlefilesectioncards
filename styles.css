@@ -448,6 +448,21 @@
 	touch-action: none; /* pointer dragging owns the gesture */
 }
 
+/* Live landing-spot preview while dragging or resizing on the canvas. */
+.sc-snap-preview {
+	position: absolute;
+	z-index: 6;
+	pointer-events: none;
+	border: 2px dashed var(--interactive-accent);
+	border-radius: var(--radius-m, 8px);
+	background-color: rgba(var(--mono-rgb-100), 0.05);
+}
+
+/* The spot was nudged away from the pointer (or the size will revert): warn. */
+.sc-snap-preview.is-nudged {
+	border-color: var(--text-warning);
+}
+
 /* The floating ghost that follows the pointer during a canvas drag. */
 .sc-pointer-ghost {
 	position: fixed;
@@ -796,7 +811,9 @@ body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
 .section-card-hint {
 	flex: 1 1 auto;
 	color: var(--text-faint);
-	font-size: var(--font-ui-smaller);
+	/* Deliberately smaller than --font-ui-smaller: it's a reminder, not content. */
+	font-size: calc(var(--font-ui-smaller, 11px) * 0.85);
+	line-height: 1.3;
 }
 
 /* ---------- empty state ---------- */
