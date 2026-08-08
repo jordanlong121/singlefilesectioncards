@@ -15,52 +15,19 @@ the source `.md` file.
 
 ## What it does
 
-- **One card per section.** Choose which heading level becomes a card (H1–H6). Deeper headings stay
-  nested inside their parent card; a shallower heading ends a card. Headings inside code fences and
-  frontmatter are ignored.
-- **Click a card to edit it.** The card body becomes a raw-markdown editor holding the heading and
-  its body. `Ctrl/⌘+Enter` saves, `Esc` cancels. Clicking the **title bar** makes the card big by
-  default; a setting switches it to opening the editor instead. Only that section's lines are rewritten, and the
-  section is re-located at save time so it can't clobber changes made elsewhere in the file.
-- **Tick tasks straight from a card.** Clicking a checkbox toggles that task in the file — no edit
-  mode. Optionally appends an Obsidian Tasks style done date (`✅ 2026-08-06`).
-- **New card.** Prompts for a heading, pre-filled with today's date at the current heading level
-  (`### 2026-08-06, Thursday`). Place it at the top, at the bottom, or in logical order — which
-  follows the direction the file already runs, so a newest-first daily-notes file puts today on top.
-- **Today's card is highlighted** in the theme's highlight colour, when the note's headings are dates.
-- **Sorting** — alphanumeric ascending or descending (natural order, so dates sort chronologically),
-  or document order.
-- **Drag to reorder.** In Document order, drag a card onto another to move that section in the
-  note — an accent edge shows which side it will land on. In the sorted views a drag offers to
-  switch to Document order first (the display has to mirror the file for a manual order to stick).
-- **Drag a task or paragraph between cards.** Grab any top-level task (its sub-items come along)
-  or paragraph and drop it on another card — before or after a specific block, or anywhere on the
-  card to append. Works in every sort order and layout. The move is verified against the file at
-  write time; fenced code, headings, quotes and tables aren't draggable.
-- **Five layouts**, switchable from the toolbar (see below).
-- **Per-note memory.** Layout, heading level and sort are remembered for each note, stored in the
-  plugin's own data — never in your notes. Notes with nothing saved open in Grid.
-- **The move button on a card** (four-way arrows) blows it up over the others, filling most of the
-  tab, so a long section is easy to read — and doubles as the grab point for drag-to-reorder.
-  Click it again (now arrows-inward), press `Esc`, or click outside the card to shrink it back.
-  Whichever mode the card
-  is in comes with it: blow up a card you're editing and the editor grows to fill it, keeping your
-  text, caret and focus, and it stays big when you save or cancel.
-- **↗ on a card** opens the note in a normal editor tab with the cursor on that heading.
-- **Wikilinks open as cards.** Clicking a `[[Note]]` link inside a card navigates the tab you're in
-  to that note — the way links work in a markdown tab — using the view remembered for it.
-  `[[Note#Heading]]` scrolls to that heading's card and flashes it. Ctrl/⌘/Shift/Alt-click keeps
-  Obsidian's normal behaviour, and external links still open in your browser.
-- **As many cards tabs as you like** — different notes, or several tabs of the same note.
-  Ctrl/⌘-click the ribbon icon or run `Open section cards in a new tab` to add one; Obsidian's
-  native *Duplicate tab* works too. A plain ribbon click still focuses the tab already showing
-  your default note.
-- **Delete a card** — the trash button in a card's header removes that section from the note,
-  after a confirmation dialog. Neighbouring sections and their spacing are left untouched.
-- **Sensible level for new notes.** A note you haven't set a view for opens at your configured
-  heading level if it has one, otherwise at whichever level has the most sections — so a note
-  without H3s doesn't open as an empty wall.
-- Cards refresh when the file changes on disk, and re-pack when the pane resizes.
+- **One card per heading.** Pick which level becomes a card (H1–H6); deeper headings stay nested
+  inside their parent card. Five layouts, three sort orders (A→Z, Z→A, document), today's card
+  highlighted when headings are dates — and every note remembers its own view.
+- **Work directly on the cards.** Click a card to edit its raw markdown (`Ctrl/⌘+Enter` saves,
+  `Esc` cancels, `Tab` indents), tick task checkboxes — with optional `✅ 2026-08-06` done
+  dates — create a new card pre-filled with today's date, or delete one after a confirmation.
+- **Drag and drop.** Reorder cards in Document order, or drag a task or paragraph onto another
+  card in any view — a task brings its sub-items along.
+- **Navigate as cards.** Wikilinks switch the tab to the linked note's card wall, ↗ opens the
+  section in a normal editor, the four-arrow button blows a card up over the others, and you can
+  open as many cards tabs as you like — including several of the same note.
+- **Writes are surgical.** Only the touched section's lines change, and every write re-locates
+  its section by content first, so a stale card refuses rather than touching the wrong lines.
 
 ## Layouts
 
