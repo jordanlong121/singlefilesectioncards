@@ -1033,6 +1033,8 @@ export class SectionCardsView extends ItemView {
 	/** Custom Grid: placements for the current note, keyed by heading line. */
 	private customPlacements: Record<string, CardRect> = {};
 	private trayEl!: HTMLElement;
+	/** Invisible marker that gives the canvas its scrollable size in every direction. */
+	private canvasExtentEl!: HTMLElement;
 	/** Which note's placements are loaded; reloading on every refresh caused revert races. */
 	private placementsLoadedFor: string | null = null;
 	/** Custom Grid: the in-flight pointer drag (tile onto canvas, or placed card). */
@@ -1173,6 +1175,7 @@ export class SectionCardsView extends ItemView {
 			if (open) void open.finish(true);
 		});
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
+		this.canvasExtentEl = this.gridEl.createDiv({ cls: "section-cards-canvas-extent" });
 		this.trayEl = this.contentEl.createDiv({ cls: "section-cards-tray" });
 		this.registerWheelPan();
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
@@ -1224,6 +1227,30 @@ export class SectionCardsView extends ItemView {
 			},
 			{ capture: true },
 		);
+
+		// Middle-click drag pans the Custom Grid canvas.
+		this.registerDomEvent(this.gridEl, "pointerdown", (evt: PointerEvent) => {
+			if (this.layout !== "custom" || evt.button !== 1) return;
+			evt.preventDefault(); // no autoscroll widget, no card handlers
+			const startX = evt.clientX;
+			const startY = evt.clientY;
+			const startLeft = this.gridEl.scrollLeft;
+			const startTop = this.gridEl.scrollTop;
+			this.gridEl.addClass("is-panning");
+			const move = (e: PointerEvent) => {
+				this.gridEl.scrollLeft = startLeft - (e.clientX - startX);
+				this.gridEl.scrollTop = startTop - (e.clientY - startY);
+			};
+			const up = () => {
+				window.removeEventListener("pointermove", move);
+				window.removeEventListener("pointerup", up);
+				window.removeEventListener("pointercancel", up);
+				this.gridEl.removeClass("is-panning");
+			};
+			window.addEventListener("pointermove", move);
+			window.addEventListener("pointerup", up);
+			window.addEventListener("pointercancel", up);
+		});
 
 		// Clicking empty grid/canvas space (any layout) or the tray settles the open
 		// editor, the same as clicking another card or the toolbar.
@@ -2392,14 +2419,26 @@ export class SectionCardsView extends ItemView {
 			});
 		}
 
-		// Absolutely positioned cards define the scroll extent; keep breathing room.
-		this.gridEl.setCssStyles({ minHeight: `${maxBottom + 80}px`, minWidth: `${maxRight + 40}px` });
+		this.updateCanvasExtent(maxRight, maxBottom);
 
 		// The tray only rebuilds when its contents or order actually changed.
 		const signature = `${this.sortOrder}|${unplacedKeys.join("\u0000")}`;
 		if (signature === this.traySignature) return;
 		this.traySignature = signature;
 		this.rebuildTray(unplacedKeys);
+	}
+
+	/**
+	 * The canvas always scrolls: an invisible marker sits past the furthest card AND past
+	 * the viewport, so there is room to pan in every direction the layout might grow.
+	 * (Sizing the scroll container itself just grew the clipped element — content must
+	 * be what defines the extent.)
+	 */
+	private updateCanvasExtent(maxRight: number, maxBottom: number): void {
+		if (this.layout !== "custom") return;
+		const w = Math.max(maxRight, this.gridEl.clientWidth) + 400;
+		const h = Math.max(maxBottom, this.gridEl.clientHeight) + 400;
+		this.canvasExtentEl.setCssStyles({ left: `${w - 1}px`, top: `${h - 1}px` });
 	}
 
 	private rebuildTray(unplacedKeys: string[]): void {
