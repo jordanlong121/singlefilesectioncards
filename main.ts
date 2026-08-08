@@ -2598,7 +2598,7 @@ export class SectionCardsView extends ItemView {
 	private static blockKey(text: string): string {
 		return text
 			.replace(/^\s*(?:[-*+]|\d+[.)])\s*(?:\[[ xX]\]\s*)?/, "")
-			.replace(/[*_\`~\[\]()#|>]/g, "")
+			.replace(/[*_`~[\]()#|>]/g, "")
 			.replace(/\s+/g, " ")
 			.trim()
 			.toLowerCase()
