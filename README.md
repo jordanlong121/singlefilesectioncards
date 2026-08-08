@@ -33,6 +33,10 @@ the source `.md` file.
 - **Drag to reorder.** In Document order, drag a card onto another to move that section in the
   note — an accent edge shows which side it will land on. In the sorted views a drag offers to
   switch to Document order first (the display has to mirror the file for a manual order to stick).
+- **Drag a task or paragraph between cards.** Grab any top-level task (its sub-items come along)
+  or paragraph and drop it on another card — before or after a specific block, or anywhere on the
+  card to append. Works in every sort order and layout. The move is verified against the file at
+  write time; fenced code, headings, quotes and tables aren't draggable.
 - **Five layouts**, switchable from the toolbar (see below).
 - **Per-note memory.** Layout, heading level and sort are remembered for each note, stored in the
   plugin's own data — never in your notes. Notes with nothing saved open in Grid.

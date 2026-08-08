@@ -362,6 +362,36 @@
 	flex: 0 0 auto;
 }
 
+/* ---------- drag a block (task/paragraph) between cards ---------- */
+
+/* Blocks are grabbable; a faint tint on hover says so. */
+.section-card-body .sc-block {
+	cursor: grab;
+	border-radius: 4px;
+}
+
+.section-card-body .sc-block:hover {
+	background-color: var(--sc-surface-hover);
+}
+
+.sc-block.is-dragging-block {
+	opacity: 0.4;
+}
+
+/* Accent line on the side of the block the drop will land. */
+.sc-block.sc-blockdrop-before {
+	box-shadow: inset 0 2px 0 var(--interactive-accent);
+}
+
+.sc-block.sc-blockdrop-after {
+	box-shadow: inset 0 -2px 0 var(--interactive-accent);
+}
+
+/* Dropping on the card generally appends to the section's end. */
+.section-card.sc-blockdrop-end {
+	border-color: var(--interactive-accent);
+}
+
 /* ---------- drag to reorder (Document order only) ---------- */
 
 .section-card.is-dragging {

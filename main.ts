@@ -287,6 +287,185 @@ function locateSection(sections: Section[], original: Section): Section | undefi
 	return byHeading.length === 1 ? byHeading[0] : undefined;
 }
 
+/** One draggable unit of a section body: a top-level list item (with its children) or a paragraph. */
+export interface BodyBlock {
+	kind: "item" | "paragraph" | "other";
+	/** [start, end) offsets into the section's body lines. */
+	start: number;
+	end: number;
+}
+
+const LIST_START_RE = /^(?:[-*+]|\d+[.)])\s+/;
+
+/**
+ * Split a section body into blocks, mirroring what MarkdownRenderer turns into top-level
+ * elements: "item" = a column-0 list line plus its indented children (rendered <li>),
+ * "paragraph" = consecutive prose lines (rendered <p>), and "other" = everything that
+ * renders as neither — fences, headings, blockquotes, tables, raw HTML — which is not
+ * draggable and keeps the DOM↔source mapping honest.
+ */
+export function sectionBlocks(body: string[]): BodyBlock[] {
+	const blocks: BodyBlock[] = [];
+	let i = 0;
+	const isBlank = (line: string) => line.trim() === "";
+
+	while (i < body.length) {
+		const line = body[i];
+		if (isBlank(line)) {
+			i++;
+			continue;
+		}
+		const start = i;
+
+		if (FENCE_RE.test(line)) {
+			i++;
+			while (i < body.length && !FENCE_RE.test(body[i])) i++;
+			if (i < body.length) i++;
+			blocks.push({ kind: "other", start, end: i });
+		} else if (HEADING_RE.test(line)) {
+			blocks.push({ kind: "other", start, end: ++i });
+		} else if (/^\s*>/.test(line)) {
+			while (i < body.length && /^\s*>/.test(body[i])) i++;
+			blocks.push({ kind: "other", start, end: i });
+		} else if (/^\s*\|/.test(line)) {
+			while (i < body.length && /^\s*\|/.test(body[i])) i++;
+			blocks.push({ kind: "other", start, end: i });
+		} else if (line.startsWith("<")) {
+			i++;
+			while (
+				i < body.length &&
+				!isBlank(body[i]) &&
+				!LIST_START_RE.test(body[i]) &&
+				!FENCE_RE.test(body[i]) &&
+				!HEADING_RE.test(body[i])
+			) {
+				i++;
+			}
+			blocks.push({ kind: "other", start, end: i });
+		} else if (LIST_START_RE.test(line)) {
+			i++;
+			// children: every following non-blank line that is indented deeper
+			while (i < body.length && !isBlank(body[i]) && /^[\t ]/.test(body[i])) i++;
+			blocks.push({ kind: "item", start, end: i });
+		} else if (/^[\t ]/.test(line)) {
+			// stray indented run (indent-style code, continuation) — not draggable
+			while (i < body.length && !isBlank(body[i]) && /^[\t ]/.test(body[i])) i++;
+			blocks.push({ kind: "other", start, end: i });
+		} else {
+			i++;
+			while (
+				i < body.length &&
+				!isBlank(body[i]) &&
+				!LIST_START_RE.test(body[i]) &&
+				!FENCE_RE.test(body[i]) &&
+				!HEADING_RE.test(body[i]) &&
+				!/^\s*>/.test(body[i]) &&
+				!/^\s*\|/.test(body[i])
+			) {
+				i++;
+			}
+			blocks.push({ kind: "paragraph", start, end: i });
+		}
+	}
+	return blocks;
+}
+
+/** The blocks a user can drag, in the same order the eligible DOM elements render. */
+export function movableBlocks(body: string[]): BodyBlock[] {
+	return sectionBlocks(body).filter((b) => b.kind !== "other");
+}
+
+/**
+ * Move one movable block from a section to a position in another (or the same) section:
+ * before that section's movable block `beforeBlockIndex`, or to its end when null.
+ * The block's lines move byte-for-byte; paragraphs gain blank separators at the seams,
+ * and a doubled blank left at the removal point is collapsed. Null = no-op/invalid.
+ */
+export function moveBlock(
+	lines: string[],
+	level: number,
+	fromSectionIndex: number,
+	blockIndex: number,
+	toSectionIndex: number,
+	beforeBlockIndex: number | null,
+): string[] | null {
+	const sections = parseSections(lines, level);
+	const from = sections[fromSectionIndex];
+	const to = sections[toSectionIndex];
+	if (!from || !to) return null;
+
+	const fromBody = lines.slice(from.startLine + 1, from.endLine);
+	const block = movableBlocks(fromBody)[blockIndex];
+	if (!block) return null;
+	const absStart = from.startLine + 1 + block.start;
+	const absEnd = from.startLine + 1 + block.end;
+	const blockLines = lines.slice(absStart, absEnd);
+
+	let insertAbs: number;
+	if (beforeBlockIndex === null) {
+		insertAbs = to.endLine;
+	} else {
+		const toBody = lines.slice(to.startLine + 1, to.endLine);
+		const anchor = movableBlocks(toBody)[beforeBlockIndex];
+		insertAbs = anchor ? to.startLine + 1 + anchor.start : to.endLine;
+	}
+	// Dropping a block onto its own position is a no-op.
+	if (fromSectionIndex === toSectionIndex && insertAbs >= absStart && insertAbs <= absEnd) return null;
+
+	const out = lines.slice(0, absStart).concat(lines.slice(absEnd));
+	const target = insertAbs > absStart ? insertAbs - (absEnd - absStart) : insertAbs;
+
+	const ins = blockLines.slice();
+	if (block.kind === "paragraph") {
+		if (target > 0 && out[target - 1].trim() !== "") ins.unshift("");
+		if (target < out.length && out[target].trim() !== "") ins.push("");
+	}
+	out.splice(target, 0, ...ins);
+
+	// Collapse a doubled blank line left where the block was removed.
+	const junction = insertAbs > absStart ? absStart : absStart + ins.length;
+	if (junction > 0 && junction < out.length && out[junction - 1].trim() === "" && out[junction].trim() === "") {
+		out.splice(junction, 1);
+	}
+	return out;
+}
+
+/** Move a block at write time, re-locating both sections and verifying the block's text. */
+async function moveBlockInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	moved: Section,
+	blockIndex: number,
+	expectedBlockText: string,
+	targetSection: Section,
+	beforeBlockIndex: number | null,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const sections = parseSections(lines, level);
+		const from = locateSection(sections, moved);
+		const to = locateSection(sections, targetSection);
+		if (!from || !to) {
+			ok = false;
+			return data;
+		}
+		const body = lines.slice(from.startLine + 1, from.endLine);
+		const block = movableBlocks(body)[blockIndex];
+		if (!block || body.slice(block.start, block.end).join("\n") !== expectedBlockText) {
+			ok = false; // the block moved or changed since the drag started — refuse
+			return data;
+		}
+		const result = moveBlock(lines, level, from.index, blockIndex, to.index, beforeBlockIndex);
+		return result ? result.join(eol) : data;
+	});
+
+	return ok;
+}
+
 /** `- [ ] text`, `* [x] text`, `1. [ ] text` — prefix, mark, closing bracket, text. */
 const TASK_RE = /^(\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\])(.*)$/;
 const DONE_DATE_RE = /\s*✅\s*\d{4}-\d{2}-\d{2}/g;
@@ -796,6 +975,13 @@ export class SectionCardsView extends ItemView {
 	} | null = null;
 	/** The card being dragged for reordering, if any. */
 	private dragging: { section: Section } | null = null;
+	/** The block (task/paragraph) being dragged between cards, if any. */
+	private draggingBlock: {
+		holder: { section: Section };
+		blockIndex: number;
+		blockText: string;
+		el: HTMLElement;
+	} | null = null;
 	/** The card currently showing a drop indicator. */
 	private dropMarker: HTMLElement | null = null;
 	/** Heading of a just-created section, to be opened for editing after the next render. */
@@ -1021,6 +1207,24 @@ export class SectionCardsView extends ItemView {
 		}
 	}
 
+	/** The rendered elements that correspond 1:1 with a section's movable blocks. */
+	private eligibleBlockEls(bodyEl: HTMLElement): HTMLElement[] {
+		return Array.from(
+			bodyEl.querySelectorAll<HTMLElement>(":scope > p, :scope > ul > li, :scope > ol > li"),
+		);
+	}
+
+	/** Post-render pass over every card body: live checkboxes + draggable blocks. */
+	private prepareBodies(): void {
+		this.enableCheckboxes();
+		for (const bodyEl of Array.from(this.gridEl.querySelectorAll<HTMLElement>(".section-card-body"))) {
+			for (const el of this.eligibleBlockEls(bodyEl)) {
+				el.draggable = true;
+				el.addClass("sc-block");
+			}
+		}
+	}
+
 	/** Run a card's owed body render, exactly once, unless the card became an editor. */
 	private async runBodyRender(entry: CardEntry): Promise<void> {
 		const run = entry.renderBody;
@@ -1047,7 +1251,7 @@ export class SectionCardsView extends ItemView {
 			if (!batch.length) return;
 			void Promise.all(batch.map((entry) => this.runBodyRender(entry))).then(() => {
 				if (gen !== this.renderGeneration) return;
-				this.enableCheckboxes();
+				this.prepareBodies();
 				this.repack();
 				if (entries.length) idle(step);
 			});
@@ -1396,7 +1600,7 @@ export class SectionCardsView extends ItemView {
 		await Promise.all(renders);
 		if (gen !== this.renderGeneration) return;
 
-		this.enableCheckboxes();
+		this.prepareBodies();
 		this.layoutMasonry();
 		this.insertRowRules();
 		this.observeCards();
@@ -1542,6 +1746,45 @@ export class SectionCardsView extends ItemView {
 			this.startEditing(card, file, holder.section);
 		});
 
+		// Drag a task or paragraph out of this card's body into another card. Works in
+		// every sort order: both sections are re-located by content at write time.
+		bodyEl.addEventListener("dragstart", (evt) => {
+			const target = evt.target as HTMLElement | null;
+			if (target?.closest("a")) return; // native link dragging stays native
+			const el = target?.closest<HTMLElement>(".sc-block");
+			if (!el || !bodyEl.contains(el)) return;
+			evt.stopPropagation(); // this is a block drag, not a card reorder
+			if (card.hasClass("is-editing") || this.isMaximized()) {
+				evt.preventDefault();
+				return;
+			}
+			const els = this.eligibleBlockEls(bodyEl);
+			const domIndex = els.indexOf(el);
+			const body = holder.section.body.split("\n");
+			const block = movableBlocks(body)[domIndex];
+			// The DOM element and the parsed block must agree before anything can move.
+			if (domIndex < 0 || !block || !SectionCardsView.blockTextsAgree(el, body.slice(block.start, block.end))) {
+				evt.preventDefault();
+				return;
+			}
+			this.draggingBlock = {
+				holder,
+				blockIndex: domIndex,
+				blockText: body.slice(block.start, block.end).join("\n"),
+				el,
+			};
+			el.addClass("is-dragging-block");
+			if (evt.dataTransfer) {
+				evt.dataTransfer.effectAllowed = "move";
+				evt.dataTransfer.setData("text/plain", this.draggingBlock.blockText);
+			}
+		});
+		bodyEl.addEventListener("dragend", () => {
+			this.draggingBlock?.el.removeClass("is-dragging-block");
+			this.draggingBlock = null;
+			this.clearBlockDropMarks();
+		});
+
 		// Drag a card onto another to reorder the sections in the file. Only meaningful
 		// when the display mirrors the file, i.e. Document order — other sorts recompute
 		// the position immediately, so a drag there offers to switch first.
@@ -1574,12 +1817,37 @@ export class SectionCardsView extends ItemView {
 			this.dragging = null;
 		});
 		card.addEventListener("dragover", (evt) => {
+			if (this.draggingBlock) {
+				evt.preventDefault();
+				if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
+				this.clearBlockDropMarks();
+				const at = this.blockDropAt(evt, bodyEl);
+				if (at.el) at.el.addClass(at.before ? "sc-blockdrop-before" : "sc-blockdrop-after");
+				else card.addClass("sc-blockdrop-end");
+				return;
+			}
 			if (!this.dragging || this.dragging === holder) return;
 			evt.preventDefault();
 			if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
 			this.setDropMarker(card, this.isDropBefore(evt, card));
 		});
 		card.addEventListener("drop", (evt) => {
+			if (this.draggingBlock) {
+				evt.preventDefault();
+				evt.stopPropagation();
+				const from = this.draggingBlock;
+				const at = this.blockDropAt(evt, bodyEl);
+				this.draggingBlock = null;
+				this.clearBlockDropMarks();
+				from.el.removeClass("is-dragging-block");
+				void this.completeBlockDrag(
+					file,
+					{ section: from.holder.section, blockIndex: from.blockIndex, blockText: from.blockText },
+					holder.section,
+					at.beforeIndex,
+				);
+				return;
+			}
 			if (!this.dragging || this.dragging === holder) return;
 			evt.preventDefault();
 			evt.stopPropagation();
@@ -1646,7 +1914,12 @@ export class SectionCardsView extends ItemView {
 
 		// If this card's body render was deferred past the initial batch, do it now.
 		const owed = this.cardEntries.find((entry) => entry.el === card);
-		if (owed) void this.runBodyRender(owed).then(() => this.repack());
+		if (owed) {
+			void this.runBodyRender(owed).then(() => {
+				this.prepareBodies();
+				this.repack();
+			});
+		}
 
 		// Scrolling is locked while blown up, so the overlay's inset covers the visible tab.
 		this.contentEl.addClass("has-maximized-card");
@@ -1678,6 +1951,72 @@ export class SectionCardsView extends ItemView {
 
 		this.layoutMasonry();
 		this.insertRowRules();
+	}
+
+	/** True when a rendered element plausibly shows the given source lines. */
+	private static blockTextsAgree(el: HTMLElement, blockLines: string[]): boolean {
+		const key = SectionCardsView.blockKey(blockLines[0] ?? "");
+		if (!key) return true; // nothing distinctive to compare
+		const dom = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+		return dom.includes(key);
+	}
+
+	/** Normalise a source line / DOM text for the drag-start sanity check. */
+	private static blockKey(text: string): string {
+		return text
+			.replace(/^\s*(?:[-*+]|\d+[.)])\s*(?:\[[ xX]\]\s*)?/, "")
+			.replace(/[*_\`~\[\]()#|>]/g, "")
+			.replace(/\s+/g, " ")
+			.trim()
+			.toLowerCase()
+			.slice(0, 24);
+	}
+
+	private clearBlockDropMarks(): void {
+		for (const el of Array.from(this.gridEl.querySelectorAll(".sc-blockdrop-before, .sc-blockdrop-after"))) {
+			el.removeClass("sc-blockdrop-before");
+			el.removeClass("sc-blockdrop-after");
+		}
+		for (const el of Array.from(this.gridEl.querySelectorAll(".sc-blockdrop-end"))) {
+			el.removeClass("sc-blockdrop-end");
+		}
+	}
+
+	/** Where in the hovered card a dragged block would land. */
+	private blockDropAt(evt: DragEvent, bodyEl: HTMLElement): { beforeIndex: number | null; el: HTMLElement | null; before: boolean } {
+		const hovered = (evt.target as HTMLElement | null)?.closest<HTMLElement>(".sc-block");
+		if (hovered && bodyEl.contains(hovered)) {
+			const els = this.eligibleBlockEls(bodyEl);
+			const index = els.indexOf(hovered);
+			if (index >= 0) {
+				const rect = hovered.getBoundingClientRect();
+				const before = evt.clientY < rect.top + rect.height / 2;
+				return { beforeIndex: before ? index : index + 1, el: hovered, before };
+			}
+		}
+		return { beforeIndex: null, el: null, before: false };
+	}
+
+	private async completeBlockDrag(
+		file: TFile,
+		from: { section: Section; blockIndex: number; blockText: string },
+		target: Section,
+		beforeIndex: number | null,
+	): Promise<void> {
+		const ok = await moveBlockInFile(
+			this.app,
+			file,
+			this.headingLevel,
+			from.section,
+			from.blockIndex,
+			from.blockText,
+			target,
+			beforeIndex,
+		);
+		if (!ok) {
+			new Notice("Single File Section Cards: couldn't move that block — the file changed on disk.");
+		}
+		await this.refresh();
 	}
 
 	/** Which side of a card the pointer is on, along the layout's flow axis. */

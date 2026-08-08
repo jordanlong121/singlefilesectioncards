@@ -1,4 +1,4 @@
-import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory } from "./.tmp/main.js";
+import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -639,6 +639,79 @@ t("history is capped, dropping the oldest states", () => {
   let steps = 0;
   while (h.undo()) steps++;
   assert.ok(steps <= 200, "walked back " + steps + " steps");
+});
+
+// ---------- body blocks (drag a paragraph/task between cards) ----------
+
+t("sectionBlocks: items take their indented children; paragraphs group prose lines", () => {
+  const body = L("- [ ] a\n\t- [ ] a child\n\tnote under a\n- [ ] b\n\nSome prose that\nwraps two lines.\n\n- [ ] c");
+  const blocks = sectionBlocks(body);
+  assert.deepEqual(blocks.map((b) => [b.kind, b.start, b.end]), [
+    ["item", 0, 3],        // a + two children
+    ["item", 3, 4],        // b
+    ["paragraph", 5, 7],   // the prose
+    ["item", 8, 9],        // c
+  ]);
+});
+
+t("sectionBlocks: fences, headings, blockquotes, tables, html are 'other' (not draggable)", () => {
+  const body = L("```js\n- [ ] not a task\n```\n#### sub\n> quoted\n> more\n| a | b |\n<div>x</div>\n- [ ] real");
+  const kinds = sectionBlocks(body).map((b) => b.kind);
+  assert.deepEqual(kinds, ["other", "other", "other", "other", "other", "item"]);
+  assert.equal(movableBlocks(body).length, 1);
+});
+
+t("moveBlock: a task moves to the end of another section, byte-identical", () => {
+  const lines = L("### A\n- [ ] one\n\t- [ ] child\n- [ ] two\n\n### B\n- [ ] bee");
+  const out = moveBlock(lines, 3, 0, 0, 1, null);   // A's first item -> end of B
+  assert.equal(out.join("\n"), "### A\n- [ ] two\n\n### B\n- [ ] bee\n- [ ] one\n\t- [ ] child");
+});
+
+t("moveBlock: before a specific block in the target", () => {
+  const lines = L("### A\n- [ ] one\n- [ ] two\n\n### B\n- [ ] bee1\n- [ ] bee2");
+  const out = moveBlock(lines, 3, 0, 1, 1, 1);      // A's 'two' before B's 'bee2'
+  assert.equal(out.join("\n"), "### A\n- [ ] one\n\n### B\n- [ ] bee1\n- [ ] two\n- [ ] bee2");
+});
+
+t("moveBlock: paragraphs gain blank separators; tasks don't", () => {
+  const lines = L("### A\nA standalone thought.\n\n### B\n- [ ] task");
+  const out = moveBlock(lines, 3, 0, 0, 1, null);
+  assert.equal(out.join("\n"), "### A\n\n### B\n- [ ] task\n\nA standalone thought.");
+});
+
+t("moveBlock: reorder within the same section, both directions", () => {
+  const lines = L("### A\n- [ ] one\n- [ ] two\n- [ ] three");
+  assert.equal(moveBlock(lines, 3, 0, 0, 0, 2).join("\n"), "### A\n- [ ] two\n- [ ] one\n- [ ] three");
+  assert.equal(moveBlock(lines, 3, 0, 2, 0, 0).join("\n"), "### A\n- [ ] three\n- [ ] one\n- [ ] two");
+});
+
+t("moveBlock: dropping a block on its own position is a no-op", () => {
+  const lines = L("### A\n- [ ] one\n- [ ] two");
+  assert.equal(moveBlock(lines, 3, 0, 0, 0, 0), null);
+  assert.equal(moveBlock(lines, 3, 0, 0, 0, 1), null);  // before its own successor
+});
+
+t("sample vault: moving any task of the newest day to another day touches only those two sections", () => {
+  const lines = fs.readFileSync(SAMPLE_NOTE, "utf8").split(/\r?\n/);
+  const before = parseSections(lines, 3);
+  const src = 0, dst = 5;
+  const srcBody = lines.slice(before[src].startLine + 1, before[src].endLine);
+  const blocks = movableBlocks(srcBody);
+  assert.ok(blocks.length >= 2, "newest day has movable blocks");
+  for (let b = 0; b < blocks.length; b++) {
+    const out = moveBlock(lines, 3, src, b, dst, null);
+    const after = parseSections(out, 3);
+    assert.equal(after.length, before.length, "section count kept");
+    for (let i = 0; i < before.length; i++) {
+      if (i === src || i === dst) continue;
+      assert.equal(after[i].raw, before[i].raw, "section " + i + " untouched moving block " + b);
+    }
+    const movedText = srcBody.slice(blocks[b].start, blocks[b].end).join("\n");
+    assert.ok(after[dst].raw.includes(movedText), "target gained block " + b);
+    assert.ok(!after[src].raw.includes(movedText) || srcBody.join("\n").split(movedText).length > 2,
+      "source lost block " + b);
+    assert.ok(!/\n\s*\n\s*\n\s*\n/.test(out.join("\n")), "no blank pile-up for block " + b);
+  }
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
