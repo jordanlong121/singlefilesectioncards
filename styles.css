@@ -488,6 +488,13 @@
 	cursor: grab;
 }
 
+/* Today's section, when headings are dates — same signal as the card highlight. */
+.section-cards-tray-tile.is-today {
+	border-color: var(--text-highlight-bg, var(--interactive-accent));
+	box-shadow: inset 3px 0 0 var(--text-highlight-bg, var(--interactive-accent));
+	font-weight: 700;
+}
+
 .section-cards-tray-tile:hover {
 	border-color: var(--interactive-accent);
 }

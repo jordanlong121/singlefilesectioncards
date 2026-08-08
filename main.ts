@@ -2422,7 +2422,8 @@ export class SectionCardsView extends ItemView {
 		this.updateCanvasExtent(maxRight, maxBottom);
 
 		// The tray only rebuilds when its contents or order actually changed.
-		const signature = `${this.sortOrder}|${unplacedKeys.join("\u0000")}`;
+		// Today's date is part of the signature so the highlight rolls over at midnight.
+		const signature = `${this.sortOrder}|${this.todayKeys()?.iso ?? ""}|${unplacedKeys.join("\u0000")}`;
 		if (signature === this.traySignature) return;
 		this.traySignature = signature;
 		this.rebuildTray(unplacedKeys);
@@ -2475,6 +2476,7 @@ export class SectionCardsView extends ItemView {
 		}
 
 		this.trayEl.createDiv({ cls: "section-cards-tray-hint", text: "Drag a section onto the canvas" });
+		const today = this.todayKeys();
 		for (const key of unplacedKeys) {
 			const entry = this.cardsByHeading.get(key);
 			if (!entry) continue;
@@ -2482,6 +2484,9 @@ export class SectionCardsView extends ItemView {
 				cls: "section-cards-tray-tile",
 				text: entry.section.title || "(untitled)",
 			});
+			if (today && isTodayTitle(entry.section.title, today.iso, today.formatted)) {
+				tile.addClass("is-today");
+			}
 			tile.addEventListener("pointerdown", (evt) => {
 				this.startPointerDrag(
 					evt,
