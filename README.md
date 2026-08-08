@@ -5,7 +5,7 @@ cards — one card per heading — and lets you edit any section in place, writi
 the source `.md` file.
 
 > **Made to pair with [Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes).**
-> That plugin keeps a whole year of daily notes in a single file, one `### YYYY-MM-DD` heading per
+> That plugin keeps all your daily notes in a single file, one `### YYYY-MM-DD` heading per
 > day. This plugin turns those headings into a card wall you can scan, sort, and tick off. It works
 > on any note with headings, but that's the setup it was built for.
 
