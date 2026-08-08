@@ -400,15 +400,46 @@
 	overflow: auto;
 	padding: 0;
 	background-image: radial-gradient(circle, rgba(var(--mono-rgb-100), 0.13) 1px, transparent 1.5px);
-	background-size: 24px 24px;
-	/* Dot centres sit ON the 24px snap lines (not tile centres), and the pattern
-	   scrolls with the content, so snapped card corners land exactly on dots. */
-	background-position: -12px -12px;
+	/* Dot centres sit ON the snap lines, the pattern scrolls with the content, and
+	   everything scales with the zoom factor so snapping stays visually truthful. */
+	background-size: calc(24px * var(--sc-zoom, 1)) calc(24px * var(--sc-zoom, 1));
+	background-position: calc(-12px * var(--sc-zoom, 1)) calc(-12px * var(--sc-zoom, 1));
 	background-attachment: local;
+}
+
+/* Zoom controls pinned over the canvas pane's bottom-left. */
+.section-cards-zoom {
+	display: none;
+}
+
+.is-layout-custom.section-cards-view {
+	position: relative;
+}
+
+.is-layout-custom .section-cards-zoom {
+	display: flex;
+	gap: 2px;
+	position: absolute;
+	left: 12px;
+	bottom: 12px;
+	z-index: 20;
+}
+
+.section-cards-zoom button {
+	padding: 4px 10px;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.section-cards-zoom .section-cards-zoom-label {
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	min-width: 52px;
 }
 
 /* The scroll-extent marker: 1px, invisible, sits past the furthest card. */
 .section-cards-canvas-extent {
+	zoom: var(--sc-zoom, 1);
 	position: absolute;
 	width: 1px;
 	height: 1px;
@@ -510,6 +541,7 @@
 
 /* Live landing-spot preview while dragging or resizing on the canvas. */
 .sc-snap-preview {
+	zoom: var(--sc-zoom, 1);
 	position: absolute;
 	z-index: 6;
 	pointer-events: none;
@@ -559,6 +591,7 @@
 }
 
 .is-layout-custom .section-card.is-placed {
+	zoom: var(--sc-zoom, 1);
 	position: absolute;
 	margin: 0;
 	resize: both;
@@ -623,9 +656,10 @@
 
 .is-layout-custom .section-card.is-placed .section-card-untray {
 	display: block;
-	/* Sits at the far left of the title bar; the title shifts right after it. */
+	/* Hugs the top-left corner; the title shifts right after it. */
 	order: -1;
-	margin-right: 2px;
+	margin-left: -9px;
+	margin-right: 0;
 	flex: 0 0 auto;
 	padding: 4px 8px;
 	line-height: 1;

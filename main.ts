@@ -93,6 +93,7 @@ interface SectionCardsSettings {
 /** A note's remembered view plus, for the Custom Grid, its card placements by heading. */
 export interface PerFileView extends ViewSettings {
 	customGrid?: Record<string, CardRect>;
+	customZoom?: number;
 }
 
 /** The bit of view state that is remembered per note. */
@@ -1035,6 +1036,9 @@ export class SectionCardsView extends ItemView {
 	private trayEl!: HTMLElement;
 	/** Invisible marker that gives the canvas its scrollable size in every direction. */
 	private canvasExtentEl!: HTMLElement;
+	/** Custom Grid zoom factor (0.4–1.6), persisted per note. */
+	private customZoom = 1;
+	private zoomLabelEl: HTMLElement | null = null;
 	/** Which note's placements are loaded; reloading on every refresh caused revert races. */
 	private placementsLoadedFor: string | null = null;
 	/** Custom Grid: the in-flight pointer drag (tile onto canvas, or placed card). */
@@ -1059,11 +1063,12 @@ export class SectionCardsView extends ItemView {
 	private persistCustom = (): void => {
 		const file = this.getFile();
 		if (!file) return;
-		void this.plugin.saveCustomGrid(file.path, { ...this.customPlacements }, {
-			layout: this.layout,
-			headingLevel: this.headingLevel,
-			sortOrder: this.sortOrder,
-		});
+		void this.plugin.saveCustomGrid(
+			file.path,
+			{ ...this.customPlacements },
+			{ layout: this.layout, headingLevel: this.headingLevel, sortOrder: this.sortOrder },
+			this.customZoom,
+		);
 	};
 	/** The block (task/paragraph) being dragged between cards, if any. */
 	private draggingBlock: {
@@ -1177,6 +1182,18 @@ export class SectionCardsView extends ItemView {
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
 		this.canvasExtentEl = this.gridEl.createDiv({ cls: "section-cards-canvas-extent" });
 		this.trayEl = this.contentEl.createDiv({ cls: "section-cards-tray" });
+
+		// Zoom controls, pinned to the canvas pane's bottom-left (Custom Grid only).
+		const zoomBar = this.contentEl.createDiv({ cls: "section-cards-zoom" });
+		const zoomOut = zoomBar.createEl("button", { text: "−" });
+		zoomOut.setAttr("aria-label", "Zoom out");
+		zoomOut.addEventListener("click", () => this.setCustomZoom(this.customZoom - 0.1));
+		this.zoomLabelEl = zoomBar.createEl("button", { cls: "section-cards-zoom-label", text: "100%" });
+		this.zoomLabelEl.setAttr("aria-label", "Reset zoom");
+		this.zoomLabelEl.addEventListener("click", () => this.setCustomZoom(1));
+		const zoomIn = zoomBar.createEl("button", { text: "+" });
+		zoomIn.setAttr("aria-label", "Zoom in");
+		zoomIn.addEventListener("click", () => this.setCustomZoom(this.customZoom + 0.1));
 		this.registerWheelPan();
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
 			if (evt.key !== "Escape" || !this.maximized) return;
@@ -1769,6 +1786,7 @@ export class SectionCardsView extends ItemView {
 		// them here used to destroy arrangements when the heading level was switched.
 		if (this.placementsLoadedFor !== file.path) {
 			this.placementsLoadedFor = file.path;
+			this.customZoom = this.plugin.getCustomZoom(file.path);
 			this.customPlacements = {};
 			const savedPlacements = Object.entries(this.plugin.getCustomGrid(file.path)).sort(
 				([, a], [, b]) => a.y - b.y || a.x - b.x,
@@ -2252,8 +2270,9 @@ export class SectionCardsView extends ItemView {
 			obstacles: this.otherPlacements(key),
 			w: size.w,
 			h: size.h,
-			offX: Math.min(evt.clientX - grabbed.left, size.w - 24),
-			offY: Math.min(evt.clientY - grabbed.top, size.h - 24),
+			// Grab offsets in content px: placed cards render zoomed, tray tiles don't.
+			offX: Math.min((evt.clientX - grabbed.left) / (kind === "card" ? this.customZoom : 1), size.w - 24),
+			offY: Math.min((evt.clientY - grabbed.top) / (kind === "card" ? this.customZoom : 1), size.h - 24),
 			startX: evt.clientX,
 			startY: evt.clientY,
 			active: false,
@@ -2292,8 +2311,8 @@ export class SectionCardsView extends ItemView {
 
 		// Show exactly where the card will land — the same math the drop uses.
 		if (overCanvas) {
-			const px = evt.clientX - canvas.left + this.gridEl.scrollLeft;
-			const py = evt.clientY - canvas.top + this.gridEl.scrollTop;
+			const px = (evt.clientX - canvas.left + this.gridEl.scrollLeft) / this.customZoom;
+			const py = (evt.clientY - canvas.top + this.gridEl.scrollTop) / this.customZoom;
 			const want = snapRect(
 				{ x: px - Math.min(drag.offX, 140), y: py - Math.min(drag.offY, 20), w: drag.w, h: drag.h },
 				CUSTOM_SNAP,
@@ -2327,8 +2346,8 @@ export class SectionCardsView extends ItemView {
 			evt.clientX >= canvas.left && evt.clientX <= canvas.right && evt.clientY >= canvas.top && evt.clientY <= canvas.bottom;
 
 		if (overCanvas) {
-			const px = evt.clientX - canvas.left + this.gridEl.scrollLeft;
-			const py = evt.clientY - canvas.top + this.gridEl.scrollTop;
+			const px = (evt.clientX - canvas.left + this.gridEl.scrollLeft) / this.customZoom;
+			const py = (evt.clientY - canvas.top + this.gridEl.scrollTop) / this.customZoom;
 			const want = snapRect(
 				{ x: px - Math.min(drag.offX, 140), y: py - Math.min(drag.offY, 20), w: drag.w, h: drag.h },
 				CUSTOM_SNAP,
@@ -2384,6 +2403,7 @@ export class SectionCardsView extends ItemView {
 			return;
 		}
 
+		this.applyCustomZoom();
 		let maxBottom = 0;
 		let maxRight = 0;
 		const owedRenders: CardEntry[] = [];
@@ -2429,6 +2449,21 @@ export class SectionCardsView extends ItemView {
 		this.rebuildTray(unplacedKeys);
 	}
 
+	/** Apply the zoom factor: cards, extent marker, preview and dots all ride the var. */
+	private applyCustomZoom(): void {
+		this.gridEl.setCssProps({ "--sc-zoom": String(this.customZoom) });
+		this.zoomLabelEl?.setText(`${Math.round(this.customZoom * 100)}%`);
+	}
+
+	private setCustomZoom(zoom: number): void {
+		const clamped = Math.round(Math.min(1.6, Math.max(0.4, zoom)) * 10) / 10;
+		if (clamped === this.customZoom) return;
+		this.customZoom = clamped;
+		this.applyCustomZoom();
+		this.persistCustom();
+		this.applyCustomLayout(); // recompute the scroll extent for the new scale
+	}
+
 	/**
 	 * The canvas always scrolls: an invisible marker sits past the furthest card AND past
 	 * the viewport, so there is room to pan in every direction the layout might grow.
@@ -2437,8 +2472,10 @@ export class SectionCardsView extends ItemView {
 	 */
 	private updateCanvasExtent(maxRight: number, maxBottom: number): void {
 		if (this.layout !== "custom") return;
-		const w = Math.max(maxRight, this.gridEl.clientWidth) + 400;
-		const h = Math.max(maxBottom, this.gridEl.clientHeight) + 400;
+		const viewW = this.gridEl.clientWidth / this.customZoom;
+		const viewH = this.gridEl.clientHeight / this.customZoom;
+		const w = Math.max(maxRight, viewW) + 400;
+		const h = Math.max(maxBottom, viewH) + 400;
 		this.canvasExtentEl.setCssStyles({ left: `${w - 1}px`, top: `${h - 1}px` });
 	}
 
@@ -3384,11 +3421,21 @@ export default class SectionCardsPlugin extends Plugin {
 		return this.settings.perFile?.[path]?.customGrid ?? {};
 	}
 
-	async saveCustomGrid(path: string, placements: Record<string, CardRect>, base: ViewSettings): Promise<void> {
+	getCustomZoom(path: string): number {
+		return this.settings.perFile?.[path]?.customZoom ?? 1;
+	}
+
+	async saveCustomGrid(
+		path: string,
+		placements: Record<string, CardRect>,
+		base: ViewSettings,
+		zoom?: number,
+	): Promise<void> {
 		if (!path) return;
 		this.settings.perFile = this.settings.perFile ?? {};
 		const current = this.settings.perFile[path] ?? { ...base };
 		current.customGrid = placements;
+		if (zoom !== undefined) current.customZoom = zoom;
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
 	}
