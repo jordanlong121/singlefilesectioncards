@@ -906,6 +906,22 @@ export class SectionCardsView extends ItemView {
 			evt.preventDefault();
 			this.closeMaximized();
 		});
+		// Ctrl/⌘+Enter saves the open editor from anywhere: clicking the card's padding or
+		// a button moves focus off the textarea, and the textarea-level handler then never
+		// hears the shortcut. finish() is settled-guarded, so both firing is harmless.
+		this.registerDomEvent(
+			document,
+			"keydown",
+			(evt: KeyboardEvent) => {
+				const open = this.activeEditor;
+				if (!open) return;
+				if (evt.key === "Enter" && (evt.ctrlKey || evt.metaKey)) {
+					evt.preventDefault();
+					void open.finish(true);
+				}
+			},
+			{ capture: true },
+		);
 		this.applyStoredView();
 		await this.syncView();
 	}
