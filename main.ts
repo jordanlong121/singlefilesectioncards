@@ -667,6 +667,25 @@ export interface CardRect {
 	h: number;
 }
 
+/** Canvas geometry: snap step matches the dot pattern; sizes are multiples of it. */
+const CUSTOM_SNAP = 24;
+const CUSTOM_GAP = 12;
+const CUSTOM_MIN_W = 192;
+const CUSTOM_MIN_H = 120;
+const CUSTOM_DEFAULT_W = 288;
+const CUSTOM_DEFAULT_H = 192;
+
+/** Round a rect onto the snap grid, clamped to the canvas and the minimum card size. */
+export function snapRect(rect: CardRect, step: number, minW: number, minH: number): CardRect {
+	const snap = (value: number) => Math.round(value / step) * step;
+	return {
+		x: Math.max(0, snap(rect.x)),
+		y: Math.max(0, snap(rect.y)),
+		w: Math.max(minW, snap(rect.w)),
+		h: Math.max(minH, snap(rect.h)),
+	};
+}
+
 /** Cards on the canvas may neither overlap nor touch: `gap` px of air is required. */
 export function rectsCollide(a: CardRect, b: CardRect, gap: number): boolean {
 	return a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap;
@@ -676,14 +695,14 @@ export function rectsCollide(a: CardRect, b: CardRect, gap: number): boolean {
  * The nearest legal spot at or below the requested position: the rect marches down in
  * gap-sized steps until it clears every other card, falling back to below the lowest one.
  */
-export function findFreeSpot(want: CardRect, others: CardRect[], gap: number): CardRect {
+export function findFreeSpot(want: CardRect, others: CardRect[], gap: number, step = gap): CardRect {
 	const spot: CardRect = { ...want, x: Math.max(0, Math.round(want.x)), y: Math.max(0, Math.round(want.y)) };
 	for (let i = 0; i < 4000; i++) {
 		if (!others.some((other) => rectsCollide(spot, other, gap))) return spot;
-		spot.y += gap;
+		spot.y += step;
 	}
 	const bottom = others.reduce((max, other) => Math.max(max, other.y + other.h), 0);
-	return { ...spot, y: bottom + gap };
+	return { ...spot, y: bottom + step };
 }
 
 /** One editor state: full text plus selection. */
@@ -1669,11 +1688,22 @@ export class SectionCardsView extends ItemView {
 		this.layoutMasonry();
 		this.insertRowRules();
 
-		// Custom Grid: adopt this note's placements and drop any for vanished headings.
-		this.customPlacements = { ...this.plugin.getCustomGrid(file.path) };
-		for (const key of Object.keys(this.customPlacements)) {
-			if (!this.cardsByHeading.has(key)) delete this.customPlacements[key];
+		// Custom Grid: adopt this note's placements, drop any for vanished headings, and
+		// snap-normalise rects saved before snapping existed (re-spotting any collisions).
+		this.customPlacements = {};
+		const savedPlacements = Object.entries(this.plugin.getCustomGrid(file.path))
+			.filter(([key]) => this.cardsByHeading.has(key))
+			.sort(([, a], [, b]) => a.y - b.y || a.x - b.x);
+		let normalised = false;
+		for (const [key, rect] of savedPlacements) {
+			const snapped = snapRect(rect, CUSTOM_SNAP, CUSTOM_MIN_W, CUSTOM_MIN_H);
+			const spot = this.otherPlacements(key).some((other) => rectsCollide(snapped, other, CUSTOM_GAP))
+				? findFreeSpot(snapped, this.otherPlacements(key), CUSTOM_GAP, CUSTOM_SNAP)
+				: snapped;
+			if (spot.x !== rect.x || spot.y !== rect.y || spot.w !== rect.w || spot.h !== rect.h) normalised = true;
+			this.customPlacements[key] = spot;
 		}
+		if (normalised) this.persistCustom();
 		this.applyCustomLayout();
 		this.observeCards();
 		if (deferred.length) this.scheduleDeferredRenders(deferred, gen);
@@ -1685,9 +1715,10 @@ export class SectionCardsView extends ItemView {
 				// On the canvas an unplaced card is invisible; give a new one a spot first.
 				if (this.layout === "custom" && !this.customPlacements[target.section.headingRaw]) {
 					this.customPlacements[target.section.headingRaw] = findFreeSpot(
-						{ x: 24, y: 24, w: 280, h: 200 },
+						{ x: CUSTOM_SNAP, y: CUSTOM_SNAP, w: CUSTOM_DEFAULT_W, h: CUSTOM_DEFAULT_H },
 						this.otherPlacements(target.section.headingRaw),
-						12,
+						CUSTOM_GAP,
+						CUSTOM_SNAP,
 					);
 					this.persistCustom();
 					this.applyCustomLayout();
@@ -2164,13 +2195,13 @@ export class SectionCardsView extends ItemView {
 		if (overCanvas) {
 			const px = evt.clientX - canvas.left + this.gridEl.scrollLeft;
 			const py = evt.clientY - canvas.top + this.gridEl.scrollTop;
-			const want: CardRect = {
-				x: px - Math.min(drag.offX, 140),
-				y: py - Math.min(drag.offY, 20),
-				w: drag.w,
-				h: drag.h,
-			};
-			this.customPlacements[drag.key] = findFreeSpot(want, this.otherPlacements(drag.key), 12);
+			const want = snapRect(
+				{ x: px - Math.min(drag.offX, 140), y: py - Math.min(drag.offY, 20), w: drag.w, h: drag.h },
+				CUSTOM_SNAP,
+				CUSTOM_MIN_W,
+				CUSTOM_MIN_H,
+			);
+			this.customPlacements[drag.key] = findFreeSpot(want, this.otherPlacements(drag.key), CUSTOM_GAP, CUSTOM_SNAP);
 			this.persistCustom();
 			this.applyCustomLayout();
 			return;
@@ -2233,7 +2264,7 @@ export class SectionCardsView extends ItemView {
 						key,
 						entry.holder.section.title || "(untitled)",
 						tile.getBoundingClientRect(),
-						{ w: 280, h: 200 },
+						{ w: CUSTOM_DEFAULT_W, h: CUSTOM_DEFAULT_H },
 					);
 				});
 			}
@@ -2245,7 +2276,7 @@ export class SectionCardsView extends ItemView {
 		this.gridEl.setCssStyles({ minHeight: `${maxBottom + 80}px`, minWidth: `${maxRight + 40}px` });
 	}
 
-	/** Custom Grid: accept a card's CSS resize unless it would collide, else revert it. */
+	/** Custom Grid: snap a card's CSS resize to the grid, or revert it if it would collide. */
 	private validateCustomSizes(): void {
 		let changed = false;
 		for (const entry of this.cardEntries) {
@@ -2255,11 +2286,16 @@ export class SectionCardsView extends ItemView {
 			const w = entry.el.offsetWidth;
 			const h = entry.el.offsetHeight;
 			if (Math.abs(w - stored.w) < 2 && Math.abs(h - stored.h) < 2) continue;
-			const proposed: CardRect = { ...stored, w, h };
-			if (this.otherPlacements(key).some((other) => rectsCollide(proposed, other, 12))) {
+			const proposed = snapRect({ ...stored, w, h }, CUSTOM_SNAP, CUSTOM_MIN_W, CUSTOM_MIN_H);
+			if (
+				(proposed.w === stored.w && proposed.h === stored.h) ||
+				this.otherPlacements(key).some((other) => rectsCollide(proposed, other, CUSTOM_GAP))
+			) {
+				// Snapped back to what it was, or the new size would collide: restore.
 				entry.el.setCssStyles({ width: `${stored.w}px`, height: `${stored.h}px` });
 			} else {
 				this.customPlacements[key] = proposed;
+				entry.el.setCssStyles({ width: `${proposed.w}px`, height: `${proposed.h}px` });
 				changed = true;
 			}
 		}

@@ -1,4 +1,4 @@
-import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, rectsCollide, findFreeSpot } from "./.tmp/main.js";
+import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, rectsCollide, findFreeSpot, snapRect } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -743,6 +743,23 @@ t("findFreeSpot threads a gap between two cards when one exists", () => {
   const placed = [R(0, 0, 280, 100), R(0, 400, 280, 100)];
   const spot = findFreeSpot(R(0, 90, 280, 150), placed, 12);
   assert.ok(spot.y >= 112 && spot.y + 150 + 12 <= 400, "landed between, got y=" + spot.y);
+});
+
+// ---------- canvas snapping ----------
+
+t("snapRect rounds onto the 24px grid and respects minimums", () => {
+  assert.deepEqual(snapRect(R(101, 130, 275, 190), 24, 192, 120), R(96, 120, 264, 192));
+  assert.deepEqual(snapRect(R(-15, 5, 100, 40), 24, 192, 120), R(0, 0, 192, 120));
+  assert.deepEqual(snapRect(R(48, 72, 288, 192), 24, 192, 120), R(48, 72, 288, 192), "already snapped is unchanged");
+});
+
+t("findFreeSpot with a snap step keeps snapped rects on the grid", () => {
+  const placed = [R(48, 0, 288, 192)];
+  const want = snapRect(R(50, 10, 280, 190), 24, 192, 120);
+  const spot = findFreeSpot(want, placed, 12, 24);
+  assert.equal(spot.x % 24, 0, "x on grid");
+  assert.equal(spot.y % 24, 0, "y on grid, got " + spot.y);
+  assert.ok(!placed.some((o) => rectsCollide(spot, o, 12)));
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
