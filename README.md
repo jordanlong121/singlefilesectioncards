@@ -137,47 +137,6 @@ I don't know, that's why I wrote it.
 **Do you need the [Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes) plugin for this to work?**
 No, but you should use it because it's cool.
 
-## Development
-
-```bash
-npm install
-npm run dev     # esbuild watch → main.js
-npm run build   # typecheck + minified production build
-npm test        # parser, placement, task-toggle and view-resolution tests
-```
-
-Tests run against `sample-vault/Daily Notes 2026.md`, so they exercise the real parsing and
-insertion logic on a real file without needing a vault of your own.
-
-`tools/preview-harness.mjs` renders the view's DOM into a standalone HTML file so the CSS can be
-checked in a browser against Obsidian's own `app.css` plus any theme — useful because several
-layout bugs were only visible with those stylesheets loaded:
-
-```bash
-# app.css can be extracted from your Obsidian install
-node tools/asar-extract.mjs "<obsidian>/resources/obsidian.asar" app.css
-LAYOUT=grid SORT=desc node tools/preview-harness.mjs out/harness.html
-```
-
-### Notes for contributors
-
-- `refresh()` reconciles instead of rebuilding: cards are matched to sections by exact raw text
-  (`planCardReuse`) and only changed sections re-render their markdown, so saving an edit or
-  ticking a checkbox re-renders one card, not the wall. Each card owns a `Component` scope that is
-  unloaded when the card is discarded.
-- On first render only the first ~24 card bodies render synchronously; the rest render in
-  idle-time batches, so a year-long note paints immediately. A generation counter aborts stale
-  async work when renders overlap.
-- Card surfaces are built from `--mono-rgb-0` / `--mono-rgb-100` rather than `--background-*`,
-  because glass and transparent themes legitimately set those to `#00000000`, which made every
-  card invisible.
-- The view scrolls at the `.view-content` level with a sticky toolbar. Nesting an auto-row grid
-  inside a height-constrained flex column collapses every grid row to 0px in Chrome.
-- Some themes hide every scrollbar globally, so this plugin opts its own scrollbars back in.
-- The plugin id is `single-file-section-cards`, but the view type (`section-cards-view`), icon name
-  and `section-cards-*` CSS classes keep their original names — Obsidian stores the view type and
-  icon in `workspace.json`, so renaming them would break already-open card tabs.
-
 ## License
 
 [MIT](LICENSE)
