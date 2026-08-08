@@ -130,9 +130,18 @@
 	margin-top: 8px;
 }
 
+.section-cards-new-modal .section-cards-heading-setting .setting-item-control {
+	gap: 8px;
+}
+
 .section-cards-new-modal .section-cards-new-input {
-	width: 100%;
+	flex: 1 1 auto;
+	width: auto;
 	font-family: var(--font-monospace);
+}
+
+.section-cards-new-modal .section-cards-date-pick {
+	flex: 0 0 auto;
 }
 
 .section-cards-new-modal .setting-item {

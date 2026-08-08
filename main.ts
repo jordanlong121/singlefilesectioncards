@@ -1533,6 +1533,9 @@ export class SectionCardsView extends ItemView {
 			this.app,
 			defaultText,
 			this.plugin.settings.newCardPlacement,
+			mo().format("YYYY-MM-DD"),
+			(isoDate) =>
+				`${"#".repeat(this.headingLevel)} ${mo(isoDate, "YYYY-MM-DD").format(this.plugin.settings.newCardFormat)}`,
 			async (typed, placement) => {
 				const headingRaw = normalizeHeading(typed, this.headingLevel);
 				const level = (/^#+/.exec(headingRaw)?.[0] ?? "###").length;
@@ -2795,17 +2798,23 @@ class DuplicateCardModal extends Modal {
 class NewCardModal extends Modal {
 	private text: string;
 	private placement: Placement;
+	private readonly defaultIso: string;
+	private readonly makeHeading: (isoDate: string) => string;
 	private readonly onSubmit: (heading: string, placement: Placement) => void | Promise<void>;
 
 	constructor(
 		app: App,
 		defaultText: string,
 		defaultPlacement: Placement,
+		defaultIso: string,
+		makeHeading: (isoDate: string) => string,
 		onSubmit: (heading: string, placement: Placement) => void | Promise<void>,
 	) {
 		super(app);
 		this.text = defaultText;
 		this.placement = defaultPlacement;
+		this.defaultIso = defaultIso;
+		this.makeHeading = makeHeading;
 		this.onSubmit = onSubmit;
 	}
 
@@ -2825,6 +2834,23 @@ class NewCardModal extends Modal {
 			});
 		// Stack this one so the heading gets the modal's full width to type in.
 		headingSetting.settingEl.addClass("section-cards-heading-setting");
+
+		// Picking a date rewrites the heading (still editable) in the configured format,
+		// prefixed with the view's #'s.
+		const datePick = headingSetting.controlEl.createEl("input", {
+			type: "date",
+			cls: "section-cards-date-pick",
+		});
+		datePick.value = this.defaultIso;
+		datePick.setAttr("aria-label", "Use a date as the heading");
+		datePick.addEventListener("change", () => {
+			if (!datePick.value) return;
+			this.text = this.makeHeading(datePick.value);
+			input.value = this.text;
+			input.focus();
+			const titleStart = /^#+\s+/.exec(this.text)?.[0].length ?? 0;
+			input.setSelectionRange(titleStart, this.text.length);
+		});
 
 		new Setting(contentEl).setName("Placement").addDropdown((dd) =>
 			dd
