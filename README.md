@@ -31,6 +31,14 @@ the source `.md` file.
 
 ## Layouts
 
+### Vertical
+
+Full-height cards side by side. The row scrolls sideways, and the mouse wheel pans it from anywhere
+in the view — over the cards or over the toolbar. A card whose content overflows keeps the wheel
+until it reaches its end.
+
+![Vertical](screenshots/vertical.png)
+
 ### Grid
 
 Masonry columns: every card takes only the height it needs, so a short card never leaves dead space
@@ -56,14 +64,6 @@ height of Grid on the same note.
 One card per row, full pane width.
 
 ![Horizontal](screenshots/horizontal.png)
-
-### Vertical
-
-Full-height cards side by side. The row scrolls sideways, and the mouse wheel pans it from anywhere
-in the view — over the cards or over the toolbar. A card whose content overflows keeps the wheel
-until it reaches its end.
-
-![Vertical](screenshots/vertical.png)
 
 ## Usage
 
