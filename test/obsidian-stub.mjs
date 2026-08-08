@@ -18,3 +18,4 @@ export const moment = () => ({ format: (f) => "STUB-" + f });
 export const addIcon = () => {};
 export const setIcon = () => {};
 export class SuggestModal { setPlaceholder() {} }
+export class Scope { register() {} }

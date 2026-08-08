@@ -10,6 +10,7 @@ import {
 	Notice,
 	Plugin,
 	PluginSettingTab,
+	Scope,
 	Setting,
 	type SettingDefinitionItem,
 	setIcon,
@@ -906,6 +907,18 @@ export class SectionCardsView extends ItemView {
 			evt.preventDefault();
 			this.closeMaximized();
 		});
+		// Ctrl/⌘+Enter must survive Obsidian's own hotkey dispatch, which runs before any
+		// DOM handler and consumes matching combos — so the shortcut is also registered in
+		// the view's keymap scope, which outranks global hotkeys while this view is active.
+		this.scope = new Scope(this.app.scope);
+		this.scope.register(["Mod"], "Enter", (evt) => {
+			const open = this.activeEditor;
+			if (!open) return true; // not editing: let the combo pass through
+			evt.preventDefault();
+			void open.finish(true);
+			return false; // consumed
+		});
+
 		// Ctrl/⌘+Enter saves the open editor from anywhere: clicking the card's padding or
 		// a button moves focus off the textarea, and the textarea-level handler then never
 		// hears the shortcut. finish() is settled-guarded, so both firing is harmless.
