@@ -11,7 +11,7 @@ the source `.md` file.
 
 **[Install it from the Obsidian community plugin directory →](https://community.obsidian.md/plugins/single-file-section-cards)**
 
-![Custom Grid: a freeform, zoomable canvas for your sections](screenshots/custom.png)
+![Custom Grid: a freeform, zoomable canvas for your sections](screenshots/custom.gif)
 
 ![Layouts, editing, and drag-and-drop in 20 seconds](screenshots/demo.gif)
 
