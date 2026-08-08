@@ -1039,6 +1039,7 @@ export class SectionCardsView extends ItemView {
 		kind: "tile" | "card";
 		key: string;
 		label: string;
+		obstacles: CardRect[];
 		w: number;
 		h: number;
 		offX: number;
@@ -1305,12 +1306,13 @@ export class SectionCardsView extends ItemView {
 	/** The card-body height cap for the current layout; also re-applied to reused cards. */
 	private applyBodyHeight(bodyEl: HTMLElement | null): void {
 		if (!bodyEl) return;
-		if (this.layout === "vertical" || this.layout === "custom") {
-			bodyEl.setCssStyles({ maxHeight: "" });
-			return;
-		}
 		const cap = this.plugin.settings.cardMaxHeight;
-		bodyEl.setCssStyles({ maxHeight: `${this.layout === "tight" ? Math.min(cap, 190) : cap}px` });
+		const target =
+			this.layout === "vertical" || this.layout === "custom"
+				? ""
+				: `${this.layout === "tight" ? Math.min(cap, 190) : cap}px`;
+		// Refresh re-applies this to every reused card; identical values skip the write.
+		if (bodyEl.style.maxHeight !== target) bodyEl.setCssStyles({ maxHeight: target });
 	}
 
 	/** Rendered task checkboxes come back disabled, and disabled inputs never fire clicks. */
@@ -1388,7 +1390,10 @@ export class SectionCardsView extends ItemView {
 		// Masonry spans only apply to the packed column layouts. The aligned grid wants
 		// real auto rows, and the sideways layout is a flex row, so clear any leftovers.
 		if (this.layout === "vertical" || this.layout === "aligned" || this.layout === "custom") {
-			for (const card of Array.from(grid.children) as HTMLElement[]) card.setCssStyles({ gridRowEnd: "" });
+			for (const card of Array.from(grid.children) as HTMLElement[]) {
+				// Reading inline style is free; rewriting an already-empty one is not.
+				if (card.style.gridRowEnd) card.setCssStyles({ gridRowEnd: "" });
+			}
 			return;
 		}
 
@@ -1673,6 +1678,9 @@ export class SectionCardsView extends ItemView {
 		let immediateBudget = INITIAL_RENDER_COUNT;
 		const queueBody = (entry: CardEntry) => {
 			if (!entry.renderBody) return;
+			// On the canvas, unplaced cards are display:none — rendering their markdown
+			// would be pure waste. Placement back-fills the owed render (applyCustomLayout).
+			if (this.layout === "custom" && !this.customPlacements[entry.holder.section.headingRaw]) return;
 			if (immediateBudget > 0) {
 				immediateBudget--;
 				renders.push(this.runBodyRender(entry));
@@ -2198,6 +2206,8 @@ export class SectionCardsView extends ItemView {
 			kind,
 			key,
 			label,
+			// Placements can't change mid-drag; computing this per mousemove was waste.
+			obstacles: this.otherPlacements(key),
 			w: size.w,
 			h: size.h,
 			offX: Math.min(evt.clientX - grabbed.left, size.w - 24),
@@ -2248,7 +2258,7 @@ export class SectionCardsView extends ItemView {
 				CUSTOM_MIN_W,
 				CUSTOM_MIN_H,
 			);
-			const spot = findFreeSpot(want, this.otherPlacements(drag.key), CUSTOM_GAP, CUSTOM_SNAP);
+			const spot = findFreeSpot(want, drag.obstacles, CUSTOM_GAP, CUSTOM_SNAP);
 			this.showSnapPreview(spot, spot.x !== want.x || spot.y !== want.y);
 		} else {
 			this.hideSnapPreview();
@@ -2283,7 +2293,7 @@ export class SectionCardsView extends ItemView {
 				CUSTOM_MIN_W,
 				CUSTOM_MIN_H,
 			);
-			this.customPlacements[drag.key] = findFreeSpot(want, this.otherPlacements(drag.key), CUSTOM_GAP, CUSTOM_SNAP);
+			this.customPlacements[drag.key] = findFreeSpot(want, drag.obstacles, CUSTOM_GAP, CUSTOM_SNAP);
 			this.persistCustom();
 			this.applyCustomLayout();
 			return;
@@ -2315,16 +2325,69 @@ export class SectionCardsView extends ItemView {
 		this.applyCustomLayout();
 	}
 
-	/** Position placed cards, hide trayed ones, and rebuild the tray list. */
+	/** Signature of the tray's last build, so unchanged refreshes skip the DOM churn. */
+	private traySignature: string | null = null;
+
+	/** Position placed cards, hide trayed ones, and rebuild the tray when it changed. */
 	private applyCustomLayout(): void {
 		if (this.layout !== "custom") {
-			this.trayEl.empty();
+			if (this.traySignature !== null) {
+				this.trayEl.empty();
+				this.traySignature = null;
+			}
 			// Leaving the canvas restores native drag for card reordering.
-			for (const entry of this.cardEntries) entry.el.draggable = true;
+			for (const entry of this.cardEntries) {
+				if (!entry.el.draggable) entry.el.draggable = true;
+			}
 			return;
 		}
+
 		let maxBottom = 0;
 		let maxRight = 0;
+		const owedRenders: CardEntry[] = [];
+		const unplacedKeys: string[] = [];
+
+		for (const entry of this.cardEntries) {
+			const key = entry.holder.section.headingRaw;
+			const rect = this.customPlacements[key];
+			if (rect) {
+				entry.el.addClass("is-placed");
+				entry.el.draggable = false; // pointer drag owns the canvas; native drag is off
+				if (entry.renderBody) owedRenders.push(entry);
+				entry.el.setCssStyles({
+					left: `${rect.x}px`,
+					top: `${rect.y}px`,
+					width: `${rect.w}px`,
+					height: `${rect.h}px`,
+				});
+				maxBottom = Math.max(maxBottom, rect.y + rect.h);
+				maxRight = Math.max(maxRight, rect.x + rect.w);
+			} else {
+				entry.el.removeClass("is-placed");
+				entry.el.draggable = false;
+				unplacedKeys.push(key);
+			}
+		}
+
+		// Cards placed while their markdown render was still owed get it now, batched.
+		if (owedRenders.length) {
+			void Promise.all(owedRenders.map((entry) => this.runBodyRender(entry))).then(() => {
+				this.prepareBodies();
+				this.repack();
+			});
+		}
+
+		// Absolutely positioned cards define the scroll extent; keep breathing room.
+		this.gridEl.setCssStyles({ minHeight: `${maxBottom + 80}px`, minWidth: `${maxRight + 40}px` });
+
+		// The tray only rebuilds when its contents or order actually changed.
+		const signature = `${this.sortOrder}|${unplacedKeys.join("\u0000")}`;
+		if (signature === this.traySignature) return;
+		this.traySignature = signature;
+		this.rebuildTray(unplacedKeys);
+	}
+
+	private rebuildTray(unplacedKeys: string[]): void {
 		this.trayEl.empty();
 
 		// Permanent tray controls: Clear (everything back to this list) and the sorts.
@@ -2358,46 +2421,29 @@ export class SectionCardsView extends ItemView {
 		}
 
 		this.trayEl.createDiv({ cls: "section-cards-tray-hint", text: "Drag a section onto the canvas" });
-
-		for (const entry of this.cardEntries) {
-			const key = entry.holder.section.headingRaw;
-			const rect = this.customPlacements[key];
-			if (rect) {
-				entry.el.addClass("is-placed");
-				entry.el.draggable = false; // pointer drag owns the canvas; native drag is off
-				entry.el.setCssStyles({
-					left: `${rect.x}px`,
-					top: `${rect.y}px`,
-					width: `${rect.w}px`,
-					height: `${rect.h}px`,
-				});
-				maxBottom = Math.max(maxBottom, rect.y + rect.h);
-				maxRight = Math.max(maxRight, rect.x + rect.w);
-			} else {
-				entry.el.removeClass("is-placed");
-				entry.el.draggable = false;
-				const tile = this.trayEl.createDiv({
-					cls: "section-cards-tray-tile",
-					text: entry.holder.section.title || "(untitled)",
-				});
-				tile.addEventListener("pointerdown", (evt) => {
-					this.startPointerDrag(
-						evt,
-						"tile",
-						key,
-						entry.holder.section.title || "(untitled)",
-						tile.getBoundingClientRect(),
-						{ w: CUSTOM_DEFAULT_W, h: CUSTOM_DEFAULT_H },
-					);
-				});
-			}
+		for (const key of unplacedKeys) {
+			const entry = this.cardsByHeading.get(key);
+			if (!entry) continue;
+			const tile = this.trayEl.createDiv({
+				cls: "section-cards-tray-tile",
+				text: entry.section.title || "(untitled)",
+			});
+			tile.addEventListener("pointerdown", (evt) => {
+				this.startPointerDrag(
+					evt,
+					"tile",
+					key,
+					entry.section.title || "(untitled)",
+					tile.getBoundingClientRect(),
+					{ w: CUSTOM_DEFAULT_W, h: CUSTOM_DEFAULT_H },
+				);
+			});
 		}
-		if (!this.trayEl.querySelector(".section-cards-tray-tile")) {
+		if (!unplacedKeys.length) {
 			this.trayEl.createDiv({ cls: "section-cards-tray-hint", text: "Every section is on the canvas." });
 		}
-		// Absolutely positioned cards define the scroll extent; keep breathing room.
-		this.gridEl.setCssStyles({ minHeight: `${maxBottom + 80}px`, minWidth: `${maxRight + 40}px` });
 	}
+
 
 	/** While a canvas card is being resized, preview the size it will snap to. */
 	private previewCustomResize(): void {
