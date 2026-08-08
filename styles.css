@@ -346,19 +346,24 @@
 	font-size: var(--font-ui-medium, var(--font-ui-small));
 }
 
-/* Editing a blown-up card: the textarea takes the height, footer pinned beneath it. */
-.section-card.is-maximized.is-editing .section-card-body {
+/* Editing inside a fixed-height card (blown up, or placed on the Custom Grid canvas):
+   the textarea takes the card's height and follows its resizes, footer pinned beneath. */
+.section-card.is-maximized.is-editing .section-card-body,
+.is-layout-custom .section-card.is-placed.is-editing .section-card-body {
 	display: flex;
 	flex-direction: column;
 }
 
-.section-card.is-maximized .section-card-editor {
+.section-card.is-maximized .section-card-editor,
+.is-layout-custom .section-card.is-placed .section-card-editor {
 	flex: 1 1 auto;
 	height: auto;
+	min-height: 0;
 	resize: none;
 }
 
-.section-card.is-maximized .section-card-footer {
+.section-card.is-maximized .section-card-footer,
+.is-layout-custom .section-card.is-placed .section-card-footer {
 	flex: 0 0 auto;
 }
 
