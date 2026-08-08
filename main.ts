@@ -2396,9 +2396,15 @@ export class SectionCardsView extends ItemView {
 				this.trayEl.empty();
 				this.traySignature = null;
 			}
-			// Leaving the canvas restores native drag for card reordering.
+			// Leaving the canvas restores native drag for card reordering and strips
+			// the placement geometry — inline left/top/width/height (set by placement
+			// and by the native resizer) would otherwise override the fixed layouts.
 			for (const entry of this.cardEntries) {
 				if (!entry.el.draggable) entry.el.draggable = true;
+				if (entry.el.hasClass("is-placed")) entry.el.removeClass("is-placed");
+				if (entry.el.style.length) {
+					entry.el.setCssStyles({ left: "", top: "", width: "", height: "" });
+				}
 			}
 			return;
 		}
