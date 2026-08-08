@@ -2,7 +2,9 @@
 
 An [Obsidian](https://obsidian.md) plugin that shows the sections of **one** note as a wall of
 cards — one card per heading — and lets you edit any section in place, writing straight back to
-the source `.md` file.
+the source `.md` file. With the freeform **Custom Grid** canvas, it doubles as a home for ad hoc
+dashboards, sticky notes, task management, and brainstorming — all stored as plain markdown in a
+single note.
 
 > **Made to pair with [Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes).**
 > That plugin keeps all your daily notes in a single file, one `### YYYY-MM-DD` heading per
