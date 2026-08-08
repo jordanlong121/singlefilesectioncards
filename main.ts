@@ -1205,6 +1205,35 @@ export class SectionCardsView extends ItemView {
 			},
 			{ capture: true },
 		);
+
+		// A click right after a completed pointer drag is that drag's release, not a
+		// click — swallow it so dropping a card can't maximize it or open an editor.
+		this.registerDomEvent(
+			this.contentEl,
+			"click",
+			(evt: MouseEvent) => {
+				if (!this.swallowNextClick) return;
+				this.swallowNextClick = false;
+				evt.preventDefault();
+				evt.stopImmediatePropagation();
+			},
+			{ capture: true },
+		);
+
+		// Clicking empty grid/canvas space (any layout) or the tray settles the open
+		// editor, the same as clicking another card or the toolbar.
+		this.registerDomEvent(this.gridEl, "click", (evt: MouseEvent) => {
+			const open = this.activeEditor;
+			if (!open) return;
+			const insideCard = (evt.target as HTMLElement | null)?.closest(".section-card");
+			if (insideCard === open.card) return; // clicks inside the editor stay there
+			if (!insideCard) void open.finish(true); // another card's handler commits itself
+		});
+		this.registerDomEvent(this.trayEl, "click", () => {
+			const open = this.activeEditor;
+			if (open) void open.finish(true);
+		});
+
 		this.applyStoredView();
 		await this.syncView();
 	}

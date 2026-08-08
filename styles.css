@@ -392,6 +392,10 @@
 	padding: 0;
 	background-image: radial-gradient(circle, rgba(var(--mono-rgb-100), 0.13) 1px, transparent 1.5px);
 	background-size: 24px 24px;
+	/* Dot centres sit ON the 24px snap lines (not tile centres), and the pattern
+	   scrolls with the content, so snapped card corners land exactly on dots. */
+	background-position: -12px -12px;
+	background-attachment: local;
 }
 
 .is-layout-custom .section-cards-grid.is-drop-target {
