@@ -1032,6 +1032,8 @@ export class SectionCardsView extends ItemView {
 	/** Custom Grid: placements for the current note, keyed by heading line. */
 	private customPlacements: Record<string, CardRect> = {};
 	private trayEl!: HTMLElement;
+	/** Which note's placements are loaded; reloading on every refresh caused revert races. */
+	private placementsLoadedFor: string | null = null;
 	/** Custom Grid: the in-flight pointer drag (tile onto canvas, or placed card). */
 	private pointerDrag: {
 		kind: "tile" | "card";
@@ -1049,15 +1051,16 @@ export class SectionCardsView extends ItemView {
 		onUp: (evt: PointerEvent) => void;
 	} | null = null;
 	private swallowNextClick = false;
-	private persistCustom = debounce(() => {
+	/** Placement writes are immediate: a debounced save raced the next refresh's re-read. */
+	private persistCustom = (): void => {
 		const file = this.getFile();
 		if (!file) return;
-		void this.plugin.saveCustomGrid(file.path, this.customPlacements, {
+		void this.plugin.saveCustomGrid(file.path, { ...this.customPlacements }, {
 			layout: this.layout,
 			headingLevel: this.headingLevel,
 			sortOrder: this.sortOrder,
 		});
-	}, 400, true);
+	};
 	/** The block (task/paragraph) being dragged between cards, if any. */
 	private draggingBlock: {
 		holder: { section: Section };
@@ -1724,22 +1727,27 @@ export class SectionCardsView extends ItemView {
 		this.layoutMasonry();
 		this.insertRowRules();
 
-		// Custom Grid: adopt this note's placements, drop any for vanished headings, and
-		// snap-normalise rects saved before snapping existed (re-spotting any collisions).
-		this.customPlacements = {};
-		const savedPlacements = Object.entries(this.plugin.getCustomGrid(file.path))
-			.filter(([key]) => this.cardsByHeading.has(key))
-			.sort(([, a], [, b]) => a.y - b.y || a.x - b.x);
-		let normalised = false;
-		for (const [key, rect] of savedPlacements) {
-			const snapped = snapRect(rect, CUSTOM_SNAP, CUSTOM_MIN_W, CUSTOM_MIN_H);
-			const spot = this.otherPlacements(key).some((other) => rectsCollide(snapped, other, CUSTOM_GAP))
-				? findFreeSpot(snapped, this.otherPlacements(key), CUSTOM_GAP, CUSTOM_SNAP)
-				: snapped;
-			if (spot.x !== rect.x || spot.y !== rect.y || spot.w !== rect.w || spot.h !== rect.h) normalised = true;
-			this.customPlacements[key] = spot;
+		// Custom Grid: placements load once per note and are kept in memory from then on —
+		// re-adopting on every refresh raced the save and reverted fresh drops. Keys for
+		// headings not currently shown (other levels, renamed sections) are KEPT: pruning
+		// them here used to destroy arrangements when the heading level was switched.
+		if (this.placementsLoadedFor !== file.path) {
+			this.placementsLoadedFor = file.path;
+			this.customPlacements = {};
+			const savedPlacements = Object.entries(this.plugin.getCustomGrid(file.path)).sort(
+				([, a], [, b]) => a.y - b.y || a.x - b.x,
+			);
+			let normalised = false;
+			for (const [key, rect] of savedPlacements) {
+				const snapped = snapRect(rect, CUSTOM_SNAP, CUSTOM_MIN_W, CUSTOM_MIN_H);
+				const spot = this.otherPlacements(key).some((other) => rectsCollide(snapped, other, CUSTOM_GAP))
+					? findFreeSpot(snapped, this.otherPlacements(key), CUSTOM_GAP, CUSTOM_SNAP)
+					: snapped;
+				if (spot.x !== rect.x || spot.y !== rect.y || spot.w !== rect.w || spot.h !== rect.h) normalised = true;
+				this.customPlacements[key] = spot;
+			}
+			if (normalised) this.persistCustom();
 		}
-		if (normalised) this.persistCustom();
 		this.applyCustomLayout();
 		this.observeCards();
 		if (deferred.length) this.scheduleDeferredRenders(deferred, gen);
@@ -2168,10 +2176,10 @@ export class SectionCardsView extends ItemView {
 		this.snapPreviewEl = null;
 	}
 
-	/** Every placed rect except the one being moved. */
+	/** Visible placed rects except the one being moved (hidden-level keys don't collide). */
 	private otherPlacements(except: string): CardRect[] {
 		return Object.entries(this.customPlacements)
-			.filter(([key]) => key !== except)
+			.filter(([key]) => key !== except && (this.cardsByHeading.size === 0 || this.cardsByHeading.has(key)))
 			.map(([, rect]) => rect);
 	}
 
@@ -2290,6 +2298,19 @@ export class SectionCardsView extends ItemView {
 		}
 	}
 
+	/** Remove every card from the canvas so the tray lists every section again. */
+	private clearCanvas(): void {
+		const placed = Object.keys(this.customPlacements).length;
+		if (!placed) {
+			new Notice("The canvas is already clear.");
+			return;
+		}
+		this.customPlacements = {};
+		this.persistCustom();
+		this.applyCustomLayout();
+		new Notice(`Canvas cleared — ${placed} ${placed === 1 ? "placement" : "placements"} returned to the list.`);
+	}
+
 	/** Return a placed card to the tray. */
 	private untrayCard(headingRaw: string): void {
 		delete this.customPlacements[headingRaw];
@@ -2308,6 +2329,30 @@ export class SectionCardsView extends ItemView {
 		let maxBottom = 0;
 		let maxRight = 0;
 		this.trayEl.empty();
+
+		// Permanent tray controls: Clear (everything back to this list) and the sorts.
+		const actions = this.trayEl.createDiv({ cls: "section-cards-tray-actions" });
+		const clearBtn = actions.createEl("button", { cls: "section-cards-tray-clear", text: "Clear" });
+		clearBtn.setAttr("aria-label", "Remove every card from the canvas, back into this list");
+		clearBtn.addEventListener("click", () => this.clearCanvas());
+		const sortRow = this.trayEl.createDiv({ cls: "section-cards-tray-sorts" });
+		const sorts: [SortOrder, string][] = [
+			["asc", "A→Z"],
+			["desc", "Z→A"],
+			["doc", "Doc"],
+		];
+		for (const [order, label] of sorts) {
+			const btn = sortRow.createEl("button", { cls: "section-cards-tray-sort", text: label });
+			btn.setAttr("aria-label", `Sort sections ${SORT_LABELS[order]}`);
+			btn.toggleClass("is-active", this.sortOrder === order);
+			btn.addEventListener("click", () => {
+				if (this.sortOrder === order) return;
+				this.sortOrder = order;
+				this.rememberView();
+				void this.syncView().then(() => this.app.workspace.requestSaveLayout());
+			});
+		}
+
 		this.trayEl.createDiv({ cls: "section-cards-tray-hint", text: "Drag a section onto the canvas" });
 
 		for (const entry of this.cardEntries) {

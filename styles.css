@@ -428,6 +428,32 @@
 	background-image: linear-gradient(var(--sc-header), var(--sc-header));
 }
 
+.section-cards-tray-actions {
+	margin-bottom: 6px;
+}
+
+.section-cards-tray-clear {
+	width: 100%;
+	font-weight: 600;
+}
+
+.section-cards-tray-sorts {
+	display: flex;
+	gap: 4px;
+	margin-bottom: 8px;
+}
+
+.section-cards-tray-sort {
+	flex: 1 1 0;
+	padding: 4px 0;
+	font-size: var(--font-ui-smaller);
+}
+
+.section-cards-tray-sort.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent, #fff);
+}
+
 .section-cards-tray-hint {
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
