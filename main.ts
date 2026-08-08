@@ -1013,6 +1013,7 @@ export class SectionCardsView extends ItemView {
 	/** Watches cards for height changes (async markdown, images, embeds) to re-pack them. */
 	private cardObserver: ResizeObserver | null = null;
 	private repack = debounce(() => {
+		if (!this.gridEl || this.viewIsHidden()) return; // zero sizes while backgrounded
 		this.layoutMasonry();
 		this.insertRowRules();
 		if (this.layout === "custom") this.validateCustomSizes();
@@ -2445,8 +2446,14 @@ export class SectionCardsView extends ItemView {
 	}
 
 
+	/** A backgrounded tab reports 0x0 for everything; size logic must ignore it. */
+	private viewIsHidden(): boolean {
+		return this.gridEl.clientWidth === 0 && this.gridEl.clientHeight === 0;
+	}
+
 	/** While a canvas card is being resized, preview the size it will snap to. */
 	private previewCustomResize(): void {
+		if (this.viewIsHidden()) return;
 		for (const entry of this.cardEntries) {
 			const key = entry.holder.section.headingRaw;
 			const stored = this.customPlacements[key];
@@ -2464,6 +2471,9 @@ export class SectionCardsView extends ItemView {
 	/** Custom Grid: snap a card's CSS resize to the grid, or revert it if it would collide. */
 	private validateCustomSizes(): void {
 		this.hideSnapPreview();
+		// Switching tabs hides the view: every card then measures 0x0, which used to be
+		// read as a resize-to-minimum and saved, shrinking the whole layout.
+		if (this.viewIsHidden()) return;
 		let changed = false;
 		for (const entry of this.cardEntries) {
 			const key = entry.holder.section.headingRaw;
@@ -2471,6 +2481,7 @@ export class SectionCardsView extends ItemView {
 			if (!stored || !entry.el.hasClass("is-placed")) continue;
 			const w = entry.el.offsetWidth;
 			const h = entry.el.offsetHeight;
+			if (w === 0 && h === 0) continue; // individually hidden (e.g. mid-transition)
 			if (Math.abs(w - stored.w) < 2 && Math.abs(h - stored.h) < 2) continue;
 			const proposed = snapRect({ ...stored, w, h }, CUSTOM_SNAP, CUSTOM_MIN_W, CUSTOM_MIN_H);
 			if (
