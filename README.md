@@ -104,7 +104,7 @@ One card per row, full pane width.
 | Heading level | Which heading rank becomes a card (H1–H6) |
 | Headings contain | `Dates` highlights today's card; `Non-dates` turns that off |
 | Default sort | A→Z, Z→A, or document order |
-| Default layout | Grid, Grid Aligned, Tight, Horizontal, Vertical |
+| Default layout | Grid, Grid Aligned, Tight, Horizontal, Vertical, Custom Grid |
 | Default heading name | Date format used to pre-fill "New card" |
 | Default placement | Where a new card is inserted |
 | Clicking a card's title bar | Makes the card big (default), or edits the raw markdown |
