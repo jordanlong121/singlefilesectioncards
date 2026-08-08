@@ -547,6 +547,50 @@
 	max-height: none;
 }
 
+/* A resize grip you can actually see: diagonal ridges in the bottom-right corner.
+   pointer-events: none keeps the native resizer underneath doing the actual work. */
+.is-layout-custom .section-card.is-placed::after {
+	content: "";
+	position: absolute;
+	right: 3px;
+	bottom: 3px;
+	width: 20px;
+	height: 20px;
+	pointer-events: none;
+	clip-path: polygon(100% 0, 100% 100%, 0 100%);
+	background: repeating-linear-gradient(
+		135deg,
+		transparent 0 4px,
+		var(--text-faint) 4px 6px
+	);
+	opacity: 0.8;
+}
+
+.is-layout-custom .section-card.is-placed:hover::after {
+	background: repeating-linear-gradient(
+		135deg,
+		transparent 0 4px,
+		var(--interactive-accent) 4px 6px
+	);
+	opacity: 1;
+}
+
+/* Keep the grip subdued while editing so it doesn't fight the Save button. */
+.is-layout-custom .section-card.is-placed.is-editing::after {
+	opacity: 0.35;
+}
+
+/* Chromium sizes the native resizer square from the element's scrollbar metrics —
+   these never render (overflow: hidden) but grow the draggable corner to 20px. */
+.is-layout-custom .section-card.is-placed::-webkit-scrollbar {
+	width: 20px;
+	height: 20px;
+}
+
+.is-layout-custom .section-card.is-placed::-webkit-resizer {
+	background: transparent;
+}
+
 /* The Remove button exists on every card but only shows on placed canvas cards. */
 .section-card-untray {
 	display: none;
