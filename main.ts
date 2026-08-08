@@ -2301,10 +2301,7 @@ export class SectionCardsView extends ItemView {
 	/** Remove every card from the canvas so the tray lists every section again. */
 	private clearCanvas(): void {
 		const placed = Object.keys(this.customPlacements).length;
-		if (!placed) {
-			new Notice("The canvas is already clear.");
-			return;
-		}
+		if (!placed) return;
 		this.customPlacements = {};
 		this.persistCustom();
 		this.applyCustomLayout();
@@ -2332,9 +2329,16 @@ export class SectionCardsView extends ItemView {
 
 		// Permanent tray controls: Clear (everything back to this list) and the sorts.
 		const actions = this.trayEl.createDiv({ cls: "section-cards-tray-actions" });
-		const clearBtn = actions.createEl("button", { cls: "section-cards-tray-clear", text: "Clear" });
+		const clearBtn = actions.createEl("button", { cls: "section-cards-tray-clear", text: "Clear Layout" });
 		clearBtn.setAttr("aria-label", "Remove every card from the canvas, back into this list");
-		clearBtn.addEventListener("click", () => this.clearCanvas());
+		clearBtn.addEventListener("click", () => {
+			const placed = Object.keys(this.customPlacements).length;
+			if (!placed) {
+				new Notice("The canvas is already clear.");
+				return;
+			}
+			new ConfirmClearModal(this.app, placed, () => this.clearCanvas()).open();
+		});
 		const sortRow = this.trayEl.createDiv({ cls: "section-cards-tray-sorts" });
 		const sorts: [SortOrder, string][] = [
 			["asc", "A→Z"],
@@ -2795,6 +2799,43 @@ class SwitchToDocumentOrderModal extends Modal {
 						void this.onSwitch();
 					});
 				// Enter switches, Esc cancels.
+				b.buttonEl.focus();
+			});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+class ConfirmClearModal extends Modal {
+	private readonly count: number;
+	private readonly onConfirm: () => void;
+
+	constructor(app: App, count: number, onConfirm: () => void) {
+		super(app);
+		this.count = count;
+		this.onConfirm = onConfirm;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Clear the layout?" });
+		contentEl.createEl("p", {
+			text: `Are you sure? This removes ${this.count === 1 ? "the 1 placed card" : `all ${this.count} placed cards`} from the canvas and returns ${this.count === 1 ? "it" : "them"} to the section list. Your notes are not changed.`,
+		});
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => {
+				b.setButtonText("Clear layout")
+					.setDestructive()
+					.setCta()
+					.onClick(() => {
+						this.close();
+						this.onConfirm();
+					});
+				// Enter confirms, Esc cancels.
 				b.buttonEl.focus();
 			});
 	}
