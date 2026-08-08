@@ -1,4 +1,4 @@
-import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock } from "./.tmp/main.js";
+import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, rectsCollide, findFreeSpot } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -712,6 +712,37 @@ t("sample vault: moving any task of the newest day to another day touches only t
       "source lost block " + b);
     assert.ok(!/\n\s*\n\s*\n\s*\n/.test(out.join("\n")), "no blank pile-up for block " + b);
   }
+});
+
+// ---------- Custom Grid placement ----------
+
+const R = (x, y, w, h) => ({ x, y, w, h });
+
+t("rectsCollide: overlap, touching, and near-touching all count within the gap", () => {
+  assert.ok(rectsCollide(R(0, 0, 100, 100), R(50, 50, 100, 100), 12), "overlap");
+  assert.ok(rectsCollide(R(0, 0, 100, 100), R(100, 0, 100, 100), 12), "edge-touching");
+  assert.ok(rectsCollide(R(0, 0, 100, 100), R(108, 0, 100, 100), 12), "inside the gap");
+  assert.ok(!rectsCollide(R(0, 0, 100, 100), R(113, 0, 100, 100), 12), "clear of the gap");
+  assert.ok(!rectsCollide(R(0, 0, 100, 100), R(0, 300, 100, 100), 12), "far apart");
+});
+
+t("findFreeSpot returns the request when it's legal, clamped to the canvas", () => {
+  assert.deepEqual(findFreeSpot(R(40, 60, 280, 200), [], 12), R(40, 60, 280, 200));
+  assert.deepEqual(findFreeSpot(R(-30, -5, 280, 200), [], 12), R(0, 0, 280, 200));
+});
+
+t("findFreeSpot marches down past occupied space", () => {
+  const placed = [R(0, 0, 300, 220)];
+  const spot = findFreeSpot(R(10, 10, 280, 200), placed, 12);
+  assert.equal(spot.x, 10, "x is kept");
+  assert.ok(spot.y >= 232, "cleared below the obstacle plus gap, got y=" + spot.y);
+  assert.ok(!placed.some((o) => rectsCollide(spot, o, 12)));
+});
+
+t("findFreeSpot threads a gap between two cards when one exists", () => {
+  const placed = [R(0, 0, 280, 100), R(0, 400, 280, 100)];
+  const spot = findFreeSpot(R(0, 90, 280, 150), placed, 12);
+  assert.ok(spot.y >= 112 && spot.y + 150 + 12 <= 400, "landed between, got y=" + spot.y);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

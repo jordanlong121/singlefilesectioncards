@@ -53,7 +53,7 @@ export type Placement = "top" | "logical" | "bottom";
  * - horizontal: one card per row, full width
  * - vertical: full-height cards in a row, scrolling sideways
  */
-export type Layout = "grid" | "aligned" | "tight" | "horizontal" | "vertical";
+export type Layout = "grid" | "aligned" | "tight" | "horizontal" | "vertical" | "custom";
 
 const SORT_LABELS: Record<SortOrder, string> = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 
@@ -64,6 +64,7 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["tight", "Tight", "Denser, narrower masonry columns"],
 	["horizontal", "Horizontal", "One card per row, full width"],
 	["vertical", "Vertical", "Full-height cards side by side, scrolling sideways"],
+	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
 ];
 
 /** What clicking a card's title bar does. */
@@ -86,7 +87,12 @@ interface SectionCardsSettings {
 	titleBarClick: TitleBarClick;
 	layout: Layout;
 	/** Remembered view per note, keyed by vault path. Lives here, never in the note. */
-	perFile: Record<string, ViewSettings>;
+	perFile: Record<string, PerFileView>;
+}
+
+/** A note's remembered view plus, for the Custom Grid, its card placements by heading. */
+export interface PerFileView extends ViewSettings {
+	customGrid?: Record<string, CardRect>;
 }
 
 /** The bit of view state that is remembered per note. */
@@ -653,6 +659,33 @@ export function computeTabEdit(text: string, selStart: number, selEnd: number, o
 	return { start: lineStart, end: regionEnd, insert, selStart: lineStart, selEnd: lineStart + insert.length };
 }
 
+/** A card's placement on the Custom Grid canvas, in px. */
+export interface CardRect {
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+}
+
+/** Cards on the canvas may neither overlap nor touch: `gap` px of air is required. */
+export function rectsCollide(a: CardRect, b: CardRect, gap: number): boolean {
+	return a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap;
+}
+
+/**
+ * The nearest legal spot at or below the requested position: the rect marches down in
+ * gap-sized steps until it clears every other card, falling back to below the lowest one.
+ */
+export function findFreeSpot(want: CardRect, others: CardRect[], gap: number): CardRect {
+	const spot: CardRect = { ...want, x: Math.max(0, Math.round(want.x)), y: Math.max(0, Math.round(want.y)) };
+	for (let i = 0; i < 4000; i++) {
+		if (!others.some((other) => rectsCollide(spot, other, gap))) return spot;
+		spot.y += gap;
+	}
+	const bottom = others.reduce((max, other) => Math.max(max, other.y + other.h), 0);
+	return { ...spot, y: bottom + gap };
+}
+
 /** One editor state: full text plus selection. */
 export interface EditorSnapshot {
 	value: string;
@@ -963,6 +996,7 @@ export class SectionCardsView extends ItemView {
 	private repack = debounce(() => {
 		this.layoutMasonry();
 		this.insertRowRules();
+		if (this.layout === "custom") this.validateCustomSizes();
 	}, 60, true);
 	/** The card currently blown up over the others, if any. */
 	private maximized: {
@@ -972,9 +1006,39 @@ export class SectionCardsView extends ItemView {
 		overlay: HTMLElement;
 		marker: Comment;
 		bodyMaxHeight: string;
+		inlineRect: { left: string; top: string; width: string; height: string };
 	} | null = null;
 	/** The card being dragged for reordering, if any. */
 	private dragging: { section: Section } | null = null;
+	/** Custom Grid: placements for the current note, keyed by heading line. */
+	private customPlacements: Record<string, CardRect> = {};
+	private trayEl!: HTMLElement;
+	/** Custom Grid: the in-flight pointer drag (tile onto canvas, or placed card). */
+	private pointerDrag: {
+		kind: "tile" | "card";
+		key: string;
+		label: string;
+		w: number;
+		h: number;
+		offX: number;
+		offY: number;
+		startX: number;
+		startY: number;
+		active: boolean;
+		ghost: HTMLElement | null;
+		onMove: (evt: PointerEvent) => void;
+		onUp: (evt: PointerEvent) => void;
+	} | null = null;
+	private swallowNextClick = false;
+	private persistCustom = debounce(() => {
+		const file = this.getFile();
+		if (!file) return;
+		void this.plugin.saveCustomGrid(file.path, this.customPlacements, {
+			layout: this.layout,
+			headingLevel: this.headingLevel,
+			sortOrder: this.sortOrder,
+		});
+	}, 400, true);
 	/** The block (task/paragraph) being dragged between cards, if any. */
 	private draggingBlock: {
 		holder: { section: Section };
@@ -1085,6 +1149,7 @@ export class SectionCardsView extends ItemView {
 			if (open) void open.finish(true);
 		});
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
+		this.trayEl = this.contentEl.createDiv({ cls: "section-cards-tray" });
 		this.registerWheelPan();
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
 			if (evt.key !== "Escape" || !this.maximized) return;
@@ -1155,7 +1220,7 @@ export class SectionCardsView extends ItemView {
 
 	/** The layout lives as a class on the view root so CSS can restyle grid *and* scrolling. */
 	private applyLayoutClass(): void {
-		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical"]) {
+		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical", "custom"]) {
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name);
 		}
 	}
@@ -1189,7 +1254,7 @@ export class SectionCardsView extends ItemView {
 	/** The card-body height cap for the current layout; also re-applied to reused cards. */
 	private applyBodyHeight(bodyEl: HTMLElement | null): void {
 		if (!bodyEl) return;
-		if (this.layout === "vertical") {
+		if (this.layout === "vertical" || this.layout === "custom") {
 			bodyEl.setCssStyles({ maxHeight: "" });
 			return;
 		}
@@ -1271,7 +1336,7 @@ export class SectionCardsView extends ItemView {
 
 		// Masonry spans only apply to the packed column layouts. The aligned grid wants
 		// real auto rows, and the sideways layout is a flex row, so clear any leftovers.
-		if (this.layout === "vertical" || this.layout === "aligned") {
+		if (this.layout === "vertical" || this.layout === "aligned" || this.layout === "custom") {
 			for (const card of Array.from(grid.children) as HTMLElement[]) card.setCssStyles({ gridRowEnd: "" });
 			return;
 		}
@@ -1603,6 +1668,13 @@ export class SectionCardsView extends ItemView {
 		this.prepareBodies();
 		this.layoutMasonry();
 		this.insertRowRules();
+
+		// Custom Grid: adopt this note's placements and drop any for vanished headings.
+		this.customPlacements = { ...this.plugin.getCustomGrid(file.path) };
+		for (const key of Object.keys(this.customPlacements)) {
+			if (!this.cardsByHeading.has(key)) delete this.customPlacements[key];
+		}
+		this.applyCustomLayout();
 		this.observeCards();
 		if (deferred.length) this.scheduleDeferredRenders(deferred, gen);
 
@@ -1610,6 +1682,16 @@ export class SectionCardsView extends ItemView {
 			const target = this.cardsByHeading.get(this.pendingEditHeading);
 			this.pendingEditHeading = null;
 			if (target) {
+				// On the canvas an unplaced card is invisible; give a new one a spot first.
+				if (this.layout === "custom" && !this.customPlacements[target.section.headingRaw]) {
+					this.customPlacements[target.section.headingRaw] = findFreeSpot(
+						{ x: 24, y: 24, w: 280, h: 200 },
+						this.otherPlacements(target.section.headingRaw),
+						12,
+					);
+					this.persistCustom();
+					this.applyCustomLayout();
+				}
 				target.el.scrollIntoView({ block: "center" });
 				this.startEditing(target.el, file, target.section);
 			}
@@ -1643,6 +1725,23 @@ export class SectionCardsView extends ItemView {
 		header.addClass(titleClick === "maximize" ? "is-click-big" : "is-click-edit");
 		header.createDiv({ cls: "section-card-title", text: section.title || "(untitled)" });
 
+		// On the canvas, dragging the title bar repositions the card (buttons excluded).
+		header.addEventListener("pointerdown", (evt) => {
+			if (this.layout !== "custom" || !card.hasClass("is-placed")) return;
+			if (card.hasClass("is-editing") || this.isMaximized()) return;
+			if ((evt.target as HTMLElement | null)?.closest("button")) return;
+			const placement = this.customPlacements[holder.section.headingRaw];
+			if (!placement) return;
+			this.startPointerDrag(
+				evt,
+				"card",
+				holder.section.headingRaw,
+				holder.section.title || "(untitled)",
+				card.getBoundingClientRect(),
+				{ w: placement.w, h: placement.h },
+			);
+		});
+
 		// The title bar's own action. "edit" falls through to the card handler below.
 		if (titleClick === "maximize") {
 			header.addEventListener("click", (evt) => {
@@ -1651,6 +1750,14 @@ export class SectionCardsView extends ItemView {
 				this.toggleMaximized(card);
 			});
 		}
+
+		const untrayBtn = header.createEl("button", { cls: "section-card-untray" });
+		setIcon(untrayBtn, "x");
+		untrayBtn.setAttr("aria-label", "Remove from the canvas (back to the list)");
+		untrayBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.untrayCard(holder.section.headingRaw);
+		});
 
 		const deleteBtn = header.createEl("button", { cls: "section-card-delete" });
 		setIcon(deleteBtn, "trash-2");
@@ -1794,6 +1901,7 @@ export class SectionCardsView extends ItemView {
 				evt.preventDefault();
 				return;
 			}
+			evt.stopPropagation(); // keep the app's global drag handling out of card drags
 			if (this.sortOrder !== "doc") {
 				evt.preventDefault();
 				new SwitchToDocumentOrderModal(this.app, SORT_LABELS[this.sortOrder], async () => {
@@ -1910,7 +2018,17 @@ export class SectionCardsView extends ItemView {
 			if (evt.target === overlay) this.closeMaximized();
 		});
 
-		this.maximized = { card, body, button, overlay, marker, bodyMaxHeight: body.style.maxHeight };
+		this.maximized = {
+			card,
+			body,
+			button,
+			overlay,
+			marker,
+			bodyMaxHeight: body.style.maxHeight,
+			inlineRect: { left: card.style.left, top: card.style.top, width: card.style.width, height: card.style.height },
+		};
+		// Canvas placement is inline geometry, which would misplace the card in the overlay.
+		card.setCssStyles({ left: "", top: "", width: "", height: "" });
 
 		// If this card's body render was deferred past the initial batch, do it now.
 		const owed = this.cardEntries.find((entry) => entry.el === card);
@@ -1938,6 +2056,7 @@ export class SectionCardsView extends ItemView {
 		this.maximized = null;
 
 		open.card.removeClass("is-maximized");
+		open.card.setCssStyles(open.inlineRect);
 		open.body.setCssStyles({ maxHeight: open.bodyMaxHeight });
 		setIcon(open.button, "move");
 		open.button.setAttr("aria-label", "Make this card big · drag to reorder");
@@ -1959,6 +2078,192 @@ export class SectionCardsView extends ItemView {
 		if (!key) return true; // nothing distinctive to compare
 		const dom = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 		return dom.includes(key);
+	}
+
+	/** Every placed rect except the one being moved. */
+	private otherPlacements(except: string): CardRect[] {
+		return Object.entries(this.customPlacements)
+			.filter(([key]) => key !== except)
+			.map(([, rect]) => rect);
+	}
+
+	/** Begin a pointer-driven drag of a tray tile or a placed card. */
+	private startPointerDrag(
+		evt: PointerEvent,
+		kind: "tile" | "card",
+		key: string,
+		label: string,
+		grabbed: DOMRect,
+		size: { w: number; h: number },
+	): void {
+		if (evt.button !== 0 || this.pointerDrag) return;
+		evt.preventDefault();
+		const drag = {
+			kind,
+			key,
+			label,
+			w: size.w,
+			h: size.h,
+			offX: Math.min(evt.clientX - grabbed.left, size.w - 24),
+			offY: Math.min(evt.clientY - grabbed.top, size.h - 24),
+			startX: evt.clientX,
+			startY: evt.clientY,
+			active: false,
+			ghost: null as HTMLElement | null,
+			onMove: (e: PointerEvent) => this.pointerDragMove(e),
+			onUp: (e: PointerEvent) => this.pointerDragEnd(e),
+		};
+		this.pointerDrag = drag;
+		window.addEventListener("pointermove", drag.onMove);
+		window.addEventListener("pointerup", drag.onUp);
+		window.addEventListener("pointercancel", drag.onUp);
+	}
+
+	private pointerDragMove(evt: PointerEvent): void {
+		const drag = this.pointerDrag;
+		if (!drag) return;
+		if (!drag.active) {
+			// A real drag needs intent; tiny movements stay clicks.
+			if (Math.hypot(evt.clientX - drag.startX, evt.clientY - drag.startY) < 5) return;
+			drag.active = true;
+			const ghost = document.body.createDiv({ cls: "sc-pointer-ghost" });
+			ghost.setText(drag.label);
+			if (drag.kind === "card") {
+				ghost.setCssStyles({ width: `${drag.w}px`, height: `${drag.h}px` });
+			}
+			drag.ghost = ghost;
+		}
+		drag.ghost?.setCssStyles({
+			left: `${evt.clientX - Math.min(drag.offX, 140)}px`,
+			top: `${evt.clientY - Math.min(drag.offY, 20)}px`,
+		});
+		const canvas = this.gridEl.getBoundingClientRect();
+		const overCanvas =
+			evt.clientX >= canvas.left && evt.clientX <= canvas.right && evt.clientY >= canvas.top && evt.clientY <= canvas.bottom;
+		this.gridEl.toggleClass("is-drop-target", overCanvas);
+	}
+
+	private pointerDragEnd(evt: PointerEvent): void {
+		const drag = this.pointerDrag;
+		if (!drag) return;
+		this.pointerDrag = null;
+		window.removeEventListener("pointermove", drag.onMove);
+		window.removeEventListener("pointerup", drag.onUp);
+		window.removeEventListener("pointercancel", drag.onUp);
+		drag.ghost?.remove();
+		this.gridEl.removeClass("is-drop-target");
+		if (!drag.active) return; // it was just a click — let it be one
+
+		this.swallowNextClick = true;
+		window.setTimeout(() => (this.swallowNextClick = false), 300);
+
+		const canvas = this.gridEl.getBoundingClientRect();
+		const overCanvas =
+			evt.clientX >= canvas.left && evt.clientX <= canvas.right && evt.clientY >= canvas.top && evt.clientY <= canvas.bottom;
+
+		if (overCanvas) {
+			const px = evt.clientX - canvas.left + this.gridEl.scrollLeft;
+			const py = evt.clientY - canvas.top + this.gridEl.scrollTop;
+			const want: CardRect = {
+				x: px - Math.min(drag.offX, 140),
+				y: py - Math.min(drag.offY, 20),
+				w: drag.w,
+				h: drag.h,
+			};
+			this.customPlacements[drag.key] = findFreeSpot(want, this.otherPlacements(drag.key), 12);
+			this.persistCustom();
+			this.applyCustomLayout();
+			return;
+		}
+
+		// A placed card released over the tray goes back to it.
+		if (drag.kind === "card") {
+			const tray = this.trayEl.getBoundingClientRect();
+			const overTray =
+				evt.clientX >= tray.left && evt.clientX <= tray.right && evt.clientY >= tray.top && evt.clientY <= tray.bottom;
+			if (overTray) this.untrayCard(drag.key);
+		}
+	}
+
+	/** Return a placed card to the tray. */
+	private untrayCard(headingRaw: string): void {
+		delete this.customPlacements[headingRaw];
+		this.persistCustom();
+		this.applyCustomLayout();
+	}
+
+	/** Position placed cards, hide trayed ones, and rebuild the tray list. */
+	private applyCustomLayout(): void {
+		if (this.layout !== "custom") {
+			this.trayEl.empty();
+			// Leaving the canvas restores native drag for card reordering.
+			for (const entry of this.cardEntries) entry.el.draggable = true;
+			return;
+		}
+		let maxBottom = 0;
+		let maxRight = 0;
+		this.trayEl.empty();
+		this.trayEl.createDiv({ cls: "section-cards-tray-hint", text: "Drag a section onto the canvas" });
+
+		for (const entry of this.cardEntries) {
+			const key = entry.holder.section.headingRaw;
+			const rect = this.customPlacements[key];
+			if (rect) {
+				entry.el.addClass("is-placed");
+				entry.el.draggable = false; // pointer drag owns the canvas; native drag is off
+				entry.el.setCssStyles({
+					left: `${rect.x}px`,
+					top: `${rect.y}px`,
+					width: `${rect.w}px`,
+					height: `${rect.h}px`,
+				});
+				maxBottom = Math.max(maxBottom, rect.y + rect.h);
+				maxRight = Math.max(maxRight, rect.x + rect.w);
+			} else {
+				entry.el.removeClass("is-placed");
+				entry.el.draggable = false;
+				const tile = this.trayEl.createDiv({
+					cls: "section-cards-tray-tile",
+					text: entry.holder.section.title || "(untitled)",
+				});
+				tile.addEventListener("pointerdown", (evt) => {
+					this.startPointerDrag(
+						evt,
+						"tile",
+						key,
+						entry.holder.section.title || "(untitled)",
+						tile.getBoundingClientRect(),
+						{ w: 280, h: 200 },
+					);
+				});
+			}
+		}
+		if (!this.trayEl.querySelector(".section-cards-tray-tile")) {
+			this.trayEl.createDiv({ cls: "section-cards-tray-hint", text: "Every section is on the canvas." });
+		}
+		// Absolutely positioned cards define the scroll extent; keep breathing room.
+		this.gridEl.setCssStyles({ minHeight: `${maxBottom + 80}px`, minWidth: `${maxRight + 40}px` });
+	}
+
+	/** Custom Grid: accept a card's CSS resize unless it would collide, else revert it. */
+	private validateCustomSizes(): void {
+		let changed = false;
+		for (const entry of this.cardEntries) {
+			const key = entry.holder.section.headingRaw;
+			const stored = this.customPlacements[key];
+			if (!stored || !entry.el.hasClass("is-placed")) continue;
+			const w = entry.el.offsetWidth;
+			const h = entry.el.offsetHeight;
+			if (Math.abs(w - stored.w) < 2 && Math.abs(h - stored.h) < 2) continue;
+			const proposed: CardRect = { ...stored, w, h };
+			if (this.otherPlacements(key).some((other) => rectsCollide(proposed, other, 12))) {
+				entry.el.setCssStyles({ width: `${stored.w}px`, height: `${stored.h}px` });
+			} else {
+				this.customPlacements[key] = proposed;
+				changed = true;
+			}
+		}
+		if (changed) this.persistCustom();
 	}
 
 	/** Normalise a source line / DOM text for the drag-start sanity check. */
@@ -2719,7 +3024,21 @@ export default class SectionCardsPlugin extends Plugin {
 		) {
 			return;
 		}
-		this.settings.perFile[path] = view;
+		// The Custom Grid placements ride along; changing the view must not drop them.
+		this.settings.perFile[path] = { ...view, customGrid: current?.customGrid };
+		await this.saveSettings();
+	}
+
+	getCustomGrid(path: string): Record<string, CardRect> {
+		return this.settings.perFile?.[path]?.customGrid ?? {};
+	}
+
+	async saveCustomGrid(path: string, placements: Record<string, CardRect>, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		current.customGrid = placements;
+		this.settings.perFile[path] = current;
 		await this.saveSettings();
 	}
 

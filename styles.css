@@ -362,6 +362,161 @@
 	flex: 0 0 auto;
 }
 
+/* ---------- Custom Grid: freeform canvas + tray ---------- */
+
+/* Toolbar spans the top; canvas left, tray right; each pane scrolls itself. */
+.workspace-leaf-content .view-content.section-cards-view.is-layout-custom {
+	display: grid;
+	grid-template-columns: 1fr 232px;
+	grid-template-rows: auto 1fr;
+	overflow: hidden;
+}
+
+.is-layout-custom .section-cards-toolbar {
+	grid-column: 1 / -1;
+	position: static;
+}
+
+/* The canvas: subtle dot pattern, its own scrolling, placements are absolute. */
+.is-layout-custom .section-cards-grid {
+	grid-column: 1;
+	grid-row: 2;
+	display: block;
+	position: relative;
+	overflow: auto;
+	padding: 0;
+	background-image: radial-gradient(circle, rgba(var(--mono-rgb-100), 0.13) 1px, transparent 1.5px);
+	background-size: 24px 24px;
+}
+
+.is-layout-custom .section-cards-grid.is-drop-target {
+	outline: 2px dashed var(--interactive-accent);
+	outline-offset: -2px;
+}
+
+/* The tray of unplaced sections. */
+.section-cards-tray {
+	display: none;
+}
+
+.is-layout-custom .section-cards-tray {
+	grid-column: 2;
+	grid-row: 2;
+	display: block;
+	overflow-y: auto;
+	padding: 8px;
+	border-left: 1px solid var(--sc-line);
+	background-color: var(--sc-bar);
+	background-image: linear-gradient(var(--sc-header), var(--sc-header));
+}
+
+.section-cards-tray-hint {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	padding: 4px 4px 8px;
+}
+
+.section-cards-tray-tile {
+	padding: 8px 10px;
+	margin-bottom: 6px;
+	border: 1px solid var(--sc-line);
+	border-radius: 6px;
+	background-color: var(--sc-surface);
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	cursor: grab;
+}
+
+.section-cards-tray-tile:hover {
+	border-color: var(--interactive-accent);
+}
+
+.section-cards-tray-tile {
+	touch-action: none; /* pointer dragging owns the gesture */
+}
+
+/* The floating ghost that follows the pointer during a canvas drag. */
+.sc-pointer-ghost {
+	position: fixed;
+	z-index: 10000;
+	pointer-events: none;
+	padding: 8px 12px;
+	border: 2px solid var(--interactive-accent);
+	border-radius: 8px;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	box-shadow: 0 8px 32px rgba(var(--mono-rgb-0), 0.45);
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	opacity: 0.9;
+}
+
+/* Cards default to hidden on the canvas; placing one shows it at its rect,
+   with the browser's own resize handle. The maximized card is exempt. */
+.is-layout-custom .section-card {
+	display: none;
+}
+
+.is-layout-custom .section-card.is-placed,
+.is-layout-custom .section-card.is-maximized {
+	display: flex;
+}
+
+.is-layout-custom .section-card.is-placed .section-card-header {
+	cursor: grab;
+	touch-action: none;
+}
+
+.is-layout-custom .section-card.is-placed {
+	position: absolute;
+	margin: 0;
+	resize: both;
+	min-width: 200px;
+	min-height: 120px;
+}
+
+.is-layout-custom .section-card.is-placed .section-card-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	max-height: none;
+}
+
+/* The Remove button exists on every card but only shows on placed canvas cards. */
+.section-card-untray {
+	display: none;
+}
+
+.is-layout-custom .section-card.is-placed .section-card-untray {
+	display: block;
+	flex: 0 0 auto;
+	padding: 2px 7px;
+	line-height: 1;
+	opacity: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+}
+
+.is-layout-custom .section-card.is-placed:hover .section-card-untray {
+	opacity: 1;
+}
+
+.section-card-untray:hover {
+	color: var(--text-error);
+}
+
+.section-card-untray svg {
+	width: 13px;
+	height: 13px;
+}
+
 /* ---------- drag a block (task/paragraph) between cards ---------- */
 
 /* Blocks are grabbable; a faint tint on hover says so. */
