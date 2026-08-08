@@ -11,12 +11,15 @@ the source `.md` file.
 
 **[Install it from the Obsidian community plugin directory →](https://community.obsidian.md/plugins/single-file-section-cards)**
 
+![Custom Grid: a freeform, zoomable canvas for your sections](screenshots/custom.png)
+
 ![Layouts, editing, and drag-and-drop in 20 seconds](screenshots/demo.gif)
 
 ## What it does
 
 - **One card per heading.** Pick which level becomes a card (H1–H6); deeper headings stay nested
-  inside their parent card. Five layouts, three sort orders (A→Z, Z→A, document), today's card
+  inside their parent card. Six layouts — including a freeform Custom Grid canvas — three sort
+  orders (A→Z, Z→A, document), today's card
   highlighted when headings are dates — and every note remembers its own view.
 - **Work directly on the cards.** Click a card to edit its raw markdown (`Ctrl/⌘+Enter` saves,
   `Esc` cancels, `Tab` indents), tick task checkboxes — with optional `✅ 2026-08-06` done
@@ -38,6 +41,22 @@ in the view — over the cards or over the toolbar. A card whose content overflo
 until it reaches its end.
 
 ![Vertical](screenshots/vertical.png)
+
+### Custom Grid
+
+A freeform canvas. Every section starts as a heading-only tile in the column on the right — drag
+one onto the dot-patterned canvas and it becomes a full card you can place anywhere, move by its
+title bar, and resize by its corner grip. Cards snap to the dot grid (a dashed preview shows where
+a drag or resize will land, amber when the no-overlap rule will nudge it), and may never overlap
+or touch. The ✕ in a card's corner — or dragging it onto the column — returns it to the list.
+
+The right column keeps permanent controls: **Clear Layout** (with confirmation) returns every card
+to the list, the **A→Z / Z→A / Doc** buttons re-sort the sections, and today's heading is
+highlighted. Zoom controls in the canvas's bottom-left go from 40% to 160%; scroll bars run in
+every direction and **middle-click drag pans**. Placements and zoom are remembered per note in the
+plugin's data — never in your notes.
+
+![Custom Grid](screenshots/custom.png)
 
 ### Grid
 
