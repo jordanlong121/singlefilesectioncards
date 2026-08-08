@@ -11,7 +11,7 @@ the source `.md` file.
 
 **[Install it from the Obsidian community plugin directory →](https://community.obsidian.md/plugins/single-file-section-cards)**
 
-![Grid view](screenshots/grid.png)
+![Layouts, editing, and drag-and-drop in 20 seconds](screenshots/demo.gif)
 
 ## What it does
 
