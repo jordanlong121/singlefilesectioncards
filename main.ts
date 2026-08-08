@@ -1921,6 +1921,20 @@ export class SectionCardsView extends ItemView {
 			void this.toggleTask(card, file, holder.section, bodyEl, box);
 		});
 
+		// A native resize drag starts in the grip corner and ends with a click on the
+		// card, which used to open the editor. Presses in the grip zone arm the same
+		// click-swallow the pointer drags use — at pointerup, so drag length can't matter.
+		card.addEventListener("pointerdown", (evt) => {
+			if (this.layout !== "custom" || !card.hasClass("is-placed")) return;
+			const rect = card.getBoundingClientRect();
+			if (evt.clientX < rect.right - 28 || evt.clientY < rect.bottom - 28) return;
+			const arm = () => {
+				this.swallowNextClick = true;
+				window.setTimeout(() => (this.swallowNextClick = false), 300);
+			};
+			window.addEventListener("pointerup", arm, { once: true });
+		});
+
 		card.addEventListener("click", (evt) => {
 			const target = evt.target as HTMLElement;
 			// Let links and internal-link clicks behave normally.

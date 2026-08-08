@@ -598,8 +598,11 @@
 
 .is-layout-custom .section-card.is-placed .section-card-untray {
 	display: block;
+	/* Sits at the far left of the title bar; the title shifts right after it. */
+	order: -1;
+	margin-right: 2px;
 	flex: 0 0 auto;
-	padding: 2px 7px;
+	padding: 4px 8px;
 	line-height: 1;
 	opacity: 0;
 	background: transparent;
@@ -616,8 +619,8 @@
 }
 
 .section-card-untray svg {
-	width: 13px;
-	height: 13px;
+	width: 19px;
+	height: 19px;
 }
 
 /* ---------- drag a block (task/paragraph) between cards ---------- */
