@@ -605,7 +605,9 @@
 	max-height: none;
 }
 
-/* A resize grip you can actually see: diagonal ridges in the bottom-right corner.
+/* A resize grip you can actually see: three diagonal ridges of shrinking length in
+   the bottom-right corner. Each layer is a square anchored at the corner whose 135°
+   stripe runs corner-to-corner, so the lines form a triangle with no clipping.
    pointer-events: none keeps the native resizer underneath doing the actual work. */
 .is-layout-custom .section-card.is-placed::after {
 	content: "";
@@ -615,21 +617,54 @@
 	width: 20px;
 	height: 20px;
 	pointer-events: none;
-	clip-path: polygon(100% 0, 100% 100%, 0 100%);
-	background: repeating-linear-gradient(
-		135deg,
-		transparent 0 4px,
-		var(--text-faint) 4px 6px
-	);
+	background:
+		linear-gradient(
+				135deg,
+				transparent calc(50% - 1px),
+				var(--text-faint) calc(50% - 1px) calc(50% + 1px),
+				transparent calc(50% + 1px)
+			)
+			bottom right / 20px 20px no-repeat,
+		linear-gradient(
+				135deg,
+				transparent calc(50% - 1px),
+				var(--text-faint) calc(50% - 1px) calc(50% + 1px),
+				transparent calc(50% + 1px)
+			)
+			bottom right / 13px 13px no-repeat,
+		linear-gradient(
+				135deg,
+				transparent calc(50% - 1px),
+				var(--text-faint) calc(50% - 1px) calc(50% + 1px),
+				transparent calc(50% + 1px)
+			)
+			bottom right / 6px 6px no-repeat;
 	opacity: 0.8;
 }
 
 .is-layout-custom .section-card.is-placed:hover::after {
-	background: repeating-linear-gradient(
-		135deg,
-		transparent 0 4px,
-		var(--interactive-accent) 4px 6px
-	);
+	background:
+		linear-gradient(
+				135deg,
+				transparent calc(50% - 1px),
+				var(--interactive-accent) calc(50% - 1px) calc(50% + 1px),
+				transparent calc(50% + 1px)
+			)
+			bottom right / 20px 20px no-repeat,
+		linear-gradient(
+				135deg,
+				transparent calc(50% - 1px),
+				var(--interactive-accent) calc(50% - 1px) calc(50% + 1px),
+				transparent calc(50% + 1px)
+			)
+			bottom right / 13px 13px no-repeat,
+		linear-gradient(
+				135deg,
+				transparent calc(50% - 1px),
+				var(--interactive-accent) calc(50% - 1px) calc(50% + 1px),
+				transparent calc(50% + 1px)
+			)
+			bottom right / 6px 6px no-repeat;
 	opacity: 1;
 }
 
