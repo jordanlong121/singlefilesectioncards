@@ -26,6 +26,10 @@ day. This plugin turns those headings into a card wall you can scan, sort, and t
 - **Work directly on the cards.** Click a card to edit its raw markdown (`Ctrl/⌘+Enter` saves,
   `Esc` cancels, `Tab` indents), tick task checkboxes — with optional `✅ 2026-08-06` done
   dates — create a new card pre-filled with today's date, or delete one after a confirmation.
+- **Pin and quick add.** The pin button keeps a card at the top regardless of sort order, in every
+  layout and view of that note — and by default the pinned band stays on screen while the rest
+  scrolls (beside the row in Vertical). The `+` button pops a text box that appends what you type
+  to the bottom of the section (or the top), without opening the editor.
 - **Drag and drop.** Reorder cards in Document order, or drag a task or paragraph onto another
   card in any view — a task brings its sub-items along.
 - **Navigate as cards.** Wikilinks switch the tab to the linked note's card wall, ↗ opens the
@@ -86,6 +90,24 @@ One card per row, full pane width.
 
 ![Horizontal](screenshots/horizontal.png)
 
+## Pinned cards
+
+Every card's title bar has a pin button. Pinning pulls the card into a pinned section at the top of
+the wall, regardless of the sort order — within the pinned section and below it, cards still follow
+the current sort. Pins are remembered per note, so they hold across every layout, every open view
+of that note, and restarts. Click the pin again to unpin.
+
+With **Keep pinned cards on screen** (on by default), the pinned section doesn't scroll away:
+
+- **Grid, Grid Aligned, Tight, Horizontal** — the pinned cards sit in a band that sticks just below
+  the toolbar while the rest of the cards scroll beneath it.
+- **Vertical** — the pinned cards form a static column on the left, scrolling on its own if it
+  outgrows the pane, while the card row scrolls sideways next to it.
+- **Custom Grid** — not applied; cards on the canvas stay exactly where you placed them.
+
+With the setting off, the pinned section still leads the wall but scrolls with it, separated by a
+divider. Pins are keyed to the heading line, so renaming a section unpins it.
+
 ## Usage
 
 - Click the deck-of-cards icon in the ribbon, or run one of the commands:
@@ -104,6 +126,7 @@ One card per row, full pane width.
 | Heading level | Which heading rank becomes a card (H1–H6) |
 | Headings contain | `Dates` highlights today's card; `Non-dates` turns that off |
 | Jump to today's card | Scroll to today's card when a note opens in the view (on by default; needs date headings) |
+| Keep pinned cards on screen | Pinned cards stay on screen while the rest scroll — below the toolbar, or left of the row in Vertical (on by default; not in Custom Grid) |
 | Default sort | A→Z, Z→A, or document order |
 | Default layout | Grid, Grid Aligned, Tight, Horizontal, Vertical, Custom Grid |
 | Default heading name | Date format used to pre-fill "New card" |

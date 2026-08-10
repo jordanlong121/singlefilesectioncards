@@ -1,4 +1,4 @@
-import { parseSections, sortSections, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, rectsCollide, findFreeSpot, snapRect } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, rectsCollide, findFreeSpot, snapRect } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -760,6 +760,73 @@ t("findFreeSpot with a snap step keeps snapped rects on the grid", () => {
   assert.equal(spot.x % 24, 0, "x on grid");
   assert.equal(spot.y % 24, 0, "y on grid, got " + spot.y);
   assert.ok(!placed.some((o) => rectsCollide(spot, o, 12)));
+});
+
+// ---------- pinned cards ----------
+
+const PINNED_DOC = L(`### 2026-08-01
+a
+### 2026-08-02
+b
+### 2026-08-03
+c
+### 2026-08-04
+d`);
+
+t("applyPinned pulls pinned sections to the front, keeping sort order in both groups", () => {
+  const secs = sortSections(parseSections(PINNED_DOC, 3), "desc");
+  const out = applyPinned(secs, ["### 2026-08-03", "### 2026-08-01"]);
+  assert.deepEqual(out.map((s) => s.title), ["2026-08-03", "2026-08-01", "2026-08-04", "2026-08-02"],
+    "pinned lead in desc order, the rest follow in desc order");
+});
+
+t("applyPinned ignores pins that match no section and leaves order alone when none match", () => {
+  const secs = sortSections(parseSections(PINNED_DOC, 3), "asc");
+  assert.deepEqual(applyPinned(secs, ["### gone"]).map((s) => s.title),
+    secs.map((s) => s.title));
+  assert.deepEqual(applyPinned(secs, ["### gone", "### 2026-08-04"]).map((s) => s.title),
+    ["2026-08-04", "2026-08-01", "2026-08-02", "2026-08-03"]);
+});
+
+t("applyPinned with every section pinned is the plain sort order", () => {
+  const secs = sortSections(parseSections(PINNED_DOC, 3), "asc");
+  const all = secs.map((s) => s.headingRaw);
+  assert.deepEqual(applyPinned(secs, all).map((s) => s.title), secs.map((s) => s.title));
+});
+
+// ---------- quick add ----------
+
+const QUICK_DOC = L(`### 2026-08-02
+- [ ] first
+- [ ] last
+
+### 2026-08-01
+old`);
+
+t("insertIntoSection bottom lands after the last content line, before the blank separator", () => {
+  const secs = parseSections(QUICK_DOC, 3);
+  const out = insertIntoSection(QUICK_DOC, secs[0], "- [ ] new task", "bottom");
+  assert.deepEqual(out.slice(0, 5), ["### 2026-08-02", "- [ ] first", "- [ ] last", "- [ ] new task", ""]);
+  assert.equal(out.length, QUICK_DOC.length + 1);
+});
+
+t("insertIntoSection top lands right under the heading", () => {
+  const secs = parseSections(QUICK_DOC, 3);
+  const out = insertIntoSection(QUICK_DOC, secs[0], "urgent", "top");
+  assert.deepEqual(out.slice(0, 3), ["### 2026-08-02", "urgent", "- [ ] first"]);
+});
+
+t("insertIntoSection keeps multi-line text and strips trailing whitespace", () => {
+  const secs = parseSections(QUICK_DOC, 3);
+  const out = insertIntoSection(QUICK_DOC, secs[1], "line one\nline two\n\n", "bottom");
+  assert.deepEqual(out.slice(-3), ["old", "line one", "line two"]);
+});
+
+t("insertIntoSection round-trips: the other section is untouched", () => {
+  const secs = parseSections(QUICK_DOC, 3);
+  const out = insertIntoSection(QUICK_DOC, secs[0], "x", "bottom");
+  const after = parseSections(out, 3);
+  assert.equal(after[1].raw, secs[1].raw);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
