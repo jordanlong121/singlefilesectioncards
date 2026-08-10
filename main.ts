@@ -88,6 +88,8 @@ interface SectionCardsSettings {
 	headingType: HeadingType;
 	/** Scroll today's card into view when a note first renders in the view. */
 	jumpToToday: boolean;
+	/** Keep the pinned band on screen while the rest of the cards scroll. */
+	stickyPinned: boolean;
 	taskDoneDate: boolean;
 	/** Whether ticking a task also strikes through the items nested beneath it. */
 	strikeNestedUnderDone: boolean;
@@ -103,6 +105,8 @@ interface SectionCardsSettings {
 export interface PerFileView extends ViewSettings {
 	customGrid?: Record<string, CardRect>;
 	customZoom?: number;
+	/** Headings pinned to the top of the card wall, in the order they were pinned. */
+	pinned?: string[];
 }
 
 /** The bit of view state that is remembered per note. */
@@ -121,6 +125,7 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	newCardPlacement: "logical",
 	headingType: "dates",
 	jumpToToday: true,
+	stickyPinned: true,
 	taskDoneDate: true,
 	strikeNestedUnderDone: true,
 	titleBarClick: "maximize",
@@ -226,6 +231,18 @@ export function sortSections(sections: Section[], order: SortOrder): Section[] {
 	if (order === "asc") sorted.sort((a, b) => collator.compare(a.title, b.title));
 	else if (order === "desc") sorted.sort((a, b) => collator.compare(b.title, a.title));
 	return sorted;
+}
+
+/**
+ * Pull pinned sections to the front, keeping the incoming sort order within both the
+ * pinned group and the rest — pinning overrides *where* a card sits, not how it sorts.
+ */
+export function applyPinned(sections: Section[], pinned: string[]): Section[] {
+	if (!pinned.length) return sections;
+	const keys = new Set(pinned);
+	const pin = sections.filter((s) => keys.has(s.headingRaw));
+	if (!pin.length || pin.length === sections.length) return sections;
+	return [...pin, ...sections.filter((s) => !keys.has(s.headingRaw))];
 }
 
 /** First line after any frontmatter block — the top of the note's real content. */
@@ -909,6 +926,51 @@ async function moveSectionInFile(
 	return ok;
 }
 
+/** Where Quick Add drops its text within the section body. */
+export type QuickAddPlacement = "top" | "bottom";
+
+/**
+ * Insert text lines into a section's body: "top" goes right under the heading, "bottom"
+ * right after the last content line (before the blank separator, which endLine excludes).
+ */
+export function insertIntoSection(
+	lines: string[],
+	section: Section,
+	text: string,
+	where: QuickAddPlacement,
+): string[] {
+	const insert = text.replace(/\s+$/, "").split(/\r?\n/);
+	const at = where === "top" ? section.startLine + 1 : section.endLine;
+	const out = lines.slice();
+	out.splice(at, 0, ...insert);
+	return out;
+}
+
+/** Quick Add's write: re-locates the section at write time like every other write. */
+async function quickAddToSection(
+	app: App,
+	file: TFile,
+	level: number,
+	original: Section,
+	text: string,
+	where: QuickAddPlacement,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateSection(parseSections(lines, level), original);
+		if (!target) {
+			ok = false;
+			return data;
+		}
+		return insertIntoSection(lines, target, text, where).join(eol);
+	});
+
+	return ok;
+}
+
 /** Remove a section from the file, re-locating it at write time like every other write. */
 async function deleteSection(app: App, file: TFile, level: number, original: Section): Promise<boolean> {
 	let ok = true;
@@ -1056,6 +1118,10 @@ export class SectionCardsView extends ItemView {
 	private todayJumpedFor: string | null = null;
 	/** Set while the today-card jump may still need re-aiming after deferred bodies land. */
 	private todayJumpPending = false;
+	/** How many pinned cards lead the grid itself (0 when they're in the sticky band). */
+	private pinnedShown = 0;
+	/** The sticky band between toolbar and grid; empty unless "Keep pinned cards on screen" is on. */
+	private pinnedEl!: HTMLElement;
 	/** Custom Grid: the in-flight pointer drag (tile onto canvas, or placed card). */
 	private pointerDrag: {
 		kind: "tile" | "card";
@@ -1194,6 +1260,9 @@ export class SectionCardsView extends ItemView {
 			const open = this.activeEditor;
 			if (open) void open.finish(true);
 		});
+		// Sticky pinned band, between the toolbar and the grid — refresh parents pinned
+		// cards here when the setting is on, and CSS hides it while it's empty.
+		this.pinnedEl = this.contentEl.createDiv({ cls: "section-cards-pinned" });
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
 		// A user scroll or click cancels the pending today-card re-aim, so it can't
 		// yank the view away from wherever they have already navigated to.
@@ -1358,6 +1427,22 @@ export class SectionCardsView extends ItemView {
 		this.cardEntries = [];
 		this.cardsByHeading.clear();
 		this.gridEl.empty();
+		this.pinnedEl?.empty();
+	}
+
+	/** The sticky band sits just below the toolbar, whose height varies as it wraps. */
+	private updatePinnedOffset(): void {
+		if (!this.toolbarEl || !this.pinnedEl?.hasChildNodes()) return;
+		this.contentEl.setCssProps({ "--sc-toolbar-h": `${this.toolbarEl.offsetHeight}px` });
+	}
+
+	/** Sync a card's pinned look: the class plus the pin button's icon and label. */
+	private applyPinState(card: HTMLElement, pinned: boolean): void {
+		card.toggleClass("is-pinned", pinned);
+		const btn = card.querySelector<HTMLElement>(".section-card-pin");
+		if (!btn) return;
+		setIcon(btn, pinned ? "pin-off" : "pin");
+		btn.setAttr("aria-label", pinned ? "Unpin this card" : "Pin this card to the top");
 	}
 
 	/** Today's date keys, computed once per render instead of once per card. */
@@ -1381,8 +1466,9 @@ export class SectionCardsView extends ItemView {
 
 	/** Rendered task checkboxes come back disabled, and disabled inputs never fire clicks. */
 	private enableCheckboxes(): void {
+		// contentEl-scoped so cards in the sticky pinned band are covered too.
 		for (const box of Array.from(
-			this.gridEl.querySelectorAll<HTMLInputElement>(".section-card-body input[type=checkbox]"),
+			this.contentEl.querySelectorAll<HTMLInputElement>(".section-card-body input[type=checkbox]"),
 		)) {
 			box.removeAttribute("disabled");
 			box.removeAttribute("readonly");
@@ -1399,7 +1485,7 @@ export class SectionCardsView extends ItemView {
 	/** Post-render pass over every card body: live checkboxes + draggable blocks. */
 	private prepareBodies(): void {
 		this.enableCheckboxes();
-		for (const bodyEl of Array.from(this.gridEl.querySelectorAll<HTMLElement>(".section-card-body"))) {
+		for (const bodyEl of Array.from(this.contentEl.querySelectorAll<HTMLElement>(".section-card-body"))) {
 			for (const el of this.eligibleBlockEls(bodyEl)) {
 				el.draggable = true;
 				el.addClass("sc-block");
@@ -1509,10 +1595,18 @@ export class SectionCardsView extends ItemView {
 			.filter((t) => t.trim().length).length;
 		if (columns < 1 || columns >= cards.length) return;
 
-		for (let i = columns; i < cards.length; i += columns) {
-			const rule = createDiv();
-			rule.className = "section-cards-row-rule";
-			grid.insertBefore(rule, cards[i]);
+		// The pinned band ends at the pin rule and may not fill its last row, so the
+		// row count restarts beneath it instead of running straight through.
+		const bands =
+			this.pinnedShown > 0 && this.pinnedShown < cards.length
+				? [cards.slice(0, this.pinnedShown), cards.slice(this.pinnedShown)]
+				: [cards];
+		for (const band of bands) {
+			for (let i = columns; i < band.length; i += columns) {
+				const rule = createDiv();
+				rule.className = "section-cards-row-rule";
+				grid.insertBefore(rule, band[i]);
+			}
 		}
 	}
 
@@ -1525,6 +1619,8 @@ export class SectionCardsView extends ItemView {
 			// Resize feedback must be immediate; the debounced repack settles it after.
 			if (this.layout === "custom") this.previewCustomResize();
 			this.repack();
+			// A narrower pane wraps the toolbar taller; the sticky band rides below it.
+			this.updatePinnedOffset();
 		});
 		for (const card of Array.from(this.gridEl.children)) {
 			if ((card as HTMLElement).hasClass("section-card")) this.cardObserver.observe(card);
@@ -1709,7 +1805,19 @@ export class SectionCardsView extends ItemView {
 		}
 
 		const sections = parseSections(lines, this.headingLevel);
-		const ordered = sortSections(sections, this.sortOrder);
+		const pinnedList = this.plugin.getPinned(file.path);
+		const pinnedKeys = new Set(pinnedList);
+		const ordered = applyPinned(sortSections(sections, this.sortOrder), pinnedList);
+		const pinnedCount = pinnedKeys.size ? ordered.filter((s) => pinnedKeys.has(s.headingRaw)).length : 0;
+		// Sticky pins render in their own band between toolbar and grid. pinnedShown
+		// tracks only pins leading the grid itself — the divider and Grid Aligned's
+		// row math key off it, and neither applies to the band.
+		const stickyPinned =
+			this.plugin.settings.stickyPinned &&
+			pinnedCount > 0 &&
+			pinnedCount < ordered.length &&
+			this.layout !== "custom";
+		this.pinnedShown = stickyPinned ? 0 : pinnedCount;
 
 		this.countEl?.setText(
 			`${ordered.length} ${ordered.length === 1 ? "section" : "sections"} · H${this.headingLevel}`,
@@ -1726,7 +1834,7 @@ export class SectionCardsView extends ItemView {
 		// Helper elements go; the cards themselves are reconciled below, so an edit to one
 		// section rebuilds one card and every other card's rendered markdown is kept.
 		for (const stray of Array.from(
-			this.gridEl.querySelectorAll(".section-cards-row-rule, .section-cards-empty"),
+			this.gridEl.querySelectorAll(".section-cards-row-rule, .section-cards-pin-rule, .section-cards-empty"),
 		)) {
 			stray.remove();
 		}
@@ -1776,6 +1884,9 @@ export class SectionCardsView extends ItemView {
 			} else {
 				entry = this.renderCard(file, section, today);
 			}
+			// Reused cards keep their old pin state; a pin toggle re-renders with the same raw.
+			const isPinned = pinnedKeys.has(section.headingRaw);
+			if (entry.el.hasClass("is-pinned") !== isPinned) this.applyPinState(entry.el, isPinned);
 			queueBody(entry);
 			nextEntries.push(entry);
 			this.cardsByHeading.set(section.headingRaw, { el: entry.el, section });
@@ -1788,13 +1899,32 @@ export class SectionCardsView extends ItemView {
 		this.cardEntries = nextEntries;
 
 		// Put the DOM in section order; an unchanged run of cards doesn't move at all.
-		let cursor: ChildNode | null = this.gridEl.firstChild;
-		for (const entry of nextEntries) {
-			if (entry.el === cursor) {
-				cursor = cursor.nextSibling;
-				continue;
+		// With the sticky setting on, pinned cards parent into the band above the grid —
+		// insertBefore moves them back into the grid when it turns off or pins change.
+		const bands: [HTMLElement, CardEntry[]][] = stickyPinned
+			? [
+					[this.pinnedEl, nextEntries.slice(0, pinnedCount)],
+					[this.gridEl, nextEntries.slice(pinnedCount)],
+				]
+			: [[this.gridEl, nextEntries]];
+		for (const [container, entries] of bands) {
+			let cursor: ChildNode | null = container.firstChild;
+			for (const entry of entries) {
+				if (entry.el === cursor) {
+					cursor = cursor.nextSibling;
+					continue;
+				}
+				container.insertBefore(entry.el, cursor);
 			}
-			this.gridEl.insertBefore(entry.el, cursor);
+		}
+		if (stickyPinned) this.updatePinnedOffset();
+
+		// A full-width rule closes the pinned band; auto-placement can't put anything
+		// beside or above it, so the band holds even in the packed masonry layouts.
+		// (The canvas places cards absolutely, so a band makes no sense there.)
+		if (this.pinnedShown > 0 && this.pinnedShown < nextEntries.length && this.layout !== "custom") {
+			const rule = createDiv({ cls: "section-cards-pin-rule" });
+			this.gridEl.insertBefore(rule, nextEntries[this.pinnedShown].el);
 		}
 
 		// Pack once with what's laid out, again once the first markdown batch has landed.
@@ -1929,6 +2059,32 @@ export class SectionCardsView extends ItemView {
 			evt.stopPropagation();
 			this.untrayCard(holder.section.headingRaw);
 		});
+
+		const quickAddBtn = header.createEl("button", { cls: "section-card-quickadd" });
+		setIcon(quickAddBtn, "plus");
+		quickAddBtn.setAttr("aria-label", "Quick add text to this card");
+		quickAddBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			const target = holder.section;
+			new QuickAddModal(this.app, target.title || "(untitled)", async (text, where) => {
+				const ok = await quickAddToSection(this.app, file, this.headingLevel, target, text, where);
+				if (!ok) {
+					new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+				}
+				await this.refresh();
+			}).open();
+		});
+
+		const pinBtn = header.createEl("button", { cls: "section-card-pin" });
+		pinBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			void this.plugin.togglePin(file.path, holder.section.headingRaw, {
+				layout: this.layout,
+				headingLevel: this.headingLevel,
+				sortOrder: this.sortOrder,
+			});
+		});
+		this.applyPinState(card, this.plugin.getPinned(file.path).includes(section.headingRaw));
 
 		const deleteBtn = header.createEl("button", { cls: "section-card-delete" });
 		setIcon(deleteBtn, "trash-2");
@@ -2654,11 +2810,12 @@ export class SectionCardsView extends ItemView {
 	}
 
 	private clearBlockDropMarks(): void {
-		for (const el of Array.from(this.gridEl.querySelectorAll(".sc-blockdrop-before, .sc-blockdrop-after"))) {
+		// contentEl-scoped so drops marked on sticky-band cards clear too.
+		for (const el of Array.from(this.contentEl.querySelectorAll(".sc-blockdrop-before, .sc-blockdrop-after"))) {
 			el.removeClass("sc-blockdrop-before");
 			el.removeClass("sc-blockdrop-after");
 		}
-		for (const el of Array.from(this.gridEl.querySelectorAll(".sc-blockdrop-end"))) {
+		for (const el of Array.from(this.contentEl.querySelectorAll(".sc-blockdrop-end"))) {
 			el.removeClass("sc-blockdrop-end");
 		}
 	}
@@ -3225,6 +3382,56 @@ class NewCardModal extends Modal {
 	}
 }
 
+class QuickAddModal extends Modal {
+	private readonly title: string;
+	private readonly onSubmit: (text: string, where: QuickAddPlacement) => void | Promise<void>;
+	private box!: HTMLTextAreaElement;
+
+	constructor(app: App, title: string, onSubmit: (text: string, where: QuickAddPlacement) => void | Promise<void>) {
+		super(app);
+		this.title = title;
+		this.onSubmit = onSubmit;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.addClass("section-cards-quickadd-modal");
+		contentEl.createEl("h3", { text: `Quick add to “${this.title}”` });
+
+		this.box = contentEl.createEl("textarea", { cls: "section-cards-quickadd-input" });
+		this.box.setAttr("placeholder", "- [ ] A task, a note, any markdown…");
+		this.box.rows = 4;
+		// Enter makes a new line; Ctrl/⌘+Enter submits with the default placement.
+		this.box.addEventListener("keydown", (e) => {
+			if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+				e.preventDefault();
+				this.submit("bottom");
+			}
+		});
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => b.setButtonText("Add to top").onClick(() => this.submit("top")))
+			.addButton((b) => b.setButtonText("Add to bottom").setCta().onClick(() => this.submit("bottom")));
+
+		this.box.focus();
+	}
+
+	private submit(where: QuickAddPlacement): void {
+		const text = this.box.value.replace(/\s+$/, "");
+		if (!text.trim()) {
+			new Notice("Type something to add.");
+			return;
+		}
+		this.close();
+		void this.onSubmit(text, where);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
 class SectionCardsSettingTab extends PluginSettingTab {
 	plugin: SectionCardsPlugin;
 
@@ -3268,6 +3475,11 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				name: "Jump to today's card",
 				desc: "When a note opens in the cards view, scroll to the card whose heading is today's date. Needs headings to contain dates.",
 				control: { type: "toggle", key: "jumpToToday" },
+			},
+			{
+				name: "Keep pinned cards on screen",
+				desc: "Pinned cards stick just below the toolbar — or beside the cards in the Vertical layout — while the rest scroll. Doesn't apply to the Custom Grid canvas.",
+				control: { type: "toggle", key: "stickyPinned" },
 			},
 			{
 				name: "Default layout",
@@ -3367,7 +3579,7 @@ class SectionCardsSettingTab extends PluginSettingTab {
 		}
 		await super.setControlValue(key, value);
 		if (key === "strikeNestedUnderDone") this.plugin.applyBodyClasses();
-		if (key === "titleBarClick") this.plugin.refreshAllViews();
+		if (key === "titleBarClick" || key === "stickyPinned") this.plugin.refreshAllViews();
 	}
 }
 
@@ -3520,9 +3732,29 @@ export default class SectionCardsPlugin extends Plugin {
 		) {
 			return;
 		}
-		// The Custom Grid placements ride along; changing the view must not drop them.
-		this.settings.perFile[path] = { ...view, customGrid: current?.customGrid };
+		// Everything else stored per note (placements, zoom, pins) rides along; changing
+		// the view must not drop it.
+		this.settings.perFile[path] = { ...current, ...view };
 		await this.saveSettings();
+	}
+
+	getPinned(path: string): string[] {
+		return this.settings.perFile?.[path]?.pinned ?? [];
+	}
+
+	/** Pin or unpin a heading for a note; every open view re-renders with the new order. */
+	async togglePin(path: string, headingRaw: string, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		const pinned = current.pinned ?? [];
+		const at = pinned.indexOf(headingRaw);
+		if (at >= 0) pinned.splice(at, 1);
+		else pinned.push(headingRaw);
+		current.pinned = pinned;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+		this.refreshAllViews();
 	}
 
 	getCustomGrid(path: string): Record<string, CardRect> {
