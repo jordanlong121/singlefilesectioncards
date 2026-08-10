@@ -86,6 +86,8 @@ interface SectionCardsSettings {
 	newCardFormat: string;
 	newCardPlacement: Placement;
 	headingType: HeadingType;
+	/** Scroll today's card into view when a note first renders in the view. */
+	jumpToToday: boolean;
 	taskDoneDate: boolean;
 	/** Whether ticking a task also strikes through the items nested beneath it. */
 	strikeNestedUnderDone: boolean;
@@ -118,6 +120,7 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	newCardFormat: "YYYY-MM-DD, dddd",
 	newCardPlacement: "logical",
 	headingType: "dates",
+	jumpToToday: true,
 	taskDoneDate: true,
 	strikeNestedUnderDone: true,
 	titleBarClick: "maximize",
@@ -1049,6 +1052,10 @@ export class SectionCardsView extends ItemView {
 	private zoomLabelEl: HTMLElement | null = null;
 	/** Which note's placements are loaded; reloading on every refresh caused revert races. */
 	private placementsLoadedFor: string | null = null;
+	/** Which note has already had its today-card jump, so later refreshes don't re-scroll. */
+	private todayJumpedFor: string | null = null;
+	/** Set while the today-card jump may still need re-aiming after deferred bodies land. */
+	private todayJumpPending = false;
 	/** Custom Grid: the in-flight pointer drag (tile onto canvas, or placed card). */
 	private pointerDrag: {
 		kind: "tile" | "card";
@@ -1188,6 +1195,10 @@ export class SectionCardsView extends ItemView {
 			if (open) void open.finish(true);
 		});
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
+		// A user scroll or click cancels the pending today-card re-aim, so it can't
+		// yank the view away from wherever they have already navigated to.
+		this.registerDomEvent(this.contentEl, "wheel", () => (this.todayJumpPending = false), { passive: true });
+		this.registerDomEvent(this.contentEl, "pointerdown", () => (this.todayJumpPending = false));
 		this.canvasExtentEl = this.gridEl.createDiv({ cls: "section-cards-canvas-extent" });
 		this.trayEl = this.contentEl.createDiv({ cls: "section-cards-tray" });
 
@@ -1424,7 +1435,14 @@ export class SectionCardsView extends ItemView {
 				if (gen !== this.renderGeneration) return;
 				this.prepareBodies();
 				this.repack();
-				if (entries.length) idle(step);
+				if (entries.length) {
+					idle(step);
+				} else if (this.todayJumpPending) {
+					this.todayJumpPending = false;
+					this.gridEl
+						.querySelector(".section-card.is-today")
+						?.scrollIntoView({ block: "center", inline: "center" });
+				}
 			});
 		};
 		idle(step);
@@ -1813,6 +1831,22 @@ export class SectionCardsView extends ItemView {
 		this.applyCustomLayout();
 		this.observeCards();
 		if (deferred.length) this.scheduleDeferredRenders(deferred, gen);
+
+		// A note's first render in this view brings today's card into view. A pending
+		// edit or maximize means the user just made a card — that scroll wins instead.
+		this.todayJumpPending = false;
+		if (this.todayJumpedFor !== file.path) {
+			this.todayJumpedFor = file.path;
+			if (this.plugin.settings.jumpToToday && today && !this.pendingEditHeading && !this.pendingMaximizeHeading) {
+				const todayCard = this.gridEl.querySelector(".section-card.is-today");
+				if (todayCard) {
+					todayCard.scrollIntoView({ block: "center", inline: "center" });
+					// Deferred bodies grow the cards above and push today's card around,
+					// so the jump is re-aimed once they've all landed.
+					this.todayJumpPending = deferred.length > 0;
+				}
+			}
+		}
 
 		if (this.pendingEditHeading) {
 			const target = this.cardsByHeading.get(this.pendingEditHeading);
@@ -3229,6 +3263,11 @@ class SectionCardsSettingTab extends PluginSettingTab {
 					key: "headingType",
 					options: { dates: "Dates", text: "Non-dates (plain text)" },
 				},
+			},
+			{
+				name: "Jump to today's card",
+				desc: "When a note opens in the cards view, scroll to the card whose heading is today's date. Needs headings to contain dates.",
+				control: { type: "toggle", key: "jumpToToday" },
 			},
 			{
 				name: "Default layout",

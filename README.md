@@ -6,10 +6,10 @@ the source `.md` file. With the freeform **Custom Grid** canvas, it doubles as a
 dashboards, sticky notes, task management, and brainstorming — all stored as plain markdown in a
 single note.
 
-> **Made to pair with [Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes).**
-> That plugin keeps all your daily notes in a single file, one `### YYYY-MM-DD` heading per
-> day. This plugin turns those headings into a card wall you can scan, sort, and tick off. It works
-> on any note with headings, but that's the setup it was built for.
+While this is a standalone plugin that works on any note, it pairs nicely with
+[Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes).
+That plugin keeps all your daily notes in a single file, one `### YYYY-MM-DD` heading per
+day. This plugin turns those headings into a card wall you can scan, sort, and tick off.
 
 **[Install it from the Obsidian community plugin directory →](https://community.obsidian.md/plugins/single-file-section-cards)**
 
@@ -103,6 +103,7 @@ One card per row, full pane width.
 | Default note | Vault-relative path opened by the ribbon icon and command |
 | Heading level | Which heading rank becomes a card (H1–H6) |
 | Headings contain | `Dates` highlights today's card; `Non-dates` turns that off |
+| Jump to today's card | Scroll to today's card when a note opens in the view (on by default; needs date headings) |
 | Default sort | A→Z, Z→A, or document order |
 | Default layout | Grid, Grid Aligned, Tight, Horizontal, Vertical, Custom Grid |
 | Default heading name | Date format used to pre-fill "New card" |
