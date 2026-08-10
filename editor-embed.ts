@@ -14,6 +14,8 @@ import { EditorView, keymap, type ViewUpdate } from "@codemirror/view";
 
 export interface EmbeddedEditorOptions {
 	value: string;
+	/** Live preview renders markdown as you type; source shows it with highlighting. */
+	mode: "live" | "source";
 	/** Mod+Enter inside the editor. */
 	onSave: () => void;
 	/** Escape inside the editor. */
@@ -33,6 +35,9 @@ export interface EmbeddedEditor {
 interface InternalEditor {
 	editor: { cm: EditorView };
 	owner: { editMode: unknown; editor: unknown };
+	/** The editor's own live-preview switch: its constructor seeds it from the vault's
+	 * Live Preview config, and the first set() builds the CodeMirror state from it. */
+	sourceMode: boolean;
 	set(value: string, clear?: boolean): void;
 	unload(): void;
 	destroy(): void;
@@ -149,6 +154,9 @@ export function createEmbeddedEditor(
 		// workspace.activeEditor.editMode/.editor — point the mock at this instance.
 		editor.owner.editMode = editor;
 		editor.owner.editor = editor.editor;
+		// Pin the mode before set(): the first set() builds the editor state, and the
+		// live-preview class, plugin, and state field are all derived from sourceMode.
+		editor.sourceMode = options.mode === "source";
 		editor.set(options.value, true);
 
 		// While the editor has focus, Obsidian's editor commands should act on it.
