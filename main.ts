@@ -74,8 +74,9 @@ export type TitleBarClick = "maximize" | "edit";
 /** Whether this note's headings are dates (so "today" can be highlighted) or plain text. */
 export type HeadingType = "dates" | "text";
 
-/** "live" renders markdown while editing (falls back to "plain" if unavailable). */
-export type EditorMode = "live" | "plain";
+/** "live" renders markdown while editing, "source" shows it highlighted — both via
+ * Obsidian's editor, falling back to "plain" (a bare textarea) if it's unavailable. */
+export type EditorMode = "live" | "source" | "plain";
 
 interface SectionCardsSettings {
 	filePath: string;
@@ -2778,6 +2779,7 @@ export class SectionCardsView extends ItemView {
 			const remeasure = debounce(() => this.layoutMasonry(), 150, true);
 			embedded = createEmbeddedEditor(this.app, host, {
 				value: initial,
+				mode: this.plugin.settings.editorMode === "source" ? "source" : "live",
 				onSave: () => void finish(true),
 				onCancel: () => void finish(false),
 				onChange: () => remeasure(),
@@ -3256,11 +3258,11 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			},
 			{
 				name: "Card editor",
-				desc: "Live preview renders formatting as you type, like editing a note; plain markdown is a raw text box. Live preview relies on an undocumented Obsidian internal and falls back to plain markdown if it is unavailable.",
+				desc: "Live preview renders formatting as you type; source mode shows the markdown with syntax highlighting. Both use Obsidian's editor and fall back to the plain text box if it is unavailable.",
 				control: {
 					type: "dropdown",
 					key: "editorMode",
-					options: { live: "Live preview", plain: "Plain markdown" },
+					options: { live: "Live preview", source: "Source mode", plain: "Plain text box" },
 				},
 			},
 			{
