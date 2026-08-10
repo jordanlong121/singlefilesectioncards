@@ -19,6 +19,7 @@ import {
 	debounce,
 	moment,
 } from "obsidian";
+import { createEmbeddedEditor, type EmbeddedEditor } from "./editor-embed";
 
 export const VIEW_TYPE_SECTION_CARDS = "section-cards-view";
 
@@ -73,6 +74,9 @@ export type TitleBarClick = "maximize" | "edit";
 /** Whether this note's headings are dates (so "today" can be highlighted) or plain text. */
 export type HeadingType = "dates" | "text";
 
+/** "live" renders markdown while editing (falls back to "plain" if unavailable). */
+export type EditorMode = "live" | "plain";
+
 interface SectionCardsSettings {
 	filePath: string;
 	headingLevel: number;
@@ -85,6 +89,8 @@ interface SectionCardsSettings {
 	/** Whether ticking a task also strikes through the items nested beneath it. */
 	strikeNestedUnderDone: boolean;
 	titleBarClick: TitleBarClick;
+	/** Card editor flavour: Obsidian's live-preview editor, or the plain textarea. */
+	editorMode: EditorMode;
 	layout: Layout;
 	/** Remembered view per note, keyed by vault path. Lives here, never in the note. */
 	perFile: Record<string, PerFileView>;
@@ -114,6 +120,7 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	taskDoneDate: true,
 	strikeNestedUnderDone: true,
 	titleBarClick: "maximize",
+	editorMode: "live",
 	layout: "grid",
 	perFile: {},
 };
@@ -1197,8 +1204,8 @@ export class SectionCardsView extends ItemView {
 		this.registerWheelPan();
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
 			if (evt.key !== "Escape" || !this.maximized) return;
-			// A card editor's own Escape handling wins.
-			if ((evt.target as HTMLElement | null)?.tagName === "TEXTAREA") return;
+			// An open card editor's own Escape handling wins (textarea or live preview).
+			if (this.activeEditor) return;
 			evt.preventDefault();
 			this.closeMaximized();
 		});
@@ -2736,11 +2743,92 @@ export class SectionCardsView extends ItemView {
 		bodyEl.empty();
 		bodyEl.setCssStyles({ maxHeight: "" });
 
-		const textarea = bodyEl.createEl("textarea", { cls: "section-card-editor" });
 		// Pad with a newline so typing starts on a fresh line under the existing content
 		// (for a brand-new card, directly under its title). Trimmed back off on save.
-		textarea.value = section.raw + "\n";
-		textarea.rows = Math.min(Math.max(section.raw.split("\n").length + 2, 4), 30);
+		const initial = section.raw + "\n";
+
+		let embedded: EmbeddedEditor | null = null;
+		let readValue: () => string = () => initial;
+
+		let settled = false;
+		const finish = async (save: boolean) => {
+			if (settled) return;
+			settled = true;
+			this.activeEditor = null;
+			const value = readValue();
+			embedded?.destroy();
+			// Saving re-renders the card, so remember to blow it back up afterwards.
+			if (this.maximized?.card === card) {
+				const firstLine = value.split("\n")[0]?.trim();
+				this.pendingMaximizeHeading = save && firstLine ? firstLine : section.headingRaw;
+			}
+			const edited = trimTrailingBlankLines(value);
+			if (save && edited !== section.raw) {
+				const written = await writeSection(this.app, file, this.headingLevel, section, edited);
+				if (written) new Notice(`Saved “${section.title}” to ${file.basename}`);
+			}
+			this.editingKey = null;
+			await this.refresh();
+		};
+
+		if (this.plugin.settings.editorMode !== "plain") {
+			const host = bodyEl.createDiv({ cls: "section-card-editor-embed" });
+			// Masonry sizes cards by measured height and a live editor grows as you type,
+			// so re-measure shortly after each burst of changes.
+			const remeasure = debounce(() => this.layoutMasonry(), 150, true);
+			embedded = createEmbeddedEditor(this.app, host, {
+				value: initial,
+				onSave: () => void finish(true),
+				onCancel: () => void finish(false),
+				onChange: () => remeasure(),
+			});
+			if (embedded) {
+				readValue = () => (embedded as EmbeddedEditor).value;
+				// Clicks inside the editor stay there — same contract as the textarea.
+				host.addEventListener("click", (e) => e.stopPropagation());
+			} else {
+				host.remove(); // internal editor unavailable: fall back to the textarea
+			}
+		}
+
+		if (!embedded) {
+			const textarea = this.buildPlainEditor(bodyEl, initial, finish);
+			readValue = () => textarea.value;
+		}
+
+		const footer = bodyEl.createDiv({ cls: "section-card-footer" });
+		footer.createSpan({ cls: "section-card-hint", text: "Ctrl/⌘+Enter to save · Esc to cancel" });
+		const cancelBtn = footer.createEl("button", { text: "Cancel" });
+		const saveBtn = footer.createEl("button", { cls: "mod-cta", text: "Save" });
+		saveBtn.addEventListener("click", (e) => {
+			e.stopPropagation();
+			void finish(true);
+		});
+		cancelBtn.addEventListener("click", (e) => {
+			e.stopPropagation();
+			void finish(false);
+		});
+
+		this.activeEditor = { card, finish };
+		if (embedded) {
+			embedded.focusEnd();
+		} else {
+			const textarea = bodyEl.querySelector<HTMLTextAreaElement>(".section-card-editor");
+			textarea?.focus();
+			textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
+		}
+		this.layoutMasonry();
+	}
+
+	/** The dependable editor: a plain textarea with its own history and Tab handling. */
+	private buildPlainEditor(
+		bodyEl: HTMLElement,
+		initial: string,
+		finish: (save: boolean) => Promise<void>,
+	): HTMLTextAreaElement {
+		const textarea = bodyEl.createEl("textarea", { cls: "section-card-editor" });
+		textarea.value = initial;
+		textarea.rows = Math.min(Math.max(initial.split("\n").length + 1, 4), 30);
 
 		// The editor owns its undo history so programmatic edits (Tab) stay undoable
 		// without deprecated document APIs, at the cost of superseding native undo.
@@ -2756,38 +2844,6 @@ export class SectionCardsView extends ItemView {
 		};
 		const history = new EditorHistory(snapshot());
 
-		const footer = bodyEl.createDiv({ cls: "section-card-footer" });
-		footer.createSpan({ cls: "section-card-hint", text: "Ctrl/⌘+Enter to save · Esc to cancel" });
-		const cancelBtn = footer.createEl("button", { text: "Cancel" });
-		const saveBtn = footer.createEl("button", { cls: "mod-cta", text: "Save" });
-
-		let settled = false;
-		const finish = async (save: boolean) => {
-			if (settled) return;
-			settled = true;
-			this.activeEditor = null;
-			// Saving re-renders the card, so remember to blow it back up afterwards.
-			if (this.maximized?.card === card) {
-				const firstLine = textarea.value.split("\n")[0]?.trim();
-				this.pendingMaximizeHeading = save && firstLine ? firstLine : section.headingRaw;
-			}
-			const edited = trimTrailingBlankLines(textarea.value);
-			if (save && edited !== section.raw) {
-				const written = await writeSection(this.app, file, this.headingLevel, section, edited);
-				if (written) new Notice(`Saved “${section.title}” to ${file.basename}`);
-			}
-			this.editingKey = null;
-			await this.refresh();
-		};
-
-		saveBtn.addEventListener("click", (e) => {
-			e.stopPropagation();
-			void finish(true);
-		});
-		cancelBtn.addEventListener("click", (e) => {
-			e.stopPropagation();
-			void finish(false);
-		});
 		textarea.addEventListener("keydown", (e) => {
 			if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
 				e.preventDefault();
@@ -2824,11 +2880,7 @@ export class SectionCardsView extends ItemView {
 		});
 		textarea.addEventListener("input", () => history.record(snapshot()));
 		textarea.addEventListener("click", (e) => e.stopPropagation());
-
-		this.activeEditor = { card, finish };
-		textarea.focus();
-		textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-		this.layoutMasonry();
+		return textarea;
 	}
 
 	/** True when a card editor is open — used to avoid yanking the file out from under a typist. */
@@ -3195,11 +3247,20 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			},
 			{
 				name: "Clicking a card's title bar",
-				desc: "The card body always opens the raw-markdown editor; this is just the title bar.",
+				desc: "The card body always opens the editor; this is just the title bar.",
 				control: {
 					type: "dropdown",
 					key: "titleBarClick",
-					options: { maximize: "Makes the card big", edit: "Edits the raw markdown" },
+					options: { maximize: "Makes the card big", edit: "Edits the card" },
+				},
+			},
+			{
+				name: "Card editor",
+				desc: "Live preview renders formatting as you type, like editing a note; plain markdown is a raw text box. Live preview relies on an undocumented Obsidian internal and falls back to plain markdown if it is unavailable.",
+				control: {
+					type: "dropdown",
+					key: "editorMode",
+					options: { live: "Live preview", plain: "Plain markdown" },
 				},
 			},
 			{

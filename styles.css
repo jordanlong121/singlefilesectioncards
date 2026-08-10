@@ -364,10 +364,13 @@
 }
 
 .section-card.is-maximized .section-card-editor,
-.is-layout-custom .section-card.is-placed .section-card-editor {
+.is-layout-custom .section-card.is-placed .section-card-editor,
+.section-card.is-maximized .section-card-editor-embed,
+.is-layout-custom .section-card.is-placed .section-card-editor-embed {
 	flex: 1 1 auto;
 	height: auto;
 	min-height: 0;
+	max-height: none;
 	resize: none;
 }
 
@@ -975,6 +978,41 @@ body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
 	font-size: var(--font-ui-smaller);
 	line-height: 1.5;
 	tab-size: 4;
+}
+
+/* Live-preview editor host: Obsidian's embedded markdown editor mounts inside.
+   Styled like the textarea so the two modes feel like the same control. */
+.section-card-editor-embed {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	min-height: 140px;
+	/* Roughly the textarea's 30-row cap; the editor scrolls internally past it. */
+	max-height: 34em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--input-radius, 5px);
+	background: var(--background-primary);
+	cursor: text;
+	overflow: hidden;
+}
+
+.section-card-editor-embed:focus-within {
+	border-color: var(--background-modifier-border-focus, var(--interactive-accent));
+}
+
+.section-card-editor-embed .cm-editor {
+	flex: 1 1 auto;
+	min-height: 0;
+	width: 100%;
+}
+
+/* The embed arrives dressed as a full note view; trim it down to a field. */
+.section-card-editor-embed .markdown-source-view {
+	padding: 0;
+}
+
+.section-card-editor-embed .cm-content {
+	padding: 8px 10px;
 }
 
 .section-card-footer {
