@@ -279,29 +279,26 @@
 }
 
 /* The sideways layout's view root doesn't scroll, so instead of sticking, the
-   band becomes a static column on the LEFT of the card row: one pinned card per
-   row, scrolling vertically on its own if it grows past the pane. */
+   band becomes a static column on the LEFT of the card row: the pinned cards
+   split the pane's full height evenly — one card takes it all, two take half
+   each, and so on, with each body scrolling inside its share. */
 .is-layout-vertical .section-cards-pinned {
 	position: static;
 	grid-row: 2;
 	grid-column: 1;
 	grid-template-columns: var(--sc-col-min);
-	align-content: start;
+	grid-auto-rows: minmax(0, 1fr);
+	align-items: stretch;
 	min-height: 0;
-	overflow-y: auto;
 	border-bottom: none;
 	border-right: 1px solid var(--sc-line);
 }
 
-/* Vertical cards are fixed-width and uncapped; in the band they fill their cell
-   and get a height cap back. */
+/* Vertical cards are fixed-width; in the band they fill their cell instead. */
 .is-layout-vertical .section-cards-pinned .section-card {
 	width: auto;
 	max-width: none;
-}
-
-.is-layout-vertical .section-cards-pinned .section-card-body {
-	max-height: 240px;
+	min-height: 0;
 }
 
 /* One card per row, full width. */
@@ -456,18 +453,22 @@
 	font-size: var(--font-ui-medium, var(--font-ui-small));
 }
 
-/* Editing inside a fixed-height card (blown up, or placed on the Custom Grid canvas):
-   the textarea takes the card's height and follows its resizes, footer pinned beneath. */
+/* Editing inside a fixed-height card (blown up, placed on the Custom Grid canvas,
+   or full-height in the Vertical layout — including its pinned column): the
+   editor takes the card's height and follows its resizes, footer pinned beneath. */
 .section-card.is-maximized.is-editing .section-card-body,
-.is-layout-custom .section-card.is-placed.is-editing .section-card-body {
+.is-layout-custom .section-card.is-placed.is-editing .section-card-body,
+.is-layout-vertical .section-card.is-editing .section-card-body {
 	display: flex;
 	flex-direction: column;
 }
 
 .section-card.is-maximized .section-card-editor,
 .is-layout-custom .section-card.is-placed .section-card-editor,
+.is-layout-vertical .section-card .section-card-editor,
 .section-card.is-maximized .section-card-editor-embed,
-.is-layout-custom .section-card.is-placed .section-card-editor-embed {
+.is-layout-custom .section-card.is-placed .section-card-editor-embed,
+.is-layout-vertical .section-card .section-card-editor-embed {
 	flex: 1 1 auto;
 	height: auto;
 	min-height: 0;
@@ -476,7 +477,8 @@
 }
 
 .section-card.is-maximized .section-card-footer,
-.is-layout-custom .section-card.is-placed .section-card-footer {
+.is-layout-custom .section-card.is-placed .section-card-footer,
+.is-layout-vertical .section-card .section-card-footer {
 	flex: 0 0 auto;
 }
 
