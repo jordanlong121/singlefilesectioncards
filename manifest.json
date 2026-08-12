@@ -1,7 +1,7 @@
 {
 	"id": "single-file-section-cards",
 	"name": "Single File Section Cards",
-	"version": "1.3.3",
+	"version": "1.3.4",
 	"minAppVersion": "1.13.0",
 	"description": "View one note's sections as a wall of cards. Edit, reorder, and tick tasks in place — made for single-file daily notes.",
 	"author": "Jordan Long",
