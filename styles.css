@@ -268,12 +268,6 @@
 	display: none;
 }
 
-/* Masonry spans belong to the main grid. The !important outranks a stale inline
-   span left on a card that moved over from a masonry layout. */
-.section-cards-pinned .section-card {
-	grid-row-end: auto !important;
-}
-
 .is-layout-horizontal .section-cards-pinned {
 	grid-template-columns: 1fr;
 }
