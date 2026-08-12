@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, rectsCollide, findFreeSpot, snapRect } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, rectsCollide, findFreeSpot, snapRect, sectionFromEdited } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -826,6 +826,34 @@ t("insertIntoSection round-trips: the other section is untouched", () => {
   const secs = parseSections(QUICK_DOC, 3);
   const out = insertIntoSection(QUICK_DOC, secs[0], "x", "bottom");
   const after = parseSections(out, 3);
+  assert.equal(after[1].raw, secs[1].raw);
+});
+
+t("sectionFromEdited re-describes the section, heading edits included", () => {
+  const [orig] = parseSections(L(`### 2026-08-06
+- [ ] a`), 3);
+  const edited = "### renamed\n- [ ] a\n- [ ] b";
+  const next = sectionFromEdited(orig, edited);
+  assert.equal(next.headingRaw, "### renamed");
+  assert.equal(next.title, "renamed");
+  assert.equal(next.raw, edited);
+  assert.equal(next.body, "- [ ] a\n- [ ] b");
+  assert.equal(next.endLine, orig.startLine + 3);
+});
+
+t("sectionFromEdited predicts what parseSections yields after the write", () => {
+  const lines = L(`### one
+a
+### two
+b`);
+  const secs = parseSections(lines, 3);
+  const edited = "### one\na\nc";
+  lines.splice(secs[0].startLine, secs[0].endLine - secs[0].startLine, ...edited.split("\n"));
+  const after = parseSections(lines, 3);
+  const predicted = sectionFromEdited(secs[0], edited);
+  assert.equal(after[0].raw, predicted.raw);
+  assert.equal(after[0].headingRaw, predicted.headingRaw);
+  assert.equal(after[0].endLine, predicted.endLine);
   assert.equal(after[1].raw, secs[1].raw);
 });
 
