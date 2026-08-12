@@ -1910,6 +1910,12 @@ export class SectionCardsView extends ItemView {
 		for (const [container, entries] of bands) {
 			let cursor: ChildNode | null = container.firstChild;
 			for (const entry of entries) {
+				// Masonry spans belong to the main grid; a card that moves into the band
+				// brings its inline span along, so shed it here. (layoutMasonry only
+				// walks gridEl's children, so it can't clean the band itself.)
+				if (container === this.pinnedEl && entry.el.style.gridRowEnd) {
+					entry.el.setCssStyles({ gridRowEnd: "" });
+				}
 				if (entry.el === cursor) {
 					cursor = cursor.nextSibling;
 					continue;
