@@ -268,6 +268,13 @@
 	display: none;
 }
 
+/* Band cards size to their content: the grid's span-60 safety net must not apply
+   here, or the band's row gaps inflate it into a huge blank block. (Stale inline
+   spans from the masonry grid are cleared in code when a card enters the band.) */
+.section-cards-pinned .section-card {
+	grid-row-end: auto;
+}
+
 .is-layout-horizontal .section-cards-pinned {
 	grid-template-columns: 1fr;
 }
