@@ -96,6 +96,10 @@ interface SectionCardsSettings {
 	titleBarClick: TitleBarClick;
 	/** Card editor flavour: Obsidian's live-preview editor, or the plain textarea. */
 	editorMode: EditorMode;
+	/** Periodically write an open card editor's content back to the note. */
+	autosaveEnabled: boolean;
+	/** Minutes between autosaves while a card editor is open. */
+	autosaveMinutes: number;
 	layout: Layout;
 	/** Remembered view per note, keyed by vault path. Lives here, never in the note. */
 	perFile: Record<string, PerFileView>;
@@ -130,6 +134,8 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	strikeNestedUnderDone: true,
 	titleBarClick: "maximize",
 	editorMode: "live",
+	autosaveEnabled: true,
+	autosaveMinutes: 5,
 	layout: "grid",
 	perFile: {},
 };
@@ -320,6 +326,25 @@ function locateSection(sections: Section[], original: Section): Section | undefi
 	}
 	const byHeading = sections.filter((s) => s.headingRaw === original.headingRaw);
 	return byHeading.length === 1 ? byHeading[0] : undefined;
+}
+
+/**
+ * The section as it stands on disk right after `edited` has been written over it.
+ * Autosave re-describes the open editor's Section with this so the next write — and
+ * the final save's changed-content check — still find the block, even if the heading
+ * line itself was edited.
+ */
+export function sectionFromEdited(original: Section, edited: string): Section {
+	const lines = edited.split("\n");
+	const headingRaw = lines[0] ?? original.headingRaw;
+	return {
+		...original,
+		headingRaw,
+		title: headingRaw.replace(/^#+\s*/, "").trim(),
+		body: lines.slice(1).join("\n"),
+		raw: edited,
+		endLine: original.startLine + lines.length,
+	};
 }
 
 /** One draggable unit of a section body: a top-level list item (with its children) or a paragraph. */
@@ -1083,7 +1108,13 @@ export class SectionCardsView extends ItemView {
 	/** Heading raw text of the card currently open in an editor, so refreshes don't nuke it. */
 	private editingKey: string | null = null;
 	/** The open editor's card and its finish function, so clicks elsewhere can commit it. */
-	private activeEditor: { card: HTMLElement; finish: (save: boolean) => Promise<void> } | null = null;
+	private activeEditor: {
+		card: HTMLElement;
+		finish: (save: boolean) => Promise<void>;
+		autosave: () => Promise<void>;
+	} | null = null;
+	/** Interval handle for the open editor's periodic autosave; null when not editing. */
+	private autosaveTimer: number | null = null;
 	/** Watches cards for height changes (async markdown, images, embeds) to re-pack them. */
 	private cardObserver: ResizeObserver | null = null;
 	private repack = debounce(() => {
@@ -1411,6 +1442,17 @@ export class SectionCardsView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		if (this.autosaveTimer !== null) {
+			window.clearInterval(this.autosaveTimer);
+			this.autosaveTimer = null;
+		}
+		// A view closed with an editor still open writes that editor's content out
+		// instead of dropping it — same opt-in as the periodic autosave.
+		if (this.plugin.settings.autosaveEnabled && this.activeEditor) {
+			await this.activeEditor.autosave().catch(() => {});
+			this.activeEditor = null;
+			this.editingKey = null;
+		}
 		for (const entry of this.cardEntries) this.removeChild(entry.scope);
 		this.cardEntries = [];
 		this.cardObserver?.disconnect();
@@ -2949,9 +2991,17 @@ export class SectionCardsView extends ItemView {
 		let readValue: () => string = () => initial;
 
 		let settled = false;
+		let autosaveRun: Promise<void> | null = null;
 		const finish = async (save: boolean) => {
 			if (settled) return;
 			settled = true;
+			if (this.autosaveTimer !== null) {
+				window.clearInterval(this.autosaveTimer);
+				this.autosaveTimer = null;
+			}
+			// An in-flight autosave finishes re-describing `section` first, so the
+			// changed-content check and write below run against the on-disk state.
+			if (autosaveRun) await autosaveRun.catch(() => {});
 			this.activeEditor = null;
 			const value = readValue();
 			embedded?.destroy();
@@ -2995,6 +3045,25 @@ export class SectionCardsView extends ItemView {
 			readValue = () => textarea.value;
 		}
 
+		// Autosave: periodically write the editor's content to the note without closing
+		// the editor, so a card left in edit mode can't lose more than one interval of
+		// work. Refreshes are already suppressed while editing, so the write is invisible
+		// to this view until the editor settles.
+		const autosave = async () => {
+			if (settled) return;
+			const edited = trimTrailingBlankLines(readValue());
+			if (edited === section.raw) return;
+			if (!(await writeSection(this.app, file, this.headingLevel, section, edited))) return;
+			section = sectionFromEdited(section, edited);
+			if (!settled) this.editingKey = section.headingRaw;
+		};
+		if (this.plugin.settings.autosaveEnabled) {
+			const minutes = Math.max(1, this.plugin.settings.autosaveMinutes);
+			this.autosaveTimer = window.setInterval(() => {
+				autosaveRun = autosave().catch(() => {});
+			}, minutes * 60_000);
+		}
+
 		const footer = bodyEl.createDiv({ cls: "section-card-footer" });
 		footer.createSpan({ cls: "section-card-hint", text: "Ctrl/⌘+Enter to save · Esc to cancel" });
 		const cancelBtn = footer.createEl("button", { text: "Cancel" });
@@ -3008,7 +3077,7 @@ export class SectionCardsView extends ItemView {
 			void finish(false);
 		});
 
-		this.activeEditor = { card, finish };
+		this.activeEditor = { card, finish, autosave };
 		if (embedded) {
 			embedded.focusEnd();
 		} else {
@@ -3520,6 +3589,23 @@ class SectionCardsSettingTab extends PluginSettingTab {
 					type: "dropdown",
 					key: "editorMode",
 					options: { live: "Live preview", source: "Source mode", plain: "Plain text box" },
+				},
+			},
+			{
+				name: "Autosave open card editors",
+				desc: "While a card is being edited, write its content to the note every few minutes — and when the view closes — so an edit left open isn't lost.",
+				control: { type: "toggle", key: "autosaveEnabled" },
+			},
+			{
+				name: "Autosave interval",
+				desc: "Minutes between autosaves while a card editor is open. Applies to editors opened after the change.",
+				control: {
+					type: "slider",
+					key: "autosaveMinutes",
+					min: 1,
+					max: 30,
+					step: 1,
+					displayFormat: (value: number) => `${value} min`,
 				},
 			},
 			{
