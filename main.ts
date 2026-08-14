@@ -3745,116 +3745,140 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				},
 			},
 			{
-				name: "Heading level",
-				desc: "Which heading rank becomes a card.",
-				control: {
-					type: "dropdown",
-					key: "headingLevel",
-					options: { "1": "Heading 1", "2": "Heading 2", "3": "Heading 3", "4": "Heading 4", "5": "Heading 5", "6": "Heading 6" },
-				},
+				type: "group",
+				heading: "What becomes a card",
+				items: [
+					{
+						name: "Heading level",
+						desc: "Which heading rank becomes a card.",
+						control: {
+							type: "dropdown",
+							key: "headingLevel",
+							options: { "1": "Heading 1", "2": "Heading 2", "3": "Heading 3", "4": "Heading 4", "5": "Heading 5", "6": "Heading 6" },
+						},
+					},
+					{
+						name: "Headings contain",
+						desc: "With dates, the card for today is highlighted in the theme's highlight colour.",
+						control: {
+							type: "dropdown",
+							key: "headingType",
+							options: { dates: "Dates", text: "Non-dates (plain text)" },
+						},
+					},
+					{
+						name: "Show unfiled text as a card",
+						desc: "Text at the top of the note — above the first heading, below any properties — becomes its own card, so it can be read, edited, and ticked like any section.",
+						control: { type: "toggle", key: "unfiledEnabled" },
+					},
+					{
+						name: "Unfiled card title",
+						desc: "Title shown on that card. Display-only: it is never written into the note.",
+						control: { type: "text", key: "unfiledTitle", placeholder: "_Unfiled_" },
+					},
+				],
 			},
 			{
-				name: "Headings contain",
-				desc: "With dates, the card for today is highlighted in the theme's highlight colour.",
-				control: {
-					type: "dropdown",
-					key: "headingType",
-					options: { dates: "Dates", text: "Non-dates (plain text)" },
-				},
+				type: "group",
+				heading: "View",
+				items: [
+					{
+						name: "Default layout",
+						desc: "Grid and Tight are masonry columns; Horizontal is full-width rows; Vertical is full-height cards that scroll sideways.",
+						control: {
+							type: "dropdown",
+							key: "layout",
+							options: Object.fromEntries(LAYOUT_OPTIONS.map(([value, label]) => [value, label])),
+						},
+					},
+					{
+						name: "Default sort",
+						control: {
+							type: "dropdown",
+							key: "sortOrder",
+							options: { asc: "Alphanumeric A → Z", desc: "Alphanumeric Z → A", doc: "Document order" },
+						},
+					},
+					{
+						name: "Card height",
+						desc: "Maximum card height in pixels before the card body scrolls.",
+						control: {
+							type: "slider",
+							key: "cardMaxHeight",
+							min: 160,
+							max: 800,
+							step: 20,
+							displayFormat: (value: number) => `${value}px`,
+						},
+					},
+					{
+						name: "Jump to today's card",
+						desc: "When a note opens in the cards view, scroll to the card whose heading is today's date. Needs headings to contain dates.",
+						control: { type: "toggle", key: "jumpToToday" },
+					},
+					{
+						name: "Keep pinned cards on screen",
+						desc: "Pinned cards stick just below the toolbar — or beside the cards in the Vertical layout — while the rest scroll. Doesn't apply to the Custom Grid canvas.",
+						control: { type: "toggle", key: "stickyPinned" },
+					},
+				],
 			},
 			{
-				name: "Show unfiled text as a card",
-				desc: "Text at the top of the note — above the first heading, below any properties — becomes its own card, so it can be read, edited, and ticked like any section.",
-				control: { type: "toggle", key: "unfiledEnabled" },
+				type: "group",
+				heading: "Editing",
+				items: [
+					{
+						name: "Clicking a card's title bar",
+						desc: "The card body always opens the editor; this is just the title bar.",
+						control: {
+							type: "dropdown",
+							key: "titleBarClick",
+							options: { maximize: "Makes the card big", edit: "Edits the card" },
+						},
+					},
+					{
+						name: "Card editor",
+						desc: "Live preview renders formatting as you type; source mode shows the markdown with syntax highlighting. Both use Obsidian's editor and fall back to the plain text box if it is unavailable.",
+						control: {
+							type: "dropdown",
+							key: "editorMode",
+							options: { live: "Live preview", source: "Source mode", plain: "Plain text box" },
+						},
+					},
+					{
+						name: "Autosave open card editors",
+						desc: "While a card is being edited, write its content to the note every few minutes — and when the view closes — so an edit left open isn't lost.",
+						control: { type: "toggle", key: "autosaveEnabled" },
+					},
+					{
+						name: "Autosave interval",
+						desc: "Minutes between autosaves while a card editor is open. Applies to editors opened after the change.",
+						control: {
+							type: "slider",
+							key: "autosaveMinutes",
+							min: 1,
+							max: 30,
+							step: 1,
+							displayFormat: (value: number) => `${value} min`,
+						},
+					},
+				],
 			},
 			{
-				name: "Unfiled card title",
-				desc: "Title shown on that card. Display-only: it is never written into the note.",
-				control: { type: "text", key: "unfiledTitle", placeholder: "_Unfiled_" },
-			},
-			{
-				name: "Jump to today's card",
-				desc: "When a note opens in the cards view, scroll to the card whose heading is today's date. Needs headings to contain dates.",
-				control: { type: "toggle", key: "jumpToToday" },
-			},
-			{
-				name: "Keep pinned cards on screen",
-				desc: "Pinned cards stick just below the toolbar — or beside the cards in the Vertical layout — while the rest scroll. Doesn't apply to the Custom Grid canvas.",
-				control: { type: "toggle", key: "stickyPinned" },
-			},
-			{
-				name: "Default layout",
-				desc: "Grid and Tight are masonry columns; Horizontal is full-width rows; Vertical is full-height cards that scroll sideways.",
-				control: {
-					type: "dropdown",
-					key: "layout",
-					options: Object.fromEntries(LAYOUT_OPTIONS.map(([value, label]) => [value, label])),
-				},
-			},
-			{
-				name: "Default sort",
-				control: {
-					type: "dropdown",
-					key: "sortOrder",
-					options: { asc: "Alphanumeric A → Z", desc: "Alphanumeric Z → A", doc: "Document order" },
-				},
-			},
-			{
-				name: "Clicking a card's title bar",
-				desc: "The card body always opens the editor; this is just the title bar.",
-				control: {
-					type: "dropdown",
-					key: "titleBarClick",
-					options: { maximize: "Makes the card big", edit: "Edits the card" },
-				},
-			},
-			{
-				name: "Card editor",
-				desc: "Live preview renders formatting as you type; source mode shows the markdown with syntax highlighting. Both use Obsidian's editor and fall back to the plain text box if it is unavailable.",
-				control: {
-					type: "dropdown",
-					key: "editorMode",
-					options: { live: "Live preview", source: "Source mode", plain: "Plain text box" },
-				},
-			},
-			{
-				name: "Autosave open card editors",
-				desc: "While a card is being edited, write its content to the note every few minutes — and when the view closes — so an edit left open isn't lost.",
-				control: { type: "toggle", key: "autosaveEnabled" },
-			},
-			{
-				name: "Autosave interval",
-				desc: "Minutes between autosaves while a card editor is open. Applies to editors opened after the change.",
-				control: {
-					type: "slider",
-					key: "autosaveMinutes",
-					min: 1,
-					max: 30,
-					step: 1,
-					displayFormat: (value: number) => `${value} min`,
-				},
-			},
-			{
-				name: "Completion date on tasks",
-				desc: "When a task checkbox is ticked in a card, append an Obsidian Tasks style done date (✅ 2026-08-06). Unticking removes it.",
-				control: { type: "toggle", key: "taskDoneDate" },
-			},
-			{
-				name: "Cross out items nested under a done task",
-				desc: "When off, ticking a task strikes through only its own line — sub-tasks and notes nested beneath it keep their normal styling until ticked themselves.",
-				control: { type: "toggle", key: "strikeNestedUnderDone" },
-			},
-			{
-				name: "Card height",
-				desc: "Maximum card height in pixels before the card body scrolls.",
-				control: {
-					type: "slider",
-					key: "cardMaxHeight",
-					min: 160,
-					max: 800,
-					step: 20,
-					displayFormat: (value: number) => `${value}px`,
-				},
+				type: "group",
+				heading: "Tasks",
+				items: [
+					{
+						name: "Completion date on tasks",
+						desc: "When a task checkbox is ticked in a card, append an Obsidian Tasks style done date (✅ 2026-08-06). Unticking removes it.",
+						control: { type: "toggle", key: "taskDoneDate" },
+					},
+					{
+						name: "Cross out items nested under a done task",
+						desc: "When off, ticking a task strikes through only its own line — sub-tasks and notes nested beneath it keep their normal styling until ticked themselves.",
+						control: { type: "toggle", key: "strikeNestedUnderDone" },
+					},
+				],
 			},
 			{
 				type: "group",
