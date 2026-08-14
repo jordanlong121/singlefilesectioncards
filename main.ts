@@ -8,6 +8,7 @@ import {
 	MarkdownView,
 	Modal,
 	Notice,
+	Platform,
 	Plugin,
 	PluginSettingTab,
 	Scope,
@@ -24,9 +25,10 @@ import { createEmbeddedEditor, type EmbeddedEditor } from "./editor-embed";
 export const VIEW_TYPE_SECTION_CARDS = "section-cards-view";
 
 /** Bodies rendered synchronously on open — roughly two screenfuls. The rest render in
- * idle-time batches so a year-long note paints its first cards immediately. */
-const INITIAL_RENDER_COUNT = 24;
-const DEFERRED_RENDER_BATCH = 12;
+ * idle-time batches so a year-long note paints its first cards immediately. A phone
+ * shows a single column, so two screenfuls is far fewer cards there. */
+const INITIAL_RENDER_COUNT = Platform.isPhone ? 8 : 24;
+const DEFERRED_RENDER_BATCH = Platform.isPhone ? 6 : 12;
 
 export const DECK_ICON = "section-cards-deck";
 
@@ -86,6 +88,10 @@ interface SectionCardsSettings {
 	newCardFormat: string;
 	newCardPlacement: Placement;
 	headingType: HeadingType;
+	/** Show text above the file's first heading as its own card. */
+	unfiledEnabled: boolean;
+	/** Display-only title for that card; never written into the note. */
+	unfiledTitle: string;
 	/** Scroll today's card into view when a note first renders in the view. */
 	jumpToToday: boolean;
 	/** Keep the pinned band on screen while the rest of the cards scroll. */
@@ -128,6 +134,8 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	newCardFormat: "YYYY-MM-DD, dddd",
 	newCardPlacement: "logical",
 	headingType: "dates",
+	unfiledEnabled: false,
+	unfiledTitle: "_Unfiled_",
 	jumpToToday: true,
 	stickyPinned: true,
 	taskDoneDate: true,
@@ -142,7 +150,7 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 
 /** One heading and everything beneath it, down to the next heading of the same or higher rank. */
 interface Section {
-	/** Ordinal position in the document, 0-based. */
+	/** Ordinal position in the document, 0-based (-1 for the synthetic unfiled card). */
 	index: number;
 	/** Heading text with the leading #'s and whitespace stripped. */
 	title: string;
@@ -157,6 +165,10 @@ interface Section {
 	/** [startLine, endLine) covering heading + body. */
 	startLine: number;
 	endLine: number;
+	/** True for the synthetic card holding text above the file's first heading. Its
+	 * title is display-only, its raw has no heading line, and writes re-locate it by
+	 * position (the preamble is unique) rather than by content. */
+	unfiled?: boolean;
 }
 
 /** obsidian's `moment` re-export is typed as a namespace; this is the callable form. */
@@ -236,6 +248,9 @@ export function sortSections(sections: Section[], order: SortOrder): Section[] {
 	const sorted = sections.slice();
 	if (order === "asc") sorted.sort((a, b) => collator.compare(a.title, b.title));
 	else if (order === "desc") sorted.sort((a, b) => collator.compare(b.title, a.title));
+	// The unfiled card is the top of the file, not an alphabetical peer — keep it first.
+	const pre = sorted.findIndex((s) => s.unfiled);
+	if (pre > 0) sorted.unshift(...sorted.splice(pre, 1));
 	return sorted;
 }
 
@@ -258,6 +273,62 @@ function firstContentLine(lines: string[]): number {
 		if (lines[i].trim() === "---") return i + 1;
 	}
 	return 0;
+}
+
+/** The unfiled card's key in per-note state (pins, placements). Real sections are keyed
+ * by their heading line, which always starts with #, so this can never collide. */
+export const UNFILED_KEY = "::unfiled::";
+
+/**
+ * The synthetic section for text sitting above the file's first heading (of any rank),
+ * below any frontmatter — text that otherwise never appears in a card. Null when there
+ * is no such text. Its raw is body-only: the title is display-only and never written.
+ */
+export function unfiledSection(lines: string[], title: string): Section | null {
+	let start = firstContentLine(lines);
+	while (start < lines.length && lines[start].trim() === "") start++;
+
+	let end = lines.length;
+	let inFence = false;
+	for (let i = start; i < lines.length; i++) {
+		if (FENCE_RE.test(lines[i])) {
+			inFence = !inFence;
+			continue;
+		}
+		if (!inFence && HEADING_RE.test(lines[i])) {
+			end = i;
+			break;
+		}
+	}
+
+	const bodyLines = lines.slice(start, end);
+	while (bodyLines.length && bodyLines[bodyLines.length - 1].trim() === "") bodyLines.pop();
+	if (!bodyLines.length) return null;
+
+	const body = bodyLines.join("\n");
+	return {
+		index: -1,
+		title,
+		headingRaw: UNFILED_KEY,
+		headingLine: start,
+		body,
+		raw: body,
+		startLine: start,
+		endLine: start + bodyLines.length,
+		unfiled: true,
+	};
+}
+
+/** Every card the view shows: parsed sections plus, when enabled, the unfiled card. */
+export function parseCards(lines: string[], level: number, unfiledTitle: string | null): Section[] {
+	const sections = parseSections(lines, level);
+	const pre = unfiledTitle ? unfiledSection(lines, unfiledTitle) : null;
+	return pre ? [pre, ...sections] : sections;
+}
+
+/** First line of a section's body: the unfiled card has no heading line to skip. */
+function bodyStartLine(section: Section): number {
+	return section.unfiled ? section.startLine : section.startLine + 1;
 }
 
 /**
@@ -329,6 +400,16 @@ function locateSection(sections: Section[], original: Section): Section | undefi
 }
 
 /**
+ * Re-locate any card at write time. The unfiled card is found by position — the
+ * preamble is unique, so re-deriving it is more robust than content matching.
+ * Everything else goes through locateSection's content matching as before.
+ */
+function locateCard(lines: string[], level: number, original: Section): Section | undefined {
+	if (original.unfiled) return unfiledSection(lines, original.title) ?? undefined;
+	return locateSection(parseSections(lines, level), original);
+}
+
+/**
  * The section as it stands on disk right after `edited` has been written over it.
  * Autosave re-describes the open editor's Section with this so the next write — and
  * the final save's changed-content check — still find the block, even if the heading
@@ -336,6 +417,10 @@ function locateSection(sections: Section[], original: Section): Section | undefi
  */
 export function sectionFromEdited(original: Section, edited: string): Section {
 	const lines = edited.split("\n");
+	// The unfiled card has no heading line: the whole editor content is its body.
+	if (original.unfiled) {
+		return { ...original, body: edited, raw: edited, endLine: original.startLine + lines.length };
+	}
 	const headingRaw = lines[0] ?? original.headingRaw;
 	return {
 		...original,
@@ -453,24 +538,34 @@ export function moveBlock(
 	const from = sections[fromSectionIndex];
 	const to = sections[toSectionIndex];
 	if (!from || !to) return null;
+	return moveBlockBetween(lines, from, blockIndex, to, beforeBlockIndex);
+}
 
-	const fromBody = lines.slice(from.startLine + 1, from.endLine);
+/** moveBlock's core, taking already-located sections so the unfiled card works too. */
+export function moveBlockBetween(
+	lines: string[],
+	from: Section,
+	blockIndex: number,
+	to: Section,
+	beforeBlockIndex: number | null,
+): string[] | null {
+	const fromBody = lines.slice(bodyStartLine(from), from.endLine);
 	const block = movableBlocks(fromBody)[blockIndex];
 	if (!block) return null;
-	const absStart = from.startLine + 1 + block.start;
-	const absEnd = from.startLine + 1 + block.end;
+	const absStart = bodyStartLine(from) + block.start;
+	const absEnd = bodyStartLine(from) + block.end;
 	const blockLines = lines.slice(absStart, absEnd);
 
 	let insertAbs: number;
 	if (beforeBlockIndex === null) {
 		insertAbs = to.endLine;
 	} else {
-		const toBody = lines.slice(to.startLine + 1, to.endLine);
+		const toBody = lines.slice(bodyStartLine(to), to.endLine);
 		const anchor = movableBlocks(toBody)[beforeBlockIndex];
-		insertAbs = anchor ? to.startLine + 1 + anchor.start : to.endLine;
+		insertAbs = anchor ? bodyStartLine(to) + anchor.start : to.endLine;
 	}
 	// Dropping a block onto its own position is a no-op.
-	if (fromSectionIndex === toSectionIndex && insertAbs >= absStart && insertAbs <= absEnd) return null;
+	if (from.startLine === to.startLine && insertAbs >= absStart && insertAbs <= absEnd) return null;
 
 	const out = lines.slice(0, absStart).concat(lines.slice(absEnd));
 	const target = insertAbs > absStart ? insertAbs - (absEnd - absStart) : insertAbs;
@@ -506,20 +601,19 @@ async function moveBlockInFile(
 	await app.vault.process(file, (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
-		const sections = parseSections(lines, level);
-		const from = locateSection(sections, moved);
-		const to = locateSection(sections, targetSection);
+		const from = locateCard(lines, level, moved);
+		const to = locateCard(lines, level, targetSection);
 		if (!from || !to) {
 			ok = false;
 			return data;
 		}
-		const body = lines.slice(from.startLine + 1, from.endLine);
+		const body = lines.slice(bodyStartLine(from), from.endLine);
 		const block = movableBlocks(body)[blockIndex];
 		if (!block || body.slice(block.start, block.end).join("\n") !== expectedBlockText) {
 			ok = false; // the block moved or changed since the drag started — refuse
 			return data;
 		}
-		const result = moveBlock(lines, level, from.index, blockIndex, to.index, beforeBlockIndex);
+		const result = moveBlockBetween(lines, from, blockIndex, to, beforeBlockIndex);
 		return result ? result.join(eol) : data;
 	});
 
@@ -580,14 +674,14 @@ async function toggleTaskInFile(
 	await app.vault.process(file, (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
-		const target = locateSection(parseSections(lines, level), original);
+		const target = locateCard(lines, level, original);
 		if (!target) return data;
 
-		const body = lines.slice(target.startLine + 1, target.endLine);
+		const body = lines.slice(bodyStartLine(target), target.endLine);
 		const tasks = taskLineIndexes(body);
 		if (nth >= tasks.length) return data;
 
-		const at = target.startLine + 1 + tasks[nth];
+		const at = bodyStartLine(target) + tasks[nth];
 		const updated = toggleTaskLine(lines[at], todayISO, addDoneDate);
 		if (updated === lines[at]) return data;
 
@@ -965,7 +1059,7 @@ export function insertIntoSection(
 	where: QuickAddPlacement,
 ): string[] {
 	const insert = text.replace(/\s+$/, "").split(/\r?\n/);
-	const at = where === "top" ? section.startLine + 1 : section.endLine;
+	const at = where === "top" ? bodyStartLine(section) : section.endLine;
 	const out = lines.slice();
 	out.splice(at, 0, ...insert);
 	return out;
@@ -985,7 +1079,7 @@ async function quickAddToSection(
 	await app.vault.process(file, (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
-		const target = locateSection(parseSections(lines, level), original);
+		const target = locateCard(lines, level, original);
 		if (!target) {
 			ok = false;
 			return data;
@@ -1003,7 +1097,7 @@ async function deleteSection(app: App, file: TFile, level: number, original: Sec
 	await app.vault.process(file, (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
-		const target = locateSection(parseSections(lines, level), original);
+		const target = locateCard(lines, level, original);
 		if (!target) {
 			ok = false;
 			return data;
@@ -1055,7 +1149,7 @@ async function writeSection(
 	await app.vault.process(file, (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
-		const target = locateSection(parseSections(lines, level), original);
+		const target = locateCard(lines, level, original);
 
 		if (!target) {
 			ok = false;
@@ -1076,6 +1170,8 @@ async function writeSection(
 /** A rendered card. `holder.section` is swapped on reuse so closures never go stale. */
 interface CardEntry {
 	el: HTMLElement;
+	/** The card's body container, cached so refreshes don't re-query it per card. */
+	bodyEl: HTMLElement;
 	scope: Component;
 	holder: { section: Section };
 	raw: string;
@@ -1107,6 +1203,8 @@ export class SectionCardsView extends ItemView {
 	private renderGeneration = 0;
 	/** Heading raw text of the card currently open in an editor, so refreshes don't nuke it. */
 	private editingKey: string | null = null;
+	/** Toolbar filter text: only cards containing it (title or body) are shown. */
+	private filterQuery = "";
 	/** The open editor's card and its finish function, so clicks elsewhere can commit it. */
 	private activeEditor: {
 		card: HTMLElement;
@@ -1313,7 +1411,6 @@ export class SectionCardsView extends ItemView {
 		const zoomIn = zoomBar.createEl("button", { text: "+" });
 		zoomIn.setAttr("aria-label", "Zoom in");
 		zoomIn.addEventListener("click", () => this.setCustomZoom(this.customZoom + 0.1));
-		this.registerWheelPan();
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
 			if (evt.key !== "Escape" || !this.maximized) return;
 			// An open card editor's own Escape handling wins (textarea or live preview).
@@ -1412,26 +1509,32 @@ export class SectionCardsView extends ItemView {
 	 * works with the pointer over the toolbar (file picker and view dropdowns). A card body
 	 * that can still scroll keeps the wheel first, so a long day's tasks stay readable;
 	 * once it hits its end the row takes over.
+	 *
+	 * The listener is non-passive (it must preventDefault), which makes every wheel event
+	 * wait on the main thread — so it is attached only while the Vertical layout is
+	 * active, keeping the other layouts' scrolling on the compositor's fast path.
 	 */
-	private registerWheelPan(): void {
-		this.registerDomEvent(
-			this.contentEl,
-			"wheel",
-			(evt: WheelEvent) => {
-				if (this.layout !== "vertical" || !this.gridEl) return;
-				if (evt.ctrlKey || evt.metaKey) return; // zoom gestures
+	private wheelPanBound = false;
+	private readonly wheelPanHandler = (evt: WheelEvent): void => {
+		if (this.layout !== "vertical" || !this.gridEl) return;
+		if (evt.ctrlKey || evt.metaKey) return; // zoom gestures
 
-				const step = wheelDeltaToPixels(evt, this.gridEl.clientWidth);
-				if (!step) return;
+		const step = wheelDeltaToPixels(evt, this.gridEl.clientWidth);
+		if (!step) return;
 
-				const body = (evt.target as HTMLElement | null)?.closest<HTMLElement>(".section-card-body");
-				if (body && canScrollVertically(body, step)) return;
+		const body = (evt.target as HTMLElement | null)?.closest<HTMLElement>(".section-card-body");
+		if (body && canScrollVertically(body, step)) return;
 
-				evt.preventDefault();
-				this.gridEl.scrollLeft += step;
-			},
-			{ passive: false },
-		);
+		evt.preventDefault();
+		this.gridEl.scrollLeft += step;
+	};
+
+	private updateWheelPan(): void {
+		const want = this.layout === "vertical";
+		if (want === this.wheelPanBound) return;
+		this.wheelPanBound = want;
+		if (want) this.contentEl.addEventListener("wheel", this.wheelPanHandler, { passive: false });
+		else this.contentEl.removeEventListener("wheel", this.wheelPanHandler);
 	}
 
 	/** The layout lives as a class on the view root so CSS can restyle grid *and* scrolling. */
@@ -1439,6 +1542,7 @@ export class SectionCardsView extends ItemView {
 		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical", "custom"]) {
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name);
 		}
+		this.updateWheelPan();
 	}
 
 	async onClose(): Promise<void> {
@@ -1457,6 +1561,10 @@ export class SectionCardsView extends ItemView {
 		this.cardEntries = [];
 		this.cardObserver?.disconnect();
 		this.cardObserver = null;
+		if (this.wheelPanBound) {
+			this.contentEl.removeEventListener("wheel", this.wheelPanHandler);
+			this.wheelPanBound = false;
+		}
 	}
 
 	private discardCard(entry: CardEntry): void {
@@ -1494,6 +1602,33 @@ export class SectionCardsView extends ItemView {
 		return { iso: now.format("YYYY-MM-DD"), formatted: now.format(this.plugin.settings.newCardFormat) };
 	}
 
+	/**
+	 * Hide cards that don't contain the filter text (case-insensitive, title + body);
+	 * an empty box shows everything. Hidden cards keep their DOM and rendered markdown,
+	 * so clearing the filter is instant. The count shows "shown of total" while active.
+	 */
+	private applyFilter(): void {
+		if (!this.cardEntries.length) return;
+		const q = this.filterQuery.trim().toLowerCase();
+		let shown = 0;
+		for (const entry of this.cardEntries) {
+			const section = entry.holder.section;
+			const hit =
+				!q ||
+				section.raw.toLowerCase().includes(q) ||
+				section.title.toLowerCase().includes(q);
+			entry.el.toggleClass("is-filtered-out", !hit);
+			if (hit) shown++;
+		}
+		const total = this.cardEntries.length;
+		this.countEl?.setText(
+			q
+				? `${shown} of ${total} · H${this.headingLevel}`
+				: `${total} ${total === 1 ? "section" : "sections"} · H${this.headingLevel}`,
+		);
+		this.repack(); // masonry and row rules re-pack around the hidden cards
+	}
+
 	/** The card-body height cap for the current layout; also re-applied to reused cards. */
 	private applyBodyHeight(bodyEl: HTMLElement | null): void {
 		if (!bodyEl) return;
@@ -1506,17 +1641,6 @@ export class SectionCardsView extends ItemView {
 		if (bodyEl.style.maxHeight !== target) bodyEl.setCssStyles({ maxHeight: target });
 	}
 
-	/** Rendered task checkboxes come back disabled, and disabled inputs never fire clicks. */
-	private enableCheckboxes(): void {
-		// contentEl-scoped so cards in the sticky pinned band are covered too.
-		for (const box of Array.from(
-			this.contentEl.querySelectorAll<HTMLInputElement>(".section-card-body input[type=checkbox]"),
-		)) {
-			box.removeAttribute("disabled");
-			box.removeAttribute("readonly");
-		}
-	}
-
 	/** The rendered elements that correspond 1:1 with a section's movable blocks. */
 	private eligibleBlockEls(bodyEl: HTMLElement): HTMLElement[] {
 		return Array.from(
@@ -1524,13 +1648,29 @@ export class SectionCardsView extends ItemView {
 		);
 	}
 
-	/** Post-render pass over every card body: live checkboxes + draggable blocks. */
-	private prepareBodies(): void {
-		this.enableCheckboxes();
-		for (const bodyEl of Array.from(this.contentEl.querySelectorAll<HTMLElement>(".section-card-body"))) {
+	/**
+	 * Post-render pass over card bodies: live checkboxes + draggable blocks. Scoped to
+	 * the entries whose markdown just landed — re-walking every card after each deferred
+	 * batch was quadratic across a long note's ramp-up.
+	 */
+	private prepareBodies(entries: CardEntry[]): void {
+		for (const entry of entries) {
+			const bodyEl = entry.bodyEl;
+			// Rendered task checkboxes come back disabled, and disabled inputs never fire clicks.
+			for (const box of Array.from(bodyEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]"))) {
+				box.removeAttribute("disabled");
+				box.removeAttribute("readonly");
+			}
 			for (const el of this.eligibleBlockEls(bodyEl)) {
 				el.draggable = true;
 				el.addClass("sc-block");
+			}
+			// Keep offscreen image decode off the phone's main thread and memory.
+			if (Platform.isMobile) {
+				for (const img of Array.from(bodyEl.querySelectorAll<HTMLImageElement>("img"))) {
+					img.loading = "lazy";
+					img.decoding = "async";
+				}
 			}
 		}
 	}
@@ -1551,17 +1691,19 @@ export class SectionCardsView extends ItemView {
 	 * card's renderBody owed for the next render) if a newer render supersedes this one.
 	 */
 	private scheduleDeferredRenders(entries: CardEntry[], gen: number): void {
+		// The setTimeout fallback only runs where requestIdleCallback is missing — older
+		// iOS WebKit — so it waits longer between batches to keep touch handling smooth.
 		const idle: (cb: () => void) => void =
 			typeof window.requestIdleCallback === "function"
 				? (cb) => window.requestIdleCallback(cb, { timeout: 200 })
-				: (cb) => window.setTimeout(cb, 16);
+				: (cb) => window.setTimeout(cb, 50);
 		const step = (): void => {
 			if (gen !== this.renderGeneration) return;
 			const batch = entries.splice(0, DEFERRED_RENDER_BATCH);
 			if (!batch.length) return;
 			void Promise.all(batch.map((entry) => this.runBodyRender(entry))).then(() => {
 				if (gen !== this.renderGeneration) return;
-				this.prepareBodies();
+				this.prepareBodies(batch);
 				this.repack();
 				if (entries.length) {
 					idle(step);
@@ -1589,6 +1731,7 @@ export class SectionCardsView extends ItemView {
 		// Masonry spans only apply to the packed column layouts. The aligned grid wants
 		// real auto rows, and the sideways layout is a flex row, so clear any leftovers.
 		if (this.layout === "vertical" || this.layout === "aligned" || this.layout === "custom") {
+			grid.removeClass("is-one-col");
 			for (const card of Array.from(grid.children) as HTMLElement[]) {
 				// Reading inline style is free; rewriting an already-empty one is not.
 				if (card.style.gridRowEnd) card.setCssStyles({ gridRowEnd: "" });
@@ -1597,6 +1740,20 @@ export class SectionCardsView extends ItemView {
 		}
 
 		const style = window.getComputedStyle(grid);
+
+		// One column (a phone, a narrow pane, or the Horizontal layout) needs no packing:
+		// cards simply stack. CSS switches the grid to auto rows + row-gap — visually
+		// identical — and the per-card measure/span work below is skipped entirely.
+		const columns = style.gridTemplateColumns.split(" ").filter((t) => t.trim().length).length;
+		if (columns <= 1) {
+			grid.addClass("is-one-col");
+			for (const card of Array.from(grid.children) as HTMLElement[]) {
+				if (card.style.gridRowEnd) card.setCssStyles({ gridRowEnd: "" });
+			}
+			return;
+		}
+		grid.removeClass("is-one-col");
+
 		const rowHeight = parseFloat(style.gridAutoRows) || 4;
 		const gap = parseFloat(style.rowGap) || 0;
 		const cardGap = parseFloat(style.getPropertyValue("--sc-card-gap")) || 12;
@@ -1605,8 +1762,8 @@ export class SectionCardsView extends ItemView {
 		// full reflow per card — ~150 reflows per pack on a year of daily notes.
 		// (Cards are `align-items: start` grid items, so their box height is their content
 		// height regardless of the span currently assigned.)
-		const cards = (Array.from(grid.children) as HTMLElement[]).filter((card) =>
-			card.hasClass("section-card"),
+		const cards = (Array.from(grid.children) as HTMLElement[]).filter(
+			(card) => card.hasClass("section-card") && !card.hasClass("is-filtered-out"),
 		);
 		const heights = cards.map((card) => card.getBoundingClientRect().height);
 		cards.forEach((card, i) => {
@@ -1628,7 +1785,9 @@ export class SectionCardsView extends ItemView {
 		for (const old of Array.from(grid.querySelectorAll(".section-cards-row-rule"))) old.remove();
 		if (this.layout !== "aligned") return;
 
-		const cards = (Array.from(grid.children) as HTMLElement[]).filter((c) => c.hasClass("section-card"));
+		const all = (Array.from(grid.children) as HTMLElement[]).filter((c) => c.hasClass("section-card"));
+		// Filter-hidden cards occupy no grid cell, so they don't count toward rows.
+		const cards = all.filter((c) => !c.hasClass("is-filtered-out"));
 		if (cards.length < 2) return;
 
 		const columns = window
@@ -1638,10 +1797,15 @@ export class SectionCardsView extends ItemView {
 		if (columns < 1 || columns >= cards.length) return;
 
 		// The pinned band ends at the pin rule and may not fill its last row, so the
-		// row count restarts beneath it instead of running straight through.
+		// row count restarts beneath it instead of running straight through. Pinned
+		// cards lead the grid in DOM order, so the visible split is a filtered count.
+		const pinnedVisible =
+			this.pinnedShown > 0
+				? all.slice(0, this.pinnedShown).filter((c) => !c.hasClass("is-filtered-out")).length
+				: 0;
 		const bands =
-			this.pinnedShown > 0 && this.pinnedShown < cards.length
-				? [cards.slice(0, this.pinnedShown), cards.slice(this.pinnedShown)]
+			pinnedVisible > 0 && pinnedVisible < cards.length
+				? [cards.slice(0, pinnedVisible), cards.slice(pinnedVisible)]
 				: [cards];
 		for (const band of bands) {
 			for (let i = columns; i < band.length; i += columns) {
@@ -1685,6 +1849,40 @@ export class SectionCardsView extends ItemView {
 
 		const spacer = bar.createDiv({ cls: "section-cards-spacer" });
 		this.countEl = spacer.createSpan({ cls: "section-cards-count" });
+
+		// Filter box: typing narrows the wall to cards containing the text; X clears.
+		const filterWrap = bar.createDiv({ cls: "section-cards-control section-cards-filter" });
+		const filterInput = filterWrap.createEl("input", {
+			cls: "section-cards-filter-input",
+			attr: { type: "text", placeholder: "Filter…", "aria-label": "Show only cards containing this text", spellcheck: "false" },
+		});
+		filterInput.value = this.filterQuery;
+		filterWrap.toggleClass("has-query", this.filterQuery.length > 0);
+		const clearBtn = filterWrap.createEl("button", { cls: "section-cards-filter-clear" });
+		setIcon(clearBtn, "x");
+		clearBtn.setAttr("aria-label", "Clear the filter and show all cards");
+		const setQuery = (q: string) => {
+			this.filterQuery = q;
+			filterWrap.toggleClass("has-query", q.length > 0);
+			this.applyFilter();
+		};
+		filterInput.addEventListener("input", () => setQuery(filterInput.value));
+		filterInput.addEventListener("keydown", (evt) => {
+			if (evt.key !== "Escape") return;
+			evt.preventDefault();
+			evt.stopPropagation(); // don't also close a maximized card
+			if (filterInput.value) {
+				filterInput.value = "";
+				setQuery("");
+			} else {
+				filterInput.blur();
+			}
+		});
+		clearBtn.addEventListener("click", () => {
+			filterInput.value = "";
+			setQuery("");
+			filterInput.focus();
+		});
 
 		const levelWrap = bar.createDiv({ cls: "section-cards-control" });
 		levelWrap.createSpan({ text: "Heading", cls: "section-cards-label" });
@@ -1846,7 +2044,7 @@ export class SectionCardsView extends ItemView {
 			}
 		}
 
-		const sections = parseSections(lines, this.headingLevel);
+		const sections = parseCards(lines, this.headingLevel, this.plugin.unfiledTitle());
 		const pinnedList = this.plugin.getPinned(file.path);
 		const pinnedKeys = new Set(pinnedList);
 		const ordered = applyPinned(sortSections(sections, this.sortOrder), pinnedList);
@@ -1895,15 +2093,15 @@ export class SectionCardsView extends ItemView {
 
 		const today = this.todayKeys();
 		const renders: Promise<void>[] = [];
+		const immediate: CardEntry[] = [];
 		const deferred: CardEntry[] = [];
-		let immediateBudget = INITIAL_RENDER_COUNT;
 		const queueBody = (entry: CardEntry) => {
 			if (!entry.renderBody) return;
 			// On the canvas, unplaced cards are display:none — rendering their markdown
 			// would be pure waste. Placement back-fills the owed render (applyCustomLayout).
 			if (this.layout === "custom" && !this.customPlacements[entry.holder.section.headingRaw]) return;
-			if (immediateBudget > 0) {
-				immediateBudget--;
+			if (immediate.length < INITIAL_RENDER_COUNT) {
+				immediate.push(entry);
 				renders.push(this.runBodyRender(entry));
 			} else {
 				deferred.push(entry);
@@ -1922,7 +2120,7 @@ export class SectionCardsView extends ItemView {
 				entry = reusable[prevIndex];
 				entry.holder.section = section;
 				entry.el.toggleClass("is-today", !!today && isTodayTitle(section.title, today.iso, today.formatted));
-				this.applyBodyHeight(entry.el.querySelector<HTMLElement>(".section-card-body"));
+				this.applyBodyHeight(entry.bodyEl);
 			} else {
 				entry = this.renderCard(file, section, today);
 			}
@@ -1980,7 +2178,9 @@ export class SectionCardsView extends ItemView {
 		await Promise.all(renders);
 		if (gen !== this.renderGeneration) return;
 
-		this.prepareBodies();
+		this.prepareBodies(immediate);
+		// Re-apply an active filter to the fresh entries before anything is measured.
+		if (this.filterQuery.trim()) this.applyFilter();
 		this.layoutMasonry();
 		this.insertRowRules();
 
@@ -2290,6 +2490,11 @@ export class SectionCardsView extends ItemView {
 				evt.preventDefault();
 				return;
 			}
+			// The unfiled card is the text above the first heading — it can't be reordered.
+			if (holder.section.unfiled) {
+				evt.preventDefault();
+				return;
+			}
 			evt.stopPropagation(); // keep the app's global drag handling out of card drags
 			if (this.sortOrder !== "doc") {
 				evt.preventDefault();
@@ -2319,11 +2524,18 @@ export class SectionCardsView extends ItemView {
 				if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
 				this.clearBlockDropMarks();
 				const at = this.blockDropAt(evt, bodyEl);
-				if (at.el) at.el.addClass(at.before ? "sc-blockdrop-before" : "sc-blockdrop-after");
-				else card.addClass("sc-blockdrop-end");
+				if (at.el) {
+					at.el.addClass(at.before ? "sc-blockdrop-before" : "sc-blockdrop-after");
+					this.blockDropMarkEl = at.el;
+				} else {
+					card.addClass("sc-blockdrop-end");
+					this.blockDropEndEl = card;
+				}
 				return;
 			}
-			if (!this.dragging || this.dragging === holder) return;
+			// Dropping beside the unfiled card would land a section above the preamble,
+			// where its text stops being a section — drop before the first real card instead.
+			if (!this.dragging || this.dragging === holder || holder.section.unfiled) return;
 			evt.preventDefault();
 			if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
 			this.setDropMarker(card, this.isDropBefore(evt, card));
@@ -2345,7 +2557,7 @@ export class SectionCardsView extends ItemView {
 				);
 				return;
 			}
-			if (!this.dragging || this.dragging === holder) return;
+			if (!this.dragging || this.dragging === holder || holder.section.unfiled) return;
 			evt.preventDefault();
 			evt.stopPropagation();
 			const moved = this.dragging.section;
@@ -2355,7 +2567,7 @@ export class SectionCardsView extends ItemView {
 			void this.completeDrag(file, moved, holder.section, before);
 		});
 
-		return { el: card, scope, holder, raw: section.raw, renderBody };
+		return { el: card, bodyEl, scope, holder, raw: section.raw, renderBody };
 	}
 
 	/**
@@ -2423,7 +2635,7 @@ export class SectionCardsView extends ItemView {
 		const owed = this.cardEntries.find((entry) => entry.el === card);
 		if (owed) {
 			void this.runBodyRender(owed).then(() => {
-				this.prepareBodies();
+				this.prepareBodies([owed]);
 				this.repack();
 			});
 		}
@@ -2686,7 +2898,7 @@ export class SectionCardsView extends ItemView {
 		// Cards placed while their markdown render was still owed get it now, batched.
 		if (owedRenders.length) {
 			void Promise.all(owedRenders.map((entry) => this.runBodyRender(entry))).then(() => {
-				this.prepareBodies();
+				this.prepareBodies(owedRenders);
 				this.repack();
 			});
 		}
@@ -2857,15 +3069,17 @@ export class SectionCardsView extends ItemView {
 			.slice(0, 24);
 	}
 
+	/** The elements currently wearing block-drop marks — tracked so clearing them
+	 * (which runs on every dragover) needn't sweep the whole view with querySelectorAll. */
+	private blockDropMarkEl: HTMLElement | null = null;
+	private blockDropEndEl: HTMLElement | null = null;
+
 	private clearBlockDropMarks(): void {
-		// contentEl-scoped so drops marked on sticky-band cards clear too.
-		for (const el of Array.from(this.contentEl.querySelectorAll(".sc-blockdrop-before, .sc-blockdrop-after"))) {
-			el.removeClass("sc-blockdrop-before");
-			el.removeClass("sc-blockdrop-after");
-		}
-		for (const el of Array.from(this.contentEl.querySelectorAll(".sc-blockdrop-end"))) {
-			el.removeClass("sc-blockdrop-end");
-		}
+		this.blockDropMarkEl?.removeClass("sc-blockdrop-before");
+		this.blockDropMarkEl?.removeClass("sc-blockdrop-after");
+		this.blockDropMarkEl = null;
+		this.blockDropEndEl?.removeClass("sc-blockdrop-end");
+		this.blockDropEndEl = null;
 	}
 
 	/** Where in the hovered card a dragged block would land. */
@@ -3006,9 +3220,11 @@ export class SectionCardsView extends ItemView {
 			const value = readValue();
 			embedded?.destroy();
 			// Saving re-renders the card, so remember to blow it back up afterwards.
+			// (The unfiled card's first line is body text, not a heading — its key is fixed.)
 			if (this.maximized?.card === card) {
 				const firstLine = value.split("\n")[0]?.trim();
-				this.pendingMaximizeHeading = save && firstLine ? firstLine : section.headingRaw;
+				this.pendingMaximizeHeading =
+					save && firstLine && !section.unfiled ? firstLine : section.headingRaw;
 			}
 			const edited = trimTrailingBlankLines(value);
 			if (save && edited !== section.raw) {
@@ -3547,6 +3763,16 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				},
 			},
 			{
+				name: "Show unfiled text as a card",
+				desc: "Text at the top of the note — above the first heading, below any properties — becomes its own card, so it can be read, edited, and ticked like any section.",
+				control: { type: "toggle", key: "unfiledEnabled" },
+			},
+			{
+				name: "Unfiled card title",
+				desc: "Title shown on that card. Display-only: it is never written into the note.",
+				control: { type: "text", key: "unfiledTitle", placeholder: "_Unfiled_" },
+			},
+			{
 				name: "Jump to today's card",
 				desc: "When a note opens in the cards view, scroll to the card whose heading is today's date. Needs headings to contain dates.",
 				control: { type: "toggle", key: "jumpToToday" },
@@ -3669,9 +3895,17 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			await super.setControlValue(key, text || DEFAULT_SETTINGS.newCardFormat);
 			return;
 		}
+		if (key === "unfiledTitle") {
+			const text = typeof value === "string" ? value.trim() : "";
+			await super.setControlValue(key, text || DEFAULT_SETTINGS.unfiledTitle);
+			this.plugin.refreshAllViews();
+			return;
+		}
 		await super.setControlValue(key, value);
 		if (key === "strikeNestedUnderDone") this.plugin.applyBodyClasses();
-		if (key === "titleBarClick" || key === "stickyPinned") this.plugin.refreshAllViews();
+		if (key === "titleBarClick" || key === "stickyPinned" || key === "unfiledEnabled") {
+			this.plugin.refreshAllViews();
+		}
 	}
 }
 
@@ -3806,6 +4040,11 @@ export default class SectionCardsPlugin extends Plugin {
 
 		// setViewState has already rendered via setState -> syncView.
 		if (revealHeading) (leaf.view as SectionCardsView).revealCard(revealHeading);
+	}
+
+	/** The unfiled card's title, or null when the feature is off. */
+	unfiledTitle(): string | null {
+		return this.settings.unfiledEnabled ? this.settings.unfiledTitle || DEFAULT_SETTINGS.unfiledTitle : null;
 	}
 
 	getStoredView(path: string): ViewSettings | undefined {

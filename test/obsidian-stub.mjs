@@ -19,3 +19,4 @@ export const addIcon = () => {};
 export const setIcon = () => {};
 export class SuggestModal { setPlaceholder() {} }
 export class Scope { register() {} }
+export const Platform = { isMobile: false, isPhone: false, isTablet: false };

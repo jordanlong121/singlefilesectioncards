@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, rectsCollide, findFreeSpot, snapRect, sectionFromEdited } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -855,6 +855,99 @@ b`);
   assert.equal(after[0].headingRaw, predicted.headingRaw);
   assert.equal(after[0].endLine, predicted.endLine);
   assert.equal(after[1].raw, secs[1].raw);
+});
+
+t("unfiledSection grabs text above the first heading, below frontmatter", () => {
+  const pre = unfiledSection(L(`---
+title: x
+---
+
+- [ ] loose task
+note line
+
+### 2026-08-06
+body`), "_Unfiled_");
+  assert.equal(pre.title, "_Unfiled_");
+  assert.equal(pre.headingRaw, UNFILED_KEY);
+  assert.equal(pre.raw, "- [ ] loose task\nnote line");
+  assert.equal(pre.startLine, 4);
+  assert.equal(pre.endLine, 6);
+  assert.ok(pre.unfiled);
+});
+
+t("unfiledSection: any heading rank ends the preamble; fenced headings don't", () => {
+  const pre = unfiledSection(L(`\`\`\`
+### fenced
+\`\`\`
+tail
+## real`), "_Unfiled_");
+  assert.equal(pre.raw, "```\n### fenced\n```\ntail");
+});
+
+t("unfiledSection is null when the file starts at a heading or is blank", () => {
+  assert.equal(unfiledSection(L(`### top
+body`), "_Unfiled_"), null);
+  assert.equal(unfiledSection(L(`---
+a: 1
+---
+
+### top`), "_Unfiled_"), null);
+});
+
+t("parseCards prepends the unfiled card; null title turns it off", () => {
+  const lines = L(`loose
+### one
+a`);
+  const cards = parseCards(lines, 3, "_Unfiled_");
+  assert.equal(cards.length, 2);
+  assert.ok(cards[0].unfiled);
+  assert.equal(cards[1].title, "one");
+  assert.equal(parseCards(lines, 3, null).length, 1);
+});
+
+t("sortSections keeps the unfiled card first in every order", () => {
+  const cards = parseCards(L(`loose
+### 2026-08-05
+a
+### 2026-08-07
+b`), 3, "_Unfiled_");
+  for (const order of ["asc", "desc", "doc"]) {
+    assert.ok(sortSections(cards, order)[0].unfiled, `unfiled first under ${order}`);
+  }
+});
+
+t("moveBlockBetween moves a task out of the unfiled preamble into a section", () => {
+  const lines = L(`- [ ] loose
+### one
+- [ ] a`);
+  const [pre, one] = parseCards(lines, 3, "_Unfiled_");
+  const out = moveBlockBetween(lines, pre, 0, one, null);
+  assert.equal(out.join("\n"), `### one
+- [ ] a
+- [ ] loose`);
+});
+
+t("moveBlockBetween moves a task into the unfiled preamble's top", () => {
+  const lines = L(`loose
+### one
+- [ ] a`);
+  const [pre, one] = parseCards(lines, 3, "_Unfiled_");
+  const out = moveBlockBetween(lines, one, 0, pre, 0);
+  assert.equal(out.join("\n"), `- [ ] a
+loose
+### one`);
+});
+
+t("sectionFromEdited on the unfiled card treats every line as body", () => {
+  const pre = unfiledSection(L(`loose
+### one`), "_Unfiled_");
+  const edited = "loose\nmore";
+  const after = sectionFromEdited(pre, edited);
+  assert.equal(after.raw, edited);
+  assert.equal(after.body, edited);
+  assert.equal(after.headingRaw, UNFILED_KEY);
+  assert.equal(after.title, "_Unfiled_");
+  assert.equal(after.endLine, 2);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
