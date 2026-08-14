@@ -13,10 +13,6 @@ day. This plugin turns those headings into a card wall you can scan, sort, and t
 
 **[Install it from the Obsidian community plugin directory →](https://community.obsidian.md/plugins/single-file-section-cards)**
 
-![Custom Grid: a freeform, zoomable canvas for your sections](screenshots/custom.gif)
-
-![Layouts, editing, and drag-and-drop in 20 seconds](screenshots/demo.gif)
-
 ## What it does
 
 - **One card per heading.** Pick which level becomes a card (H1–H6); deeper headings stay nested
