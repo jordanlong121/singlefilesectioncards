@@ -114,6 +114,54 @@
 	line-height: 1;
 }
 
+/* ---------- filter box ---------- */
+
+.section-cards-filter {
+	position: relative;
+}
+
+.section-cards-filter-input {
+	width: 15ch;
+	padding-right: 26px;
+}
+
+/* The clear X sits inside the input's right edge and only shows with a query. */
+.section-cards-filter-clear {
+	position: absolute;
+	right: 3px;
+	display: none;
+	align-items: center;
+	padding: 2px 4px;
+	line-height: 1;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+}
+
+.section-cards-filter.has-query .section-cards-filter-clear {
+	display: flex;
+}
+
+.section-cards-filter-clear:hover {
+	color: var(--text-normal);
+}
+
+.section-cards-filter-clear svg {
+	width: 14px;
+	height: 14px;
+}
+
+/* A card hidden by the filter occupies no cell in any layout. (The maximized card is
+   exempt: it lives in the overlay and closing it re-applies the filter's classes.) */
+.section-cards-view .section-card.is-filtered-out:not(.is-maximized) {
+	display: none;
+}
+
+/* If the filter empties the sticky pinned band, the band strip goes too. */
+.section-cards-pinned:not(:has(.section-card:not(.is-filtered-out))) {
+	display: none;
+}
+
 .section-cards-new-btn {
 	font-weight: 600;
 	white-space: nowrap;
@@ -177,6 +225,19 @@
 	gap: 0 var(--sc-card-gap);
 	padding: var(--sc-pad);
 	align-items: start;
+}
+
+/* One column (a phone, a narrow pane, the Horizontal layout): masonry packing is a
+   no-op, so main.ts sets this class and skips the measure/span pass. Auto rows plus a
+   real row gap render identically to the spans they replace. */
+.section-cards-grid.is-one-col {
+	grid-auto-rows: auto;
+	row-gap: var(--sc-card-gap);
+}
+
+.section-cards-grid.is-one-col .section-card,
+.section-cards-grid.is-one-col .section-cards-empty {
+	grid-row-end: auto;
 }
 
 /* ---------- layouts ----------
@@ -378,11 +439,15 @@
 		transform 120ms ease;
 }
 
-.section-card:hover {
-	background-color: var(--sc-surface-hover);
-	border-color: var(--interactive-accent);
-	box-shadow: var(--sc-shadow-hover);
-	transform: translateY(-1px);
+/* Hover feedback only where a real pointer hovers: on touch, WebKit's synthetic
+   tap-hover would fire these transitions and repaints for nothing. */
+@media (hover: hover) {
+	.section-card:hover {
+		background-color: var(--sc-surface-hover);
+		border-color: var(--interactive-accent);
+		box-shadow: var(--sc-shadow-hover);
+		transform: translateY(-1px);
+	}
 }
 
 /* Today's card, when the note's headings are dates. --text-highlight-bg is the
@@ -528,7 +593,8 @@
 	gap: 2px;
 	position: absolute;
 	left: 12px;
-	bottom: 12px;
+	/* Clears the iPhone home indicator; env() is 0 everywhere else. */
+	bottom: calc(12px + env(safe-area-inset-bottom, 0px));
 	z-index: 20;
 }
 
@@ -724,25 +790,28 @@
 	width: 20px;
 	height: 20px;
 	pointer-events: none;
+	/* The stripe colour rides a custom property so hover only swaps the colour
+	   instead of restating all three gradients. */
+	--sc-grip: var(--text-faint);
 	background:
 		linear-gradient(
 				135deg,
 				transparent calc(50% - 1px),
-				var(--text-faint) calc(50% - 1px) calc(50% + 1px),
+				var(--sc-grip) calc(50% - 1px) calc(50% + 1px),
 				transparent calc(50% + 1px)
 			)
 			bottom right / 20px 20px no-repeat,
 		linear-gradient(
 				135deg,
 				transparent calc(50% - 1px),
-				var(--text-faint) calc(50% - 1px) calc(50% + 1px),
+				var(--sc-grip) calc(50% - 1px) calc(50% + 1px),
 				transparent calc(50% + 1px)
 			)
 			bottom right / 13px 13px no-repeat,
 		linear-gradient(
 				135deg,
 				transparent calc(50% - 1px),
-				var(--text-faint) calc(50% - 1px) calc(50% + 1px),
+				var(--sc-grip) calc(50% - 1px) calc(50% + 1px),
 				transparent calc(50% + 1px)
 			)
 			bottom right / 6px 6px no-repeat;
@@ -750,28 +819,7 @@
 }
 
 .is-layout-custom .section-card.is-placed:hover::after {
-	background:
-		linear-gradient(
-				135deg,
-				transparent calc(50% - 1px),
-				var(--interactive-accent) calc(50% - 1px) calc(50% + 1px),
-				transparent calc(50% + 1px)
-			)
-			bottom right / 20px 20px no-repeat,
-		linear-gradient(
-				135deg,
-				transparent calc(50% - 1px),
-				var(--interactive-accent) calc(50% - 1px) calc(50% + 1px),
-				transparent calc(50% + 1px)
-			)
-			bottom right / 13px 13px no-repeat,
-		linear-gradient(
-				135deg,
-				transparent calc(50% - 1px),
-				var(--interactive-accent) calc(50% - 1px) calc(50% + 1px),
-				transparent calc(50% + 1px)
-			)
-			bottom right / 6px 6px no-repeat;
+	--sc-grip: var(--interactive-accent);
 	opacity: 1;
 }
 
@@ -832,8 +880,10 @@
 	border-radius: 4px;
 }
 
-.section-card-body .sc-block:hover {
-	background-color: var(--sc-surface-hover);
+@media (hover: hover) {
+	.section-card-body .sc-block:hover {
+		background-color: var(--sc-surface-hover);
+	}
 }
 
 .sc-block.is-dragging-block {
@@ -956,11 +1006,16 @@
 	color: var(--text-muted);
 }
 
-.section-card:hover .section-card-delete,
-.section-card:hover .section-card-big,
-.section-card:hover .section-card-open,
-.section-card:hover .section-card-pin,
-.section-card:hover .section-card-quickadd,
+@media (hover: hover) {
+	.section-card:hover .section-card-delete,
+	.section-card:hover .section-card-big,
+	.section-card:hover .section-card-open,
+	.section-card:hover .section-card-pin,
+	.section-card:hover .section-card-quickadd {
+		opacity: 1;
+	}
+}
+
 .section-card-delete:focus-visible,
 .section-card-big:focus-visible,
 .section-card-open:focus-visible,
@@ -1063,9 +1118,11 @@ body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
 	pointer-events: auto;
 }
 
-.section-card-body input[type="checkbox"]:hover {
-	box-shadow: 0 0 0 2px var(--interactive-accent);
-	border-radius: 3px;
+@media (hover: hover) {
+	.section-card-body input[type="checkbox"]:hover {
+		box-shadow: 0 0 0 2px var(--interactive-accent);
+		border-radius: 3px;
+	}
 }
 
 /* Brief accent flash confirming the write went to the file. */
@@ -1201,4 +1258,59 @@ body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
 .section-card-body {
 	scrollbar-width: thin;
 	scrollbar-color: rgba(var(--mono-rgb-100), 0.3) transparent;
+}
+
+/* ---------- mobile ----------
+   Obsidian stamps body.is-mobile (phones and tablets) and body.is-phone. Everything
+   here is scoped to those classes, so desktop rendering is untouched. */
+
+/* Backdrop blur composites per element — a wall of blurred cards is the single
+   biggest scroll cost on a phone GPU. The bar surfaces get more opaque instead so
+   content scrolling beneath the sticky toolbar/pinned band stays legible.
+   (--mono-rgb-0 is the background colour in both themes, so one rule covers both.) */
+body.is-mobile .section-cards-view {
+	--sc-blur: none;
+	--sc-bar: rgba(var(--mono-rgb-0), 0.92);
+}
+
+body.is-mobile .section-cards-overlay {
+	backdrop-filter: none;
+	-webkit-backdrop-filter: none;
+	background-color: rgba(var(--mono-rgb-0), 0.7);
+}
+
+/* No hover on touch: the header actions must simply be visible, at tappable sizes. */
+body.is-mobile .section-card-delete,
+body.is-mobile .section-card-big,
+body.is-mobile .section-card-open,
+body.is-mobile .section-card-pin,
+body.is-mobile .section-card-quickadd {
+	opacity: 1;
+	padding: 6px 9px;
+}
+
+body.is-mobile .section-card-delete svg,
+body.is-mobile .section-card-big svg,
+body.is-mobile .section-card-pin svg,
+body.is-mobile .section-card-quickadd svg {
+	width: 16px;
+	height: 16px;
+}
+
+body.is-mobile .is-layout-custom .section-card.is-placed .section-card-untray {
+	opacity: 1;
+}
+
+/* Skip layout/paint for offscreen cards. Safe because the one-column mode (always
+   the case on a phone) never measures cards for masonry; the intrinsic placeholder
+   keeps scrollbar geometry stable until a card first renders. */
+body.is-mobile .section-cards-grid.is-one-col .section-card {
+	content-visibility: auto;
+	contain-intrinsic-size: auto 240px;
+}
+
+/* The toolbar wraps to several rows on a phone and it's sticky — reclaim one by
+   dropping the dropdowns' text labels; the controls are self-describing. */
+body.is-phone .section-cards-label {
+	display: none;
 }
