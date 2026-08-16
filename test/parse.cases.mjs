@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -948,6 +948,63 @@ t("sectionFromEdited on the unfiled card treats every line as body", () => {
   assert.equal(after.headingRaw, UNFILED_KEY);
   assert.equal(after.title, "_Unfiled_");
   assert.equal(after.endLine, 2);
+});
+
+t("removeBlock deletes a task with its sub-items", () => {
+  const lines = L(`### one
+- [ ] a
+	- [ ] nested
+- [ ] b`);
+  const [one] = parseSections(lines, 3);
+  const out = removeBlock(lines, one, 0);
+  assert.equal(out.join("\n"), `### one
+- [ ] b`);
+});
+
+t("removeBlock collapses the doubled blank a deleted paragraph leaves", () => {
+  const lines = L(`### one
+first
+
+middle
+
+last`);
+  const [one] = parseSections(lines, 3);
+  const out = removeBlock(lines, one, 1);
+  assert.equal(out.join("\n"), `### one
+first
+
+last`);
+});
+
+t("removeBlock refuses an out-of-range block", () => {
+  const lines = L(`### one
+- [ ] a`);
+  const [one] = parseSections(lines, 3);
+  assert.equal(removeBlock(lines, one, 5), null);
+});
+
+t("titleHasDate spots an ISO date anywhere in the title", () => {
+  assert.ok(titleHasDate("2026-08-06, Thursday", "YYYY-MM-DD, dddd"));
+  assert.ok(titleHasDate("prefix 2026-08-06 suffix", ""));
+  assert.ok(!titleHasDate("Groceries", "YYYY-MM-DD, dddd"), "plain title is not a date");
+  assert.ok(!titleHasDate("Meeting 12-34", ""), "partial numbers are not a date");
+});
+
+t("template placeholders fill title, the card's own date, and formats", () => {
+  const out = applyTemplatePlaceholders(
+    "# {{title}}\n- [ ] plan {{date}}\n- [ ] recap {{ date : MM-DD }}\nat {{time:HH}}",
+    "2026-08-20, Thursday",
+    "YYYY-MM-DD, dddd",
+  );
+  assert.ok(out.includes("# 2026-08-20, Thursday"), "title replaced");
+  assert.ok(out.includes("plan 2026-08-20"), "{{date}} uses the heading's date, not today");
+  assert.ok(out.includes("recap STUB-MM-DD"), "custom date format passed through");
+  assert.ok(out.includes("at STUB-HH"), "custom time format passed through");
+});
+
+t("a template without placeholders passes through untouched", () => {
+  const raw = "- [ ] standing item\n\ttab-indented note";
+  assert.equal(applyTemplatePlaceholders(raw, "Groceries", "YYYY-MM-DD, dddd"), raw);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -6,6 +6,7 @@ import {
 	ItemView,
 	MarkdownRenderer,
 	MarkdownView,
+	Menu,
 	Modal,
 	Notice,
 	Platform,
@@ -19,6 +20,7 @@ import {
 	WorkspaceLeaf,
 	debounce,
 	moment,
+	normalizePath,
 } from "obsidian";
 import { createEmbeddedEditor, type EmbeddedEditor } from "./editor-embed";
 
@@ -73,12 +75,18 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 /** What clicking a card's title bar does. */
 export type TitleBarClick = "maximize" | "edit";
 
-/** Whether this note's headings are dates (so "today" can be highlighted) or plain text. */
-export type HeadingType = "dates" | "text";
-
 /** "live" renders markdown while editing, "source" shows it highlighted — both via
  * Obsidian's editor, falling back to "plain" (a bare textarea) if it's unavailable. */
 export type EditorMode = "live" | "source" | "plain";
+
+/** The slice of the Tasks community plugin's public API this plugin uses. */
+interface TasksApiV1 {
+	/** Opens the Tasks "create task" dialog; resolves to the task line ("" on cancel). */
+	createTaskLineModal(): Promise<string>;
+	/** Toggles a task line with Tasks semantics (recurrence, done dates); may return
+	 * several lines, or the input unchanged when it declines. */
+	executeToggleTaskDoneCommand(line: string, path: string): string;
+}
 
 interface SectionCardsSettings {
 	filePath: string;
@@ -87,7 +95,6 @@ interface SectionCardsSettings {
 	cardMaxHeight: number;
 	newCardFormat: string;
 	newCardPlacement: Placement;
-	headingType: HeadingType;
 	/** Show text above the file's first heading as its own card. */
 	unfiledEnabled: boolean;
 	/** Display-only title for that card; never written into the note. */
@@ -97,6 +104,9 @@ interface SectionCardsSettings {
 	/** Keep the pinned band on screen while the rest of the cards scroll. */
 	stickyPinned: boolean;
 	taskDoneDate: boolean;
+	/** Route task toggles through the Tasks plugin when it's installed, so recurring
+	 * tasks spawn their next occurrence and done dates follow its settings. */
+	tasksToggle: boolean;
 	/** Whether ticking a task also strikes through the items nested beneath it. */
 	strikeNestedUnderDone: boolean;
 	titleBarClick: TitleBarClick;
@@ -117,6 +127,15 @@ export interface PerFileView extends ViewSettings {
 	customZoom?: number;
 	/** Headings pinned to the top of the card wall, in the order they were pinned. */
 	pinned?: string[];
+	/** Whether this note's headings name dates (today highlight, jump-to-date). Unset
+	 * means "decide from the note": on when any heading looks like a date. */
+	containsDates?: boolean;
+	/** Per-card colours by heading line; values are CARD_COLORS names. */
+	colors?: Record<string, string>;
+	/** Note whose contents pre-fill the body of every new card made for this note. */
+	templatePath?: string;
+	/** This note's heading-name format for new cards, overriding the global default. */
+	newCardFormat?: string;
 }
 
 /** The bit of view state that is remembered per note. */
@@ -126,6 +145,19 @@ export interface ViewSettings {
 	sortOrder: SortOrder;
 }
 
+/** The card colour palette. Names key the stored choice and the CSS swatch classes. */
+const CARD_COLORS: [name: string, label: string][] = [
+	["red", "Red"],
+	["orange", "Orange"],
+	["yellow", "Yellow"],
+	["green", "Green"],
+	["cyan", "Cyan"],
+	["blue", "Blue"],
+	["purple", "Purple"],
+	["pink", "Pink"],
+	["gray", "Grey"],
+];
+
 const DEFAULT_SETTINGS: SectionCardsSettings = {
 	filePath: "Daily Notes 2026.md",
 	headingLevel: 3,
@@ -133,12 +165,12 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	cardMaxHeight: 320,
 	newCardFormat: "YYYY-MM-DD, dddd",
 	newCardPlacement: "logical",
-	headingType: "dates",
 	unfiledEnabled: false,
 	unfiledTitle: "_Unfiled_",
 	jumpToToday: true,
 	stickyPinned: true,
 	taskDoneDate: true,
+	tasksToggle: true,
 	strikeNestedUnderDone: true,
 	titleBarClick: "maximize",
 	editorMode: "live",
@@ -173,6 +205,13 @@ interface Section {
 
 /** obsidian's `moment` re-export is typed as a namespace; this is the callable form. */
 const mo = moment as unknown as (input?: string, format?: string) => { format: (format: string) => string };
+
+/** The strict-parsing form, for asking whether a title *is* a date in a given format. */
+const moParse = moment as unknown as (
+	input: string,
+	format: string,
+	strict: boolean,
+) => { isValid: () => boolean; format: (format: string) => string };
 
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 const FENCE_RE = /^\s*(```|~~~)/;
@@ -372,6 +411,38 @@ export function isTodayTitle(title: string, todayISO: string, todayFormatted: st
 	if (title.includes(todayISO)) return true;
 	const formatted = todayFormatted.trim().toLowerCase();
 	return formatted.length > 3 && title.toLowerCase().includes(formatted);
+}
+
+/** Does a heading title look like a date: an ISO date anywhere, or exactly the new-card format? */
+export function titleHasDate(title: string, format: string): boolean {
+	if (/\d{4}-\d{2}-\d{2}/.test(title)) return true;
+	const trimmed = format.trim();
+	return trimmed.length > 0 && moParse(title.trim(), trimmed, true).isValid();
+}
+
+/**
+ * Fill a template's `{{title}}`, `{{date}}` and `{{time}}` placeholders (with optional
+ * `{{date:FORMAT}}` variants, like Obsidian's core Templates). `{{date}}` uses the date
+ * named in the card's heading when there is one, so a template dropped into a card for
+ * 2026-08-20 writes that day rather than today; `{{time}}` is always now.
+ */
+export function applyTemplatePlaceholders(raw: string, title: string, headingFormat: string): string {
+	const iso = /\d{4}-\d{2}-\d{2}/.exec(title)?.[0];
+	let cardDate: { format: (f: string) => string };
+	if (iso) {
+		cardDate = mo(iso, "YYYY-MM-DD");
+	} else {
+		const strict = headingFormat.trim() ? moParse(title.trim(), headingFormat.trim(), true) : null;
+		cardDate = strict?.isValid() ? strict : mo();
+	}
+	return raw
+		.replace(/\{\{\s*title\s*\}\}/gi, title)
+		.replace(/\{\{\s*date\s*(?::([^}]*))?\}\}/gi, (_, f: string | undefined) =>
+			cardDate.format(f?.trim() || "YYYY-MM-DD"),
+		)
+		.replace(/\{\{\s*time\s*(?::([^}]*))?\}\}/gi, (_, f: string | undefined) =>
+			mo().format(f?.trim() || "HH:mm"),
+		);
 }
 
 /** Normalize a typed heading: keep the user's #'s if present, otherwise apply the view's level. */
@@ -585,6 +656,55 @@ export function moveBlockBetween(
 	return out;
 }
 
+/**
+ * Remove one movable block from a section — a task brings its sub-items along, the
+ * same unit a drag moves. A doubled blank left at the removal point is collapsed.
+ */
+export function removeBlock(lines: string[], from: Section, blockIndex: number): string[] | null {
+	const fromBody = lines.slice(bodyStartLine(from), from.endLine);
+	const block = movableBlocks(fromBody)[blockIndex];
+	if (!block) return null;
+	const absStart = bodyStartLine(from) + block.start;
+	const absEnd = bodyStartLine(from) + block.end;
+	const out = lines.slice(0, absStart).concat(lines.slice(absEnd));
+	if (absStart > 0 && absStart < out.length && out[absStart - 1].trim() === "" && out[absStart].trim() === "") {
+		out.splice(absStart, 1);
+	}
+	return out;
+}
+
+/** Delete a block at write time, re-locating the section and verifying the block's text. */
+async function deleteBlockInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	from: Section,
+	blockIndex: number,
+	expectedBlockText: string,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, from);
+		if (!target) {
+			ok = false;
+			return data;
+		}
+		const body = lines.slice(bodyStartLine(target), target.endLine);
+		const block = movableBlocks(body)[blockIndex];
+		if (!block || body.slice(block.start, block.end).join("\n") !== expectedBlockText) {
+			ok = false; // the block moved or changed since the menu opened — refuse
+			return data;
+		}
+		const result = removeBlock(lines, target, blockIndex);
+		return result ? result.join(eol) : data;
+	});
+
+	return ok;
+}
+
 /** Move a block at write time, re-locating both sections and verifying the block's text. */
 async function moveBlockInFile(
 	app: App,
@@ -687,6 +807,49 @@ async function toggleTaskInFile(
 
 		lines[at] = updated;
 		result = /^\s*(?:[-*+]|\d+[.)])\s+\[[xX]\]/.test(updated);
+		return lines.join(eol);
+	});
+
+	return result;
+}
+
+/**
+ * Toggle the nth task of a section through the Tasks plugin, so its semantics apply —
+ * a recurring task spawns its next occurrence, done dates follow its settings. Returns
+ * the new checked state, or null when the task can't be located or Tasks declines.
+ */
+async function toggleTaskWithTasksApi(
+	app: App,
+	file: TFile,
+	level: number,
+	original: Section,
+	nth: number,
+	api: TasksApiV1,
+): Promise<boolean | null> {
+	let result: boolean | null = null;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, original);
+		if (!target) return data;
+
+		const body = lines.slice(bodyStartLine(target), target.endLine);
+		const tasks = taskLineIndexes(body);
+		if (nth >= tasks.length) return data;
+
+		const at = bodyStartLine(target) + tasks[nth];
+		const before = lines[at];
+		let replacement: string;
+		try {
+			replacement = api.executeToggleTaskDoneCommand(before, file.path);
+		} catch {
+			return data;
+		}
+		if (typeof replacement !== "string" || !replacement.trim() || replacement === before) return data;
+
+		lines.splice(at, 1, ...replacement.split(/\r?\n/));
+		result = TASK_RE.exec(before)?.[2].toLowerCase() !== "x";
 		return lines.join(eol);
 	});
 
@@ -1090,6 +1253,39 @@ async function quickAddToSection(
 	return ok;
 }
 
+/** Insert a line right after a given movable block, verifying the block's text first. */
+async function insertLineAfterBlock(
+	app: App,
+	file: TFile,
+	level: number,
+	original: Section,
+	blockIndex: number,
+	expectedBlockText: string,
+	text: string,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, original);
+		if (!target) {
+			ok = false;
+			return data;
+		}
+		const body = lines.slice(bodyStartLine(target), target.endLine);
+		const block = movableBlocks(body)[blockIndex];
+		if (!block || body.slice(block.start, block.end).join("\n") !== expectedBlockText) {
+			ok = false;
+			return data;
+		}
+		lines.splice(bodyStartLine(target) + block.end, 0, text);
+		return lines.join(eol);
+	});
+
+	return ok;
+}
+
 /** Remove a section from the file, re-locating it at write time like every other write. */
 async function deleteSection(app: App, file: TFile, level: number, original: Section): Promise<boolean> {
 	let ok = true;
@@ -1110,15 +1306,18 @@ async function deleteSection(app: App, file: TFile, level: number, original: Sec
 	return ok;
 }
 
-/** Insert a new, empty section and return the heading line as written. */
+/** Insert a new section — empty, or with a template body — and return the heading level written. */
 async function insertSection(
 	app: App,
 	file: TFile,
 	headingRaw: string,
 	placement: Placement,
+	body?: string,
 ): Promise<{ level: number; duplicate: boolean }> {
 	const level = (/^#+/.exec(headingRaw)?.[0] ?? "###").length;
 	const title = headingRaw.replace(/^#+\s*/, "").trim();
+	// Shed blank lines at either end (but not first-line indentation) before splicing.
+	const bodyLines = body?.trim() ? body.replace(/^(?:[ \t]*\r?\n)+/, "").replace(/\s+$/, "").split(/\r?\n/) : [];
 	let duplicate = false;
 
 	await app.vault.process(file, (data) => {
@@ -1126,7 +1325,7 @@ async function insertSection(
 		const lines = data.split(/\r?\n/);
 		duplicate = parseSections(lines, level).some((s) => s.title === title);
 		const at = insertionLine(lines, level, title, placement);
-		lines.splice(at, 0, headingRaw, "");
+		lines.splice(at, 0, headingRaw, ...bodyLines, "");
 		return lines.join(eol);
 	});
 
@@ -1205,6 +1404,15 @@ export class SectionCardsView extends ItemView {
 	private editingKey: string | null = null;
 	/** Toolbar filter text: only cards containing it (title or body) are shown. */
 	private filterQuery = "";
+	/** This note's effective "headings are dates" state: the per-note checkbox if the
+	 * user has set it, otherwise whether the note actually has date-like headings. */
+	private containsDates = false;
+	/** Whether the last render found date-like headings, so jump-to-date is offered. */
+	private hasDateHeadings = false;
+	/** The jump-to-date toolbar control, so refresh can show/hide it without a rebuild. */
+	private jumpDateWrap: HTMLElement | null = null;
+	/** The per-note "Dates" checkbox, kept current by refresh. */
+	private datesToggle: HTMLInputElement | null = null;
 	/** The open editor's card and its finish function, so clicks elsewhere can commit it. */
 	private activeEditor: {
 		card: HTMLElement;
@@ -1595,11 +1803,22 @@ export class SectionCardsView extends ItemView {
 		btn.setAttr("aria-label", pinned ? "Unpin this card" : "Pin this card to the top");
 	}
 
+	/** Sync a card's (or tray tile's) colour attribute; CSS keys off data-sfsc-color. */
+	private applyCardColor(el: HTMLElement, color: string | undefined): void {
+		if (color && CARD_COLORS.some(([name]) => name === color)) el.setAttr("data-sfsc-color", color);
+		else el.removeAttribute("data-sfsc-color");
+	}
+
+	/** This note's heading-name format for new cards (its own override, else the default). */
+	private cardFormat(): string {
+		return this.plugin.getNewCardFormat(this.filePath);
+	}
+
 	/** Today's date keys, computed once per render instead of once per card. */
 	private todayKeys(): { iso: string; formatted: string } | null {
-		if (this.plugin.settings.headingType !== "dates") return null;
+		if (!this.containsDates) return null;
 		const now = mo();
-		return { iso: now.format("YYYY-MM-DD"), formatted: now.format(this.plugin.settings.newCardFormat) };
+		return { iso: now.format("YYYY-MM-DD"), formatted: now.format(this.cardFormat()) };
 	}
 
 	/**
@@ -1884,6 +2103,33 @@ export class SectionCardsView extends ItemView {
 			filterInput.focus();
 		});
 
+		// Jump to date: only offered when headings are dates and the note actually has
+		// some (refresh keeps the visibility current). The native date picker does the
+		// asking; the button anchors it over an invisible input.
+		const jumpWrap = bar.createDiv({ cls: "section-cards-control section-cards-jump-date" });
+		this.jumpDateWrap = jumpWrap;
+		jumpWrap.toggleClass("is-hidden", !this.hasDateHeadings);
+		const jumpBtn = jumpWrap.createEl("button", { cls: "section-cards-icon-btn section-cards-jump-btn" });
+		setIcon(jumpBtn, "calendar-days");
+		jumpBtn.setAttr("aria-label", "Jump to a date's card");
+		const jumpInput = jumpWrap.createEl("input", {
+			cls: "section-cards-jump-input",
+			attr: { type: "date", "aria-hidden": "true", tabindex: "-1" },
+		});
+		jumpBtn.addEventListener("click", () => {
+			if (!jumpInput.value) jumpInput.value = mo().format("YYYY-MM-DD");
+			const picker = jumpInput as HTMLInputElement & { showPicker?: () => void };
+			try {
+				if (picker.showPicker) picker.showPicker();
+				else jumpInput.focus();
+			} catch {
+				jumpInput.focus();
+			}
+		});
+		jumpInput.addEventListener("change", () => {
+			if (jumpInput.value) this.jumpToDate(jumpInput.value);
+		});
+
 		const levelWrap = bar.createDiv({ cls: "section-cards-control" });
 		levelWrap.createSpan({ text: "Heading", cls: "section-cards-label" });
 		const levelSelect = levelWrap.createEl("select", { cls: "dropdown" });
@@ -1925,13 +2171,155 @@ export class SectionCardsView extends ItemView {
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 		});
 
+		// Per-note: do this note's headings name dates? Governs the today highlight, the
+		// jump-to-today scroll, and the calendar button. Until first clicked it mirrors
+		// what the note's headings look like (refresh keeps it current).
+		const datesWrap = bar.createDiv({ cls: "section-cards-control" });
+		const datesLabel = datesWrap.createEl("label", { cls: "section-cards-dates-label" });
+		const datesToggle = datesLabel.createEl("input", {
+			cls: "section-cards-dates-toggle",
+			attr: { type: "checkbox" },
+		});
+		// The text is a .section-cards-label span so phones drop it like the other labels
+		// (the checkbox itself stays).
+		datesLabel.createSpan({ cls: "section-cards-label", text: "Dates" });
+		datesToggle.setAttr(
+			"aria-label",
+			"This note's headings contain dates — highlight today's card and offer jump-to-date",
+		);
+		datesToggle.checked = this.containsDates;
+		this.datesToggle = datesToggle;
+		datesToggle.addEventListener("change", () => {
+			void this.plugin.setContainsDates(this.filePath, datesToggle.checked, {
+				layout: this.layout,
+				headingLevel: this.headingLevel,
+				sortOrder: this.sortOrder,
+			});
+		});
+
 		const newBtn = bar.createEl("button", { cls: "section-cards-new-btn mod-cta", text: "+ New card" });
 		newBtn.setAttr("aria-label", "Create a new section in this note");
 		newBtn.addEventListener("click", () => this.promptNewCard());
 
+		const templateBtn = bar.createEl("button", { cls: "section-cards-icon-btn section-cards-template-btn" });
+		setIcon(templateBtn, "layout-template");
+		templateBtn.setAttr("aria-label", "New-card options for this note: template and heading name");
+		templateBtn.toggleClass("has-template", !!this.plugin.getTemplatePath(this.filePath));
+		templateBtn.addEventListener("click", (evt) => this.openTemplateMenu(evt, templateBtn));
+
 		const refreshBtn = bar.createEl("button", { cls: "section-cards-icon-btn", text: "↻" });
 		refreshBtn.setAttr("aria-label", "Reload from file");
 		refreshBtn.addEventListener("click", () => void this.refresh());
+	}
+
+	/** Scroll the card whose heading is the picked ISO date into view, like the today jump. */
+	private jumpToDate(iso: string): void {
+		const formatted = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
+		const entry = this.cardEntries.find((e) => isTodayTitle(e.holder.section.title, iso, formatted));
+		if (!entry) {
+			new Notice(`No card for ${iso} in this note.`);
+			return;
+		}
+		const title = entry.holder.section.title || "(untitled)";
+		if (this.layout === "custom" && !this.customPlacements[entry.holder.section.headingRaw]) {
+			new Notice(`“${title}” isn't on the canvas — it's in the list on the right.`);
+			return;
+		}
+		if (entry.el.hasClass("is-filtered-out")) {
+			new Notice(`“${title}” is hidden by the filter.`);
+			return;
+		}
+		entry.el.scrollIntoView({ block: "center", inline: "center" });
+		entry.el.addClass("is-linked");
+		window.setTimeout(() => entry.el.removeClass("is-linked"), 1600);
+	}
+
+	/** The new-card options menu: this note's template, and its own heading-name format. */
+	private openTemplateMenu(evt: MouseEvent, btn: HTMLElement): void {
+		const base: ViewSettings = { layout: this.layout, headingLevel: this.headingLevel, sortOrder: this.sortOrder };
+		const current = this.plugin.getTemplatePath(this.filePath);
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item.setTitle(current ? `Template: ${current}` : "No template for this note").setDisabled(true),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle("Choose template note…")
+				.setIcon("file-search")
+				.onClick(() => {
+					new FileSuggestModal(this.app, this.plugin, (path) => {
+						if (path === this.filePath) {
+							new Notice("A note can't be its own template.");
+							return;
+						}
+						void this.plugin.setTemplatePath(this.filePath, path, base);
+						btn.addClass("has-template");
+					}).open();
+				}),
+		);
+		if (current) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Remove template")
+					.setIcon("x")
+					.onClick(() => {
+						void this.plugin.setTemplatePath(this.filePath, null, base);
+						btn.removeClass("has-template");
+					}),
+			);
+		}
+
+		const override = this.plugin.getNewCardFormatOverride(this.filePath);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item.setTitle(`Heading name: ${this.cardFormat()}${override ? "" : " (default)"}`).setDisabled(true),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Set heading name for this note…")
+				.setIcon("pencil")
+				.onClick(() => {
+					new HeadingFormatModal(this.app, override ?? "", this.plugin.settings.newCardFormat, (value) => {
+						void this.plugin.setNewCardFormat(this.filePath, value, base);
+					}).open();
+				}),
+		);
+		if (override) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Use the default heading name")
+					.setIcon("rotate-ccw")
+					.onClick(() => void this.plugin.setNewCardFormat(this.filePath, null, base)),
+			);
+		}
+		menu.showAtMouseEvent(evt);
+	}
+
+	/** The colour button's menu: one swatch per palette colour, plus "No colour". */
+	private openColorMenu(evt: MouseEvent, file: TFile, headingRaw: string): void {
+		const base: ViewSettings = { layout: this.layout, headingLevel: this.headingLevel, sortOrder: this.sortOrder };
+		const current = this.plugin.getCardColors(file.path)[headingRaw];
+		const menu = new Menu();
+		for (const [name, label] of CARD_COLORS) {
+			menu.addItem((item) => {
+				const title = createFragment();
+				title.createSpan({ cls: `sfsc-swatch sfsc-swatch-${name}` });
+				title.appendText(label);
+				item
+					.setTitle(title)
+					.setChecked(current === name)
+					.onClick(() => void this.plugin.setCardColor(file.path, headingRaw, name, base));
+			});
+		}
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle("No colour")
+				.setChecked(!current)
+				.onClick(() => void this.plugin.setCardColor(file.path, headingRaw, null, base)),
+		);
+		menu.showAtMouseEvent(evt);
 	}
 
 	/** Ask for a heading and placement, write the new section, then open it for editing. */
@@ -1942,7 +2330,7 @@ export class SectionCardsView extends ItemView {
 			return;
 		}
 
-		const defaultText = `${"#".repeat(this.headingLevel)} ${mo().format(this.plugin.settings.newCardFormat)}`;
+		const defaultText = `${"#".repeat(this.headingLevel)} ${mo().format(this.cardFormat())}`;
 
 		new NewCardModal(
 			this.app,
@@ -1950,7 +2338,7 @@ export class SectionCardsView extends ItemView {
 			this.plugin.settings.newCardPlacement,
 			mo().format("YYYY-MM-DD"),
 			(isoDate) =>
-				`${"#".repeat(this.headingLevel)} ${mo(isoDate, "YYYY-MM-DD").format(this.plugin.settings.newCardFormat)}`,
+				`${"#".repeat(this.headingLevel)} ${mo(isoDate, "YYYY-MM-DD").format(this.cardFormat())}`,
 			async (typed, placement) => {
 				const headingRaw = normalizeHeading(typed, this.headingLevel);
 				const level = (/^#+/.exec(headingRaw)?.[0] ?? "###").length;
@@ -1976,7 +2364,14 @@ export class SectionCardsView extends ItemView {
 					return;
 				}
 
-				const { level: written, duplicate } = await insertSection(this.app, file, headingRaw, placement);
+				const body = await this.plugin.loadTemplateBody(file.path, title);
+				const { level: written, duplicate } = await insertSection(
+					this.app,
+					file,
+					headingRaw,
+					placement,
+					body ?? undefined,
+				);
 
 				// Backstop: the file can change between the check above and the write.
 				if (duplicate) {
@@ -2003,10 +2398,12 @@ export class SectionCardsView extends ItemView {
 	}
 
 	getFile(): TFile | null {
-		const file = this.app.vault.getAbstractFileByPath(this.filePath);
+		// The path may be user-typed (settings, the note picker), so normalize it first.
+		const path = normalizePath(this.filePath);
+		const file = this.app.vault.getAbstractFileByPath(path);
 		if (file instanceof TFile) return file;
 		// Fall back to a fuzzy resolve so a bare filename works from anywhere in the vault.
-		const resolved = this.app.metadataCache.getFirstLinkpathDest(this.filePath.replace(/\.md$/, ""), "");
+		const resolved = this.app.metadataCache.getFirstLinkpathDest(path.replace(/\.md$/, ""), "");
 		return resolved ?? null;
 	}
 
@@ -2023,6 +2420,9 @@ export class SectionCardsView extends ItemView {
 
 		if (!file) {
 			this.countEl?.setText("");
+			this.containsDates = false;
+			this.hasDateHeadings = false;
+			this.jumpDateWrap?.toggleClass("is-hidden", true);
 			this.clearAllCards();
 			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
 			empty.createEl("p", { text: `Can't find "${this.filePath}".` });
@@ -2045,8 +2445,19 @@ export class SectionCardsView extends ItemView {
 		}
 
 		const sections = parseCards(lines, this.headingLevel, this.plugin.unfiledTitle());
+
+		// Does this note deal in dates? The checkbox rules when the user has set it;
+		// until then the note decides for itself. The jump-to-date button additionally
+		// needs a date heading to actually land on.
+		const noteHasDates = sections.some((s) => titleHasDate(s.title, this.plugin.getNewCardFormat(file.path)));
+		this.containsDates = this.plugin.getContainsDates(file.path) ?? noteHasDates;
+		this.hasDateHeadings = this.containsDates && noteHasDates;
+		this.jumpDateWrap?.toggleClass("is-hidden", !this.hasDateHeadings);
+		if (this.datesToggle) this.datesToggle.checked = this.containsDates;
+
 		const pinnedList = this.plugin.getPinned(file.path);
 		const pinnedKeys = new Set(pinnedList);
+		const cardColors = this.plugin.getCardColors(file.path);
 		const ordered = applyPinned(sortSections(sections, this.sortOrder), pinnedList);
 		const pinnedCount = pinnedKeys.size ? ordered.filter((s) => pinnedKeys.has(s.headingRaw)).length : 0;
 		// Sticky pins render in their own band between toolbar and grid. pinnedShown
@@ -2127,6 +2538,7 @@ export class SectionCardsView extends ItemView {
 			// Reused cards keep their old pin state; a pin toggle re-renders with the same raw.
 			const isPinned = pinnedKeys.has(section.headingRaw);
 			if (entry.el.hasClass("is-pinned") !== isPinned) this.applyPinState(entry.el, isPinned);
+			this.applyCardColor(entry.el, cardColors[section.headingRaw]);
 			queueBody(entry);
 			nextEntries.push(entry);
 			this.cardsByHeading.set(section.headingRaw, { el: entry.el, section });
@@ -2323,6 +2735,14 @@ export class SectionCardsView extends ItemView {
 			}).open();
 		});
 
+		const colorBtn = header.createEl("button", { cls: "section-card-color" });
+		setIcon(colorBtn, "palette");
+		colorBtn.setAttr("aria-label", "Set this card's colour");
+		colorBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.openColorMenu(evt, file, holder.section.headingRaw);
+		});
+
 		const pinBtn = header.createEl("button", { cls: "section-card-pin" });
 		pinBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -2440,6 +2860,41 @@ export class SectionCardsView extends ItemView {
 				return;
 			}
 			this.startEditing(card, file, holder.section);
+		});
+
+		// Right-click a task or paragraph: send it to a neighbouring card without dragging.
+		bodyEl.addEventListener("contextmenu", (evt) => {
+			if (card.hasClass("is-editing")) return;
+			const target = evt.target as HTMLElement | null;
+			if (target?.closest("a")) return; // links keep their native menu
+			const el = target?.closest<HTMLElement>(".sc-block");
+			if (!el || !bodyEl.contains(el)) {
+				// Off any block, the menu can still offer the Tasks create dialog.
+				const api = this.plugin.tasksApi();
+				if (!api) return;
+				evt.preventDefault();
+				evt.stopPropagation();
+				const menu = new Menu();
+				menu.addItem((item) =>
+					item
+						.setTitle("New task (Tasks)…")
+						.setIcon("list-plus")
+						.onClick(() => void this.newTaskWithTasks(api, file, holder.section, null, null)),
+				);
+				menu.showAtMouseEvent(evt);
+				return;
+			}
+			const els = this.eligibleBlockEls(bodyEl);
+			const domIndex = els.indexOf(el);
+			const body = holder.section.body.split("\n");
+			const block = movableBlocks(body)[domIndex];
+			// The DOM element and the parsed block must agree before anything can move.
+			if (domIndex < 0 || !block || !SectionCardsView.blockTextsAgree(el, body.slice(block.start, block.end))) {
+				return;
+			}
+			evt.preventDefault();
+			evt.stopPropagation();
+			this.openBlockMenu(evt, file, holder.section, domIndex, body.slice(block.start, block.end).join("\n"), el);
 		});
 
 		// Drag a task or paragraph out of this card's body into another card. Works in
@@ -2948,7 +3403,7 @@ export class SectionCardsView extends ItemView {
 
 		// Permanent tray controls: Clear (everything back to this list) and the sorts.
 		const actions = this.trayEl.createDiv({ cls: "section-cards-tray-actions" });
-		const clearBtn = actions.createEl("button", { cls: "section-cards-tray-clear", text: "Clear Layout" });
+		const clearBtn = actions.createEl("button", { cls: "section-cards-tray-clear", text: "Clear layout" });
 		clearBtn.setAttr("aria-label", "Remove every card from the canvas, back into this list");
 		clearBtn.addEventListener("click", () => {
 			const placed = Object.keys(this.customPlacements).length;
@@ -2978,6 +3433,7 @@ export class SectionCardsView extends ItemView {
 
 		this.trayEl.createDiv({ cls: "section-cards-tray-hint", text: "Drag a section onto the canvas" });
 		const today = this.todayKeys();
+		const trayColors = this.plugin.getCardColors(this.filePath);
 		for (const key of unplacedKeys) {
 			const entry = this.cardsByHeading.get(key);
 			if (!entry) continue;
@@ -2988,6 +3444,7 @@ export class SectionCardsView extends ItemView {
 			if (today && isTodayTitle(entry.section.title, today.iso, today.formatted)) {
 				tile.addClass("is-today");
 			}
+			this.applyCardColor(tile, trayColors[key]);
 			tile.addEventListener("pointerdown", (evt) => {
 				this.startPointerDrag(
 					evt,
@@ -3097,6 +3554,153 @@ export class SectionCardsView extends ItemView {
 		return { beforeIndex: null, el: null, before: false };
 	}
 
+	/**
+	 * The right-click menu for a movable block: send it to a neighbouring card (as the
+	 * wall is displayed — pins and the current sort included, always at the view's
+	 * heading level), toggle it done when it's a task, or delete it.
+	 */
+	private openBlockMenu(
+		evt: MouseEvent,
+		file: TFile,
+		section: Section,
+		blockIndex: number,
+		blockText: string,
+		blockEl: HTMLElement,
+	): void {
+		const at = this.cardEntries.findIndex((entry) => entry.holder.section.headingRaw === section.headingRaw);
+		const prev = at > 0 ? this.cardEntries[at - 1].holder.section : null;
+		const next = at >= 0 && at < this.cardEntries.length - 1 ? this.cardEntries[at + 1].holder.section : null;
+
+		const label = (target: Section) => {
+			const title = target.title || "(untitled)";
+			return title.length > 28 ? `${title.slice(0, 27)}…` : title;
+		};
+
+		const menu = new Menu();
+		if (prev) {
+			// Arrives at the previous card's end, the spot adjacent to where it left.
+			menu.addItem((item) =>
+				item
+					.setTitle(`Move line to previous card (${label(prev)})`)
+					.setIcon("arrow-up")
+					.onClick(() => void this.completeBlockDrag(file, { section, blockIndex, blockText }, prev, null)),
+			);
+		}
+		if (next) {
+			menu.addItem((item) =>
+				item
+					.setTitle(`Move line to next card (${label(next)})`)
+					.setIcon("arrow-down")
+					.onClick(() => void this.completeBlockDrag(file, { section, blockIndex, blockText }, next, 0)),
+			);
+		}
+		if (prev || next) menu.addSeparator();
+
+		// Only the block's own checkbox counts — a plain item with task children isn't a task.
+		const isTask = TASK_RE.test(blockText.split("\n")[0]);
+		const box = isTask ? blockEl.querySelector<HTMLInputElement>("input[type=checkbox]") : null;
+		const cardEl = blockEl.closest<HTMLElement>(".section-card");
+		const bodyEl = blockEl.closest<HTMLElement>(".section-card-body");
+		if (box && cardEl && bodyEl) {
+			menu.addItem((item) =>
+				item
+					.setTitle(box.checked ? "Mark undone" : "Mark done")
+					.setIcon(box.checked ? "undo-2" : "check")
+					.onClick(() => void this.toggleTask(cardEl, file, section, bodyEl, box)),
+			);
+		}
+
+		const tasksApi = this.plugin.tasksApi();
+		if (tasksApi) {
+			if (isTask) {
+				menu.addItem((item) =>
+					item
+						.setTitle("Edit task (Tasks)…")
+						.setIcon("pencil")
+						.onClick(() => void this.editTaskWithTasks(file, section, blockIndex, blockText)),
+				);
+			}
+			menu.addItem((item) =>
+				item
+					.setTitle("New task below (Tasks)…")
+					.setIcon("list-plus")
+					.onClick(() => void this.newTaskWithTasks(tasksApi, file, section, blockIndex, blockText)),
+			);
+		}
+
+		menu.addItem((item) =>
+			item
+				.setTitle("Delete line")
+				.setIcon("trash-2")
+				.onClick(async () => {
+					const ok = await deleteBlockInFile(this.app, file, this.headingLevel, section, blockIndex, blockText);
+					if (!ok) {
+						new Notice("Single File Section Cards: couldn't find that line — the file changed on disk.");
+					}
+					await this.refresh();
+				}),
+		);
+
+		menu.showAtMouseEvent(evt);
+	}
+
+	/**
+	 * Open the Tasks plugin's create dialog and put the finished line into this section —
+	 * right after the clicked block, or at the section's end when none was clicked.
+	 */
+	private async newTaskWithTasks(
+		api: TasksApiV1,
+		file: TFile,
+		section: Section,
+		blockIndex: number | null,
+		blockText: string | null,
+	): Promise<void> {
+		let line: string;
+		try {
+			line = (await api.createTaskLineModal())?.trim() ?? "";
+		} catch {
+			new Notice("The Tasks plugin couldn't open its create dialog.");
+			return;
+		}
+		if (!line) return; // cancelled
+
+		const ok =
+			blockIndex === null || blockText === null
+				? await quickAddToSection(this.app, file, this.headingLevel, section, line, "bottom")
+				: await insertLineAfterBlock(this.app, file, this.headingLevel, section, blockIndex, blockText, line);
+		if (!ok) {
+			new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+		}
+		await this.refresh();
+	}
+
+	/**
+	 * Tasks only exposes editing as an editor command on the cursor line, so this jumps
+	 * to the task in a normal editor and opens the Tasks edit dialog there.
+	 */
+	private async editTaskWithTasks(
+		file: TFile,
+		section: Section,
+		blockIndex: number,
+		blockText: string,
+	): Promise<void> {
+		// Find the task's current line by content, the way every write re-locates its target.
+		const content = await this.app.vault.cachedRead(file);
+		const lines = content.split(/\r?\n/);
+		const target = locateCard(lines, this.headingLevel, section);
+		const body = target ? lines.slice(bodyStartLine(target), target.endLine) : null;
+		const block = body ? movableBlocks(body)[blockIndex] : null;
+		if (!target || !body || !block || body.slice(block.start, block.end).join("\n") !== blockText) {
+			new Notice("Single File Section Cards: couldn't find that line — the file changed on disk.");
+			await this.refresh();
+			return;
+		}
+		await this.plugin.revealSection(file, bodyStartLine(target) + block.start);
+		// The command reads the cursor line in the now-active editor.
+		const commands = (this.app as unknown as { commands: { executeCommandById: (id: string) => boolean } }).commands;
+		commands.executeCommandById("obsidian-tasks-plugin:edit-task");
+	}
+
 	private async completeBlockDrag(
 		file: TFile,
 		from: { section: Section; blockIndex: number; blockText: string },
@@ -3159,15 +3763,19 @@ export class SectionCardsView extends ItemView {
 		const nth = boxes.indexOf(box);
 		if (nth < 0) return;
 
-		const checked = await toggleTaskInFile(
-			this.app,
-			file,
-			this.headingLevel,
-			section,
-			nth,
-			mo().format("YYYY-MM-DD"),
-			this.plugin.settings.taskDoneDate,
-		);
+		// Tasks' own toggle knows recurrence and its done-date settings; ours is the fallback.
+		const api = this.plugin.settings.tasksToggle ? this.plugin.tasksApi() : null;
+		const checked = api
+			? await toggleTaskWithTasksApi(this.app, file, this.headingLevel, section, nth, api)
+			: await toggleTaskInFile(
+					this.app,
+					file,
+					this.headingLevel,
+					section,
+					nth,
+					mo().format("YYYY-MM-DD"),
+					this.plugin.settings.taskDoneDate,
+				);
 
 		if (checked === null) {
 			new Notice("Single File Section Cards: couldn't find that task in the file — reloading.");
@@ -3388,6 +3996,7 @@ class FileSuggestModal extends SuggestModal<string> {
 	/** Adds a path if it names a real markdown file that isn't already listed. */
 	private addCandidate(out: string[], seen: Set<string>, path: string | null | undefined): void {
 		if (!path) return;
+		path = normalizePath(path);
 		const normalized = path.endsWith(".md") ? path : `${path}.md`;
 		if (seen.has(normalized)) return;
 		if (!(this.app.vault.getAbstractFileByPath(normalized) instanceof TFile)) return;
@@ -3486,7 +4095,7 @@ class SwitchToDocumentOrderModal extends Modal {
 		new Setting(contentEl)
 			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
 			.addButton((b) => {
-				b.setButtonText("Switch to Document order")
+				b.setButtonText("Switch to document order")
 					.setCta()
 					.onClick(() => {
 						this.close();
@@ -3673,6 +4282,59 @@ class NewCardModal extends Modal {
 	}
 }
 
+/** A one-line prompt for a note's own new-card heading-name format. */
+class HeadingFormatModal extends Modal {
+	private readonly initial: string;
+	private readonly fallback: string;
+	private readonly onSubmit: (value: string | null) => void;
+	private input!: HTMLInputElement;
+
+	constructor(app: App, initial: string, fallback: string, onSubmit: (value: string | null) => void) {
+		super(app);
+		this.initial = initial;
+		this.fallback = fallback;
+		this.onSubmit = onSubmit;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Heading name for new cards in this note" });
+		contentEl.createEl("p", {
+			cls: "setting-item-description",
+			text: `A moment date format, like YYYY-MM-DD, dddd. Leave it empty to use the default (${this.fallback}).`,
+		});
+
+		this.input = contentEl.createEl("input", {
+			cls: "section-cards-format-input",
+			attr: { type: "text", placeholder: this.fallback, spellcheck: "false" },
+		});
+		this.input.value = this.initial;
+		this.input.addEventListener("keydown", (e) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				this.submit();
+			}
+		});
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => b.setButtonText("Save").setCta().onClick(() => this.submit()));
+
+		this.input.focus();
+		this.input.select();
+	}
+
+	private submit(): void {
+		const value = this.input.value.trim();
+		this.close();
+		this.onSubmit(value || null);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
 class QuickAddModal extends Modal {
 	private readonly title: string;
 	private readonly onSubmit: (text: string, where: QuickAddPlacement) => void | Promise<void>;
@@ -3758,15 +4420,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 						},
 					},
 					{
-						name: "Headings contain",
-						desc: "With dates, the card for today is highlighted in the theme's highlight colour.",
-						control: {
-							type: "dropdown",
-							key: "headingType",
-							options: { dates: "Dates", text: "Non-dates (plain text)" },
-						},
-					},
-					{
 						name: "Show unfiled text as a card",
 						desc: "Text at the top of the note — above the first heading, below any properties — becomes its own card, so it can be read, edited, and ticked like any section.",
 						control: { type: "toggle", key: "unfiledEnabled" },
@@ -3813,7 +4466,7 @@ class SectionCardsSettingTab extends PluginSettingTab {
 					},
 					{
 						name: "Jump to today's card",
-						desc: "When a note opens in the cards view, scroll to the card whose heading is today's date. Needs headings to contain dates.",
+						desc: "When a note opens in the cards view, scroll to the card whose heading is today's date. Needs the note's Dates checkbox (in the toolbar) to be on.",
 						control: { type: "toggle", key: "jumpToToday" },
 					},
 					{
@@ -3869,6 +4522,11 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				heading: "Tasks",
 				items: [
 					{
+						name: "Toggle tasks with the Tasks plugin",
+						desc: "When the Tasks community plugin is enabled, ticking a checkbox uses its toggle, so recurring tasks spawn their next occurrence and done dates follow its settings. When off (or Tasks is absent), this plugin's own toggle and the settings below apply.",
+						control: { type: "toggle", key: "tasksToggle" },
+					},
+					{
 						name: "Completion date on tasks",
 						desc: "When a task checkbox is ticked in a card, append an Obsidian Tasks style done date (✅ 2026-08-06). Unticking removes it.",
 						control: { type: "toggle", key: "taskDoneDate" },
@@ -3886,7 +4544,7 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				items: [
 					{
 						name: "Default heading name",
-						desc: 'Moment.js date format used to pre-fill "New card". Default: YYYY-MM-DD, dddd',
+						desc: 'Moment.js date format used to pre-fill "New card". Default: YYYY-MM-DD, dddd. Any note can set its own from the toolbar\'s new-card options menu.',
 						control: { type: "text", key: "newCardFormat", placeholder: "YYYY-MM-DD, dddd" },
 					},
 					{
@@ -4066,6 +4724,14 @@ export default class SectionCardsPlugin extends Plugin {
 		if (revealHeading) (leaf.view as SectionCardsView).revealCard(revealHeading);
 	}
 
+	/** The Tasks community plugin's public API, when that plugin is installed and enabled. */
+	tasksApi(): TasksApiV1 | null {
+		const withPlugins = this.app as unknown as {
+			plugins?: { plugins?: Record<string, { apiV1?: TasksApiV1 }> };
+		};
+		return withPlugins.plugins?.plugins?.["obsidian-tasks-plugin"]?.apiV1 ?? null;
+	}
+
 	/** The unfiled card's title, or null when the feature is off. */
 	unfiledTitle(): string | null {
 		return this.settings.unfiledEnabled ? this.settings.unfiledTitle || DEFAULT_SETTINGS.unfiledTitle : null;
@@ -4110,6 +4776,94 @@ export default class SectionCardsPlugin extends Plugin {
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
 		this.refreshAllViews();
+	}
+
+	/** The per-note "headings are dates" choice; undefined = the user hasn't set it. */
+	getContainsDates(path: string): boolean | undefined {
+		return this.settings.perFile?.[path]?.containsDates;
+	}
+
+	async setContainsDates(path: string, value: boolean, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		current.containsDates = value;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+		this.refreshAllViews();
+	}
+
+	getCardColors(path: string): Record<string, string> {
+		return this.settings.perFile?.[path]?.colors ?? {};
+	}
+
+	/** Set or clear (null) a card's colour. Like pins, colours are keyed to the heading line. */
+	async setCardColor(path: string, headingRaw: string, color: string | null, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		const colors = current.colors ?? {};
+		if (color) colors[headingRaw] = color;
+		else delete colors[headingRaw];
+		if (Object.keys(colors).length) current.colors = colors;
+		else delete current.colors;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+		this.refreshAllViews();
+	}
+
+	/** A note's own heading-name format, or null when it uses the global default. */
+	getNewCardFormatOverride(path: string): string | null {
+		return this.settings.perFile?.[path]?.newCardFormat ?? null;
+	}
+
+	/** The heading-name format for new cards in a note: its own, or the global default. */
+	getNewCardFormat(path: string): string {
+		return this.getNewCardFormatOverride(path) || this.settings.newCardFormat;
+	}
+
+	/** Set or clear (null) a note's own heading-name format for new cards. */
+	async setNewCardFormat(path: string, format: string | null, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (format?.trim()) current.newCardFormat = format.trim();
+		else delete current.newCardFormat;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+		// Today's highlight and date detection key off the format, so re-render.
+		this.refreshAllViews();
+	}
+
+	getTemplatePath(path: string): string | null {
+		return this.settings.perFile?.[path]?.templatePath ?? null;
+	}
+
+	/** Set or clear (null) the note whose contents pre-fill new cards made for this note. */
+	async setTemplatePath(path: string, templatePath: string | null, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (templatePath) current.templatePath = templatePath;
+		else delete current.templatePath;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
+	/** The note's new-card template, read with {{placeholders}} filled in. Null = none set. */
+	async loadTemplateBody(notePath: string, title: string): Promise<string | null> {
+		const templatePath = this.getTemplatePath(notePath);
+		if (!templatePath) return null;
+		let template = this.app.vault.getAbstractFileByPath(templatePath);
+		if (!(template instanceof TFile)) {
+			template = this.app.metadataCache.getFirstLinkpathDest(templatePath.replace(/\.md$/, ""), "");
+		}
+		if (!(template instanceof TFile)) {
+			new Notice(`Template "${templatePath}" not found — created the card empty.`);
+			return null;
+		}
+		const raw = await this.app.vault.cachedRead(template);
+		return applyTemplatePlaceholders(raw, title, this.getNewCardFormat(notePath));
 	}
 
 	getCustomGrid(path: string): Record<string, CardRect> {
@@ -4158,6 +4912,8 @@ export default class SectionCardsPlugin extends Plugin {
 	async loadSettings(): Promise<void> {
 		const stored = (await this.loadData()) as Partial<SectionCardsSettings> | null;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, stored);
+		// "Headings contain" used to be a global setting; it's the per-note Dates checkbox now.
+		delete (this.settings as unknown as Record<string, unknown>)["headingType"];
 	}
 
 	async saveSettings(): Promise<void> {
