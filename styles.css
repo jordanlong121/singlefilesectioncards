@@ -36,7 +36,7 @@
 	--sc-col-min: 280px;
 	--sc-pad: 14px;
 	/* Dark: a light veil over the (possibly transparent) page. --mono-rgb-100 is the
-	   foreground colour — white in dark mode, black in light mode. */
+	   foreground color — white in dark mode, black in light mode. */
 	--sc-surface: rgba(var(--mono-rgb-100), 0.055);
 	--sc-surface-hover: rgba(var(--mono-rgb-100), 0.09);
 	--sc-header: rgba(var(--mono-rgb-100), 0.06);
@@ -49,7 +49,7 @@
 	--sc-blur: saturate(1.6) blur(16px);
 }
 
-/* Light: cards are frosted white (--mono-rgb-0 is the background colour, so white here)
+/* Light: cards are frosted white (--mono-rgb-0 is the background color, so white here)
    with a light grey outline. These must be foreground-based (--mono-rgb-100 = black in
    light mode) or the border is white-on-white and the cards read as edgeless blocks. */
 .theme-light .section-cards-view {
@@ -506,7 +506,7 @@
 }
 
 /* Today's card, when the note's headings are dates. --text-highlight-bg is the
-   theme's own highlight colour (what ==marks== use). */
+   theme's own highlight color (what ==marks== use). */
 .section-card.is-today {
 	border-color: var(--text-highlight-bg, var(--interactive-accent));
 	box-shadow: 0 0 0 1px var(--text-highlight-bg, var(--interactive-accent)), var(--sc-shadow);
@@ -522,10 +522,10 @@
 	font-weight: 700;
 }
 
-/* ---------- per-card colours ----------
+/* ---------- per-card colors ----------
    data-sfsc-color carries the chosen swatch name; each name maps to one RGB triplet
-   so a single set of alpha rules covers every colour in both themes. Today's own
-   highlight outranks a colour on today's card (hence the :not(.is-today) guards). */
+   so a single set of alpha rules covers every color in both themes. Today's own
+   highlight outranks a color on today's card (hence the :not(.is-today) guards). */
 
 .section-card[data-sfsc-color="red"],
 .section-cards-tray-tile[data-sfsc-color="red"],
@@ -590,8 +590,8 @@
 	border-bottom-color: rgba(var(--sfsc-c), 0.3);
 }
 
-/* On a coloured card the palette button fades in and out with the other buttons,
-   but shows in the card's own colour when revealed. */
+/* On a colored card the palette button fades in and out with the other buttons,
+   but shows in the card's own color when revealed. */
 .section-card[data-sfsc-color] .section-card-color {
 	color: rgb(var(--sfsc-c));
 }
@@ -600,7 +600,7 @@
 	box-shadow: inset 3px 0 0 rgb(var(--sfsc-c));
 }
 
-/* Swatch dot in the colour menu's item titles. */
+/* Swatch dot in the color menu's item titles. */
 .sfsc-swatch {
 	display: inline-block;
 	width: 12px;
@@ -934,7 +934,7 @@
 	width: 20px;
 	height: 20px;
 	pointer-events: none;
-	/* The stripe colour rides a custom property so hover only swaps the colour
+	/* The stripe color rides a custom property so hover only swaps the color
 	   instead of restating all three gradients. */
 	--sc-grip: var(--text-faint);
 	background:
@@ -1250,7 +1250,7 @@
 /* Optional (settings → "Cross out items nested under a done task", off): ticking a task
    strikes only its own line. text-decoration propagates to every in-flow descendant and
    cannot be cancelled on them — but it does not propagate into inline-block boxes, so the
-   nested list becomes one. The colour reset undoes the inherited done-task dimming; nested
+   nested list becomes one. The color reset undoes the inherited done-task dimming; nested
    items that are themselves ticked still get their own strikethrough and dimming. */
 body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ul,
 body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
@@ -1416,7 +1416,7 @@ body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
 /* Backdrop blur composites per element — a wall of blurred cards is the single
    biggest scroll cost on a phone GPU. The bar surfaces get more opaque instead so
    content scrolling beneath the sticky toolbar/pinned band stays legible.
-   (--mono-rgb-0 is the background colour in both themes, so one rule covers both.) */
+   (--mono-rgb-0 is the background color in both themes, so one rule covers both.) */
 body.is-mobile .section-cards-view {
 	--sc-blur: none;
 	--sc-bar: rgba(var(--mono-rgb-0), 0.92);
