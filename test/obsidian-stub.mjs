@@ -13,9 +13,16 @@ export const MarkdownRenderer = {};
 export const App = {};
 export const debounce = (fn) => fn;
 export class Modal {}
-// Only .format() is exercised by the code under test.
-export const moment = () => ({ format: (f) => "STUB-" + f });
+// Only .format() and .isValid() are exercised by the code under test. An ISO input
+// echoes back for the ISO format so date placeholders are testable; strict parsing
+// is pessimistic (always invalid), so only the ISO paths are covered here.
+export const moment = (input) => ({
+	format: (f) => (f === "YYYY-MM-DD" && /^\d{4}-\d{2}-\d{2}$/.test(input ?? "") ? input : "STUB-" + f),
+	isValid: () => false,
+});
+export class Menu {}
 export const addIcon = () => {};
+export const normalizePath = (p) => p;
 export const setIcon = () => {};
 export class SuggestModal { setPlaceholder() {} }
 export class Scope { register() {} }

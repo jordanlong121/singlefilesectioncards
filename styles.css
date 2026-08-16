@@ -151,6 +151,53 @@
 	height: 14px;
 }
 
+/* The per-note "Dates" checkbox and its label act as one control. */
+.section-cards-dates-label {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	cursor: pointer;
+}
+
+.section-cards-dates-toggle {
+	margin: 0;
+}
+
+/* ---------- jump to date ----------
+   The button fronts an invisible native date input; showPicker() anchors the
+   calendar to it. Hidden entirely unless the note's headings contain dates. */
+
+.section-cards-jump-date {
+	position: relative;
+}
+
+.section-cards-jump-date.is-hidden {
+	display: none;
+}
+
+.section-cards-jump-input {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	pointer-events: none;
+	border: 0;
+	padding: 0;
+}
+
+.section-cards-jump-btn svg,
+.section-cards-template-btn svg {
+	display: block;
+	width: 15px;
+	height: 15px;
+}
+
+/* The template button wears the accent while a template note is set. */
+.section-cards-template-btn.has-template {
+	color: var(--text-accent);
+}
+
 /* A card hidden by the filter occupies no cell in any layout. (The maximized card is
    exempt: it lives in the overlay and closing it re-applies the filter's classes.) */
 .section-cards-view .section-card.is-filtered-out:not(.is-maximized) {
@@ -198,6 +245,12 @@
 }
 
 /* ---------- the Quick Add modal ---------- */
+
+/* The one-line prompt for a note's own heading-name format. */
+.section-cards-format-input {
+	width: 100%;
+	margin-bottom: 4px;
+}
 
 .section-cards-quickadd-modal .section-cards-quickadd-input {
 	width: 100%;
@@ -465,6 +518,95 @@
 .section-card.is-today .section-card-title {
 	color: var(--text-normal);
 	font-weight: 700;
+}
+
+/* ---------- per-card colours ----------
+   data-sfsc-color carries the chosen swatch name; each name maps to one RGB triplet
+   so a single set of alpha rules covers every colour in both themes. Today's own
+   highlight outranks a colour on today's card (hence the :not(.is-today) guards). */
+
+.section-card[data-sfsc-color="red"],
+.section-cards-tray-tile[data-sfsc-color="red"],
+.sfsc-swatch-red {
+	--sfsc-c: 224, 82, 82;
+}
+
+.section-card[data-sfsc-color="orange"],
+.section-cards-tray-tile[data-sfsc-color="orange"],
+.sfsc-swatch-orange {
+	--sfsc-c: 235, 140, 52;
+}
+
+.section-card[data-sfsc-color="yellow"],
+.section-cards-tray-tile[data-sfsc-color="yellow"],
+.sfsc-swatch-yellow {
+	--sfsc-c: 212, 170, 20;
+}
+
+.section-card[data-sfsc-color="green"],
+.section-cards-tray-tile[data-sfsc-color="green"],
+.sfsc-swatch-green {
+	--sfsc-c: 76, 168, 90;
+}
+
+.section-card[data-sfsc-color="cyan"],
+.section-cards-tray-tile[data-sfsc-color="cyan"],
+.sfsc-swatch-cyan {
+	--sfsc-c: 44, 160, 198;
+}
+
+.section-card[data-sfsc-color="blue"],
+.section-cards-tray-tile[data-sfsc-color="blue"],
+.sfsc-swatch-blue {
+	--sfsc-c: 76, 130, 235;
+}
+
+.section-card[data-sfsc-color="purple"],
+.section-cards-tray-tile[data-sfsc-color="purple"],
+.sfsc-swatch-purple {
+	--sfsc-c: 155, 110, 230;
+}
+
+.section-card[data-sfsc-color="pink"],
+.section-cards-tray-tile[data-sfsc-color="pink"],
+.sfsc-swatch-pink {
+	--sfsc-c: 226, 110, 170;
+}
+
+.section-card[data-sfsc-color="gray"],
+.section-cards-tray-tile[data-sfsc-color="gray"],
+.sfsc-swatch-gray {
+	--sfsc-c: 132, 140, 148;
+}
+
+.section-card[data-sfsc-color]:not(.is-today) {
+	border-color: rgba(var(--sfsc-c), 0.55);
+}
+
+.section-card[data-sfsc-color]:not(.is-today) .section-card-header {
+	background-color: rgba(var(--sfsc-c), 0.16);
+	border-bottom-color: rgba(var(--sfsc-c), 0.3);
+}
+
+/* On a coloured card the palette button fades in and out with the other buttons,
+   but shows in the card's own colour when revealed. */
+.section-card[data-sfsc-color] .section-card-color {
+	color: rgb(var(--sfsc-c));
+}
+
+.section-cards-tray-tile[data-sfsc-color] {
+	box-shadow: inset 3px 0 0 rgb(var(--sfsc-c));
+}
+
+/* Swatch dot in the colour menu's item titles. */
+.sfsc-swatch {
+	display: inline-block;
+	width: 12px;
+	height: 12px;
+	margin-right: 8px;
+	border-radius: 50%;
+	vertical-align: middle;
+	background-color: rgb(var(--sfsc-c));
 }
 
 /* ---------- one card, blown up over the others ----------
@@ -996,6 +1138,7 @@
 .section-card-big,
 .section-card-open,
 .section-card-pin,
+.section-card-color,
 .section-card-quickadd {
 	flex: 0 0 auto;
 	padding: 2px 7px;
@@ -1011,6 +1154,7 @@
 	.section-card:hover .section-card-big,
 	.section-card:hover .section-card-open,
 	.section-card:hover .section-card-pin,
+	.section-card:hover .section-card-color,
 	.section-card:hover .section-card-quickadd {
 		opacity: 1;
 	}
@@ -1020,6 +1164,7 @@
 .section-card-big:focus-visible,
 .section-card-open:focus-visible,
 .section-card-pin:focus-visible,
+.section-card-color:focus-visible,
 .section-card-quickadd:focus-visible,
 .section-card.is-maximized .section-card-big {
 	opacity: 1;
@@ -1034,6 +1179,7 @@
 .section-card-big:hover,
 .section-card-open:hover,
 .section-card-pin:hover,
+.section-card-color:hover,
 .section-card-quickadd:hover {
 	color: var(--text-accent);
 }
@@ -1041,6 +1187,7 @@
 .section-card-delete svg,
 .section-card-big svg,
 .section-card-pin svg,
+.section-card-color svg,
 .section-card-quickadd svg {
 	width: 13px;
 	height: 13px;
@@ -1284,6 +1431,7 @@ body.is-mobile .section-card-delete,
 body.is-mobile .section-card-big,
 body.is-mobile .section-card-open,
 body.is-mobile .section-card-pin,
+body.is-mobile .section-card-color,
 body.is-mobile .section-card-quickadd {
 	opacity: 1;
 	padding: 6px 9px;
@@ -1292,6 +1440,7 @@ body.is-mobile .section-card-quickadd {
 body.is-mobile .section-card-delete svg,
 body.is-mobile .section-card-big svg,
 body.is-mobile .section-card-pin svg,
+body.is-mobile .section-card-color svg,
 body.is-mobile .section-card-quickadd svg {
 	width: 16px;
 	height: 16px;
