@@ -1845,6 +1845,15 @@ export class SectionCardsView extends ItemView {
 				? `${shown} of ${total} · H${this.headingLevel}`
 				: `${total} ${total === 1 ? "section" : "sections"} · H${this.headingLevel}`,
 		);
+		// The sticky pinned band collapses when the filter hides everything in it.
+		// (Stamped here rather than with a CSS :has(), which lints as a perf hazard.)
+		if (this.pinnedEl) {
+			const bandCards = Array.from(this.pinnedEl.children).filter((c) =>
+				(c as HTMLElement).hasClass("section-card"),
+			) as HTMLElement[];
+			const anyShown = bandCards.some((c) => !c.hasClass("is-filtered-out"));
+			this.pinnedEl.toggleClass("is-all-filtered", bandCards.length > 0 && !anyShown);
+		}
 		this.repack(); // masonry and row rules re-pack around the hidden cards
 	}
 

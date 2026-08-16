@@ -204,8 +204,10 @@
 	display: none;
 }
 
-/* If the filter empties the sticky pinned band, the band strip goes too. */
-.section-cards-pinned:not(:has(.section-card:not(.is-filtered-out))) {
+/* If the filter empties the sticky pinned band, the band strip goes too.
+   applyFilter stamps the class itself — a parent-matching selector here would be
+   a selector-invalidation hazard. */
+.section-cards-pinned.is-all-filtered {
 	display: none;
 }
 
