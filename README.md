@@ -25,7 +25,7 @@ day. This plugin turns those headings into a card wall you can scan, sort, and t
   layout and view of that note — and by default the pinned band stays on screen while the rest
   scrolls (beside the row in Vertical). The `+` button pops a text box that appends what you type
   to the bottom of the section (or the top), without opening the editor.
-- **Colour, template, jump.** Give any card its own colour from the palette button in its title
+- **Color, template, jump.** Give any card its own color from the palette button in its title
   bar. Point a note at a template note and every new card starts from its contents, with
   `{{title}}`, `{{date}}` and `{{time}}` filled in. When headings are dates, a calendar button
   jumps straight to any date's card.
@@ -95,6 +95,21 @@ One card per row, full pane width.
 
 ![Horizontal](screenshots/horizontal.png)
 
+## Brainstorming with cards
+
+A single note makes a whole brainstorm: one `###` heading per theme, and the wall becomes your
+sticky notes (`sample-vault/Brainstorm.md` is this example). Dump ideas as cards in Grid —
+quick-add drops thoughts onto a card without opening an editor, and the filter pulls up "the
+card with the satellite thing" instantly:
+
+![Brainstorming in Grid](screenshots/brainstorm-grid.png)
+
+Then switch to Custom Grid and arrange: cluster related themes, size cards by importance, and
+leave the "later" cards in the list on the right. Drag tasks between cards as ideas graduate
+from *Wild ideas* to *Feature ideas* — everything stays plain markdown in the one note:
+
+![Brainstorming on the Custom Grid canvas](screenshots/brainstorm-custom.png)
+
 ## Pinned cards
 
 Every card's title bar has a pin button. Pinning pulls the card into a pinned section at the top of
@@ -113,12 +128,12 @@ With **Keep pinned cards on screen** (on by default), the pinned section doesn't
 With the setting off, the pinned section still leads the wall but scrolls with it, separated by a
 divider. Pins are keyed to the heading line, so renaming a section unpins it.
 
-## Card colours
+## Card colors
 
-Every card's title bar has a palette button offering nine colours; a coloured card tints its
-border and title bar in every layout, and its tile in the Custom Grid list. Colours are
+Every card's title bar has a palette button offering nine colors; a colored card tints its
+border and title bar in every layout, and its tile in the Custom Grid list. Colors are
 remembered per note in the plugin's data — never in your notes — and, like pins, are keyed to
-the heading line, so renaming a section clears its colour. Today's highlight still wins on
+the heading line, so renaming a section clears its color. Today's highlight still wins on
 today's card.
 
 ## New-card options, per note
@@ -139,7 +154,7 @@ the same skeleton instead of an empty section.
 **+ New card**, and "Choose template note…" — any markdown note in the vault works. The choice
 is one template per note, stored in the plugin's data (never in your notes), so your daily
 notes can use a daily skeleton while a project note uses a different one, or none. "Remove
-template" goes back to empty cards, and the button wears the accent colour while a template
+template" goes back to empty cards, and the button wears the accent color while a template
 is set.
 
 **What happens on + New card.** The template note's contents are read at that moment, its
@@ -199,8 +214,8 @@ flashes it — the same nudge a wikilink arrival gets.
   - `Single File Section Cards: Open section cards for the active note`
   - `Single File Section Cards: Create new card`
 - The toolbar button switches notes: your default note, notes you've viewed as cards, and recently
-  opened notes are suggested; any other note can be reached by typing its name or path. (The plugin
-  deliberately never enumerates the vault.)
+  opened notes lead the list, with the rest of the vault's notes below them — type to search
+  everything by name or path.
 
 ## Settings
 

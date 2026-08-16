@@ -130,7 +130,7 @@ export interface PerFileView extends ViewSettings {
 	/** Whether this note's headings name dates (today highlight, jump-to-date). Unset
 	 * means "decide from the note": on when any heading looks like a date. */
 	containsDates?: boolean;
-	/** Per-card colours by heading line; values are CARD_COLORS names. */
+	/** Per-card colors by heading line; values are CARD_COLORS names. */
 	colors?: Record<string, string>;
 	/** Note whose contents pre-fill the body of every new card made for this note. */
 	templatePath?: string;
@@ -145,7 +145,7 @@ export interface ViewSettings {
 	sortOrder: SortOrder;
 }
 
-/** The card colour palette. Names key the stored choice and the CSS swatch classes. */
+/** The card color palette. Names key the stored choice and the CSS swatch classes. */
 const CARD_COLORS: [name: string, label: string][] = [
 	["red", "Red"],
 	["orange", "Orange"],
@@ -1803,7 +1803,7 @@ export class SectionCardsView extends ItemView {
 		btn.setAttr("aria-label", pinned ? "Unpin this card" : "Pin this card to the top");
 	}
 
-	/** Sync a card's (or tray tile's) colour attribute; CSS keys off data-sfsc-color. */
+	/** Sync a card's (or tray tile's) color attribute; CSS keys off data-sfsc-color. */
 	private applyCardColor(el: HTMLElement, color: string | undefined): void {
 		if (color && CARD_COLORS.some(([name]) => name === color)) el.setAttr("data-sfsc-color", color);
 		else el.removeAttribute("data-sfsc-color");
@@ -2305,7 +2305,7 @@ export class SectionCardsView extends ItemView {
 		menu.showAtMouseEvent(evt);
 	}
 
-	/** The colour button's menu: one swatch per palette colour, plus "No colour". */
+	/** The color button's menu: one swatch per palette color, plus "No color". */
 	private openColorMenu(evt: MouseEvent, file: TFile, headingRaw: string): void {
 		const base: ViewSettings = { layout: this.layout, headingLevel: this.headingLevel, sortOrder: this.sortOrder };
 		const current = this.plugin.getCardColors(file.path)[headingRaw];
@@ -2324,7 +2324,7 @@ export class SectionCardsView extends ItemView {
 		menu.addSeparator();
 		menu.addItem((item) =>
 			item
-				.setTitle("No colour")
+				.setTitle("No color")
 				.setChecked(!current)
 				.onClick(() => void this.plugin.setCardColor(file.path, headingRaw, null, base)),
 		);
@@ -2746,7 +2746,7 @@ export class SectionCardsView extends ItemView {
 
 		const colorBtn = header.createEl("button", { cls: "section-card-color" });
 		setIcon(colorBtn, "palette");
-		colorBtn.setAttr("aria-label", "Set this card's colour");
+		colorBtn.setAttr("aria-label", "Set this card's color");
 		colorBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
 			this.openColorMenu(evt, file, holder.section.headingRaw);
@@ -3998,8 +3998,9 @@ class FileSuggestModal extends SuggestModal<string> {
 		super(app);
 		this.plugin = plugin;
 		this.onChoose = onChoose;
-		this.setPlaceholder("Recent note, or type a name or path…");
-		this.emptyStateText = "No match — type the note's name or vault path.";
+		this.setPlaceholder("Recent note, or search the vault…");
+		this.emptyStateText = "No matching note in the vault.";
+		this.limit = 100;
 	}
 
 	/** Adds a path if it names a real markdown file that isn't already listed. */
@@ -4014,9 +4015,9 @@ class FileSuggestModal extends SuggestModal<string> {
 	}
 
 	/**
-	 * Suggestions come only from notes the user has already touched — the configured
-	 * default, notes with a remembered cards view, recently opened notes — plus whatever
-	 * the query itself names. The vault is deliberately never enumerated.
+	 * Notes the user has already touched lead — the configured default, notes with a
+	 * remembered cards view, recently opened notes — then the rest of the vault's
+	 * markdown files, alphabetically. Typing filters everything by name or path.
 	 */
 	getSuggestions(query: string): string[] {
 		const typed: string[] = [];
@@ -4035,7 +4036,15 @@ class FileSuggestModal extends SuggestModal<string> {
 		for (const path of this.app.workspace.getLastOpenFiles()) this.addCandidate(known, seen, path);
 
 		const needle = q.toLowerCase();
-		return typed.concat(needle ? known.filter((path) => path.toLowerCase().includes(needle)) : known);
+		const rest = this.app.vault
+			.getMarkdownFiles()
+			.map((file) => file.path)
+			.filter((path) => !seen.has(path) && (!needle || path.toLowerCase().includes(needle)))
+			.sort((a, b) => a.localeCompare(b));
+
+		return typed
+			.concat(needle ? known.filter((path) => path.toLowerCase().includes(needle)) : known)
+			.concat(rest);
 	}
 
 	renderSuggestion(path: string, el: HTMLElement): void {
@@ -4806,7 +4815,7 @@ export default class SectionCardsPlugin extends Plugin {
 		return this.settings.perFile?.[path]?.colors ?? {};
 	}
 
-	/** Set or clear (null) a card's colour. Like pins, colours are keyed to the heading line. */
+	/** Set or clear (null) a card's color. Like pins, colors are keyed to the heading line. */
 	async setCardColor(path: string, headingRaw: string, color: string | null, base: ViewSettings): Promise<void> {
 		if (!path) return;
 		this.settings.perFile = this.settings.perFile ?? {};

@@ -30,7 +30,9 @@ const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, 
 const inline = (s) =>
 	esc(s)
 		.replace(/\[\[([^\]]+)\]\]/g, (_, t) => `<a class="internal-link" data-href="${t}" href="${t}">${t}</a>`)
-		.replace(/(^|\s)(#[\w/-]+)/g, (_, sp, tag) => `${sp}<a href="${tag}" class="tag" target="_blank" rel="noopener">${tag}</a>`);
+		.replace(/(^|\s)(#[\w/-]+)/g, (_, sp, tag) => `${sp}<a href="${tag}" class="tag" target="_blank" rel="noopener">${tag}</a>`)
+		.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+		.replace(/\*([^*]+)\*/g, "<em>$1</em>");
 
 const TASK = /^(\s*)- (?:\[([ x])\] )?(.*)$/;
 
@@ -115,12 +117,16 @@ function toolbarHtml(layout) {
 </div>`;
 }
 
-/** Custom Grid: three placed cards (snap 24, gap ≥12), the rest listed in the tray. */
-const PLACEMENTS = [
-	{ x: 48, y: 48, w: 408, h: 480 },
-	{ x: 480, y: 48, w: 312, h: 216 },
-	{ x: 480, y: 288, w: 312, h: 240 },
-];
+/** Custom Grid: placed cards (snap 24, gap ≥12), the rest listed in the tray.
+ * Override with PLACEMENTS='[{"x":48,"y":48,"w":312,"h":216},…]' to stage other scenes;
+ * placements map onto the sorted sections in order. */
+const PLACEMENTS = process.env.PLACEMENTS
+	? JSON.parse(process.env.PLACEMENTS)
+	: [
+			{ x: 48, y: 48, w: 408, h: 480 },
+			{ x: 480, y: 48, w: 312, h: 216 },
+			{ x: 480, y: 288, w: 312, h: 240 },
+		];
 
 function gridHtml(layout) {
 	if (layout === "custom") {
@@ -137,8 +143,8 @@ ${placedCards.join("\n")}
 ${hidden.join("\n")}
 </div>
 <div class="section-cards-tray">
-	<div class="section-cards-tray-actions"><button class="section-cards-tray-clear">Clear Layout</button></div>
-	<div class="section-cards-tray-sorts"><button class="section-cards-tray-sort">A→Z</button><button class="section-cards-tray-sort is-active">Z→A</button><button class="section-cards-tray-sort">Doc</button></div>
+	<div class="section-cards-tray-actions"><button class="section-cards-tray-clear">Clear layout</button></div>
+	<div class="section-cards-tray-sorts"><button class="section-cards-tray-sort${SORT === "asc" ? " is-active" : ""}">A→Z</button><button class="section-cards-tray-sort${SORT === "desc" ? " is-active" : ""}">Z→A</button><button class="section-cards-tray-sort${SORT === "doc" ? " is-active" : ""}">Doc</button></div>
 	<div class="section-cards-tray-hint">Drag a section onto the canvas</div>
 ${tiles}
 </div>
@@ -203,7 +209,7 @@ html, body { height: 100%; margin: 0; }
 		<div class="workspace-tab-header tappable is-active mod-active">
 			<div class="workspace-tab-header-inner">
 				<div class="workspace-tab-header-inner-icon">${DECK_ICON}</div>
-				<div class="workspace-tab-header-inner-title">Cards: Daily Notes 2026</div>
+				<div class="workspace-tab-header-inner-title">Cards: ${esc(path.basename(notePath, ".md"))}</div>
 			</div>
 		</div>
 	</div>
