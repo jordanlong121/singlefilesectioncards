@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -659,6 +659,48 @@ t("sectionBlocks: fences, headings, blockquotes, tables, html are 'other' (not d
   const kinds = sectionBlocks(body).map((b) => b.kind);
   assert.deepEqual(kinds, ["other", "other", "other", "other", "other", "item"]);
   assert.equal(movableBlocks(body).length, 1);
+});
+
+t("sectionBlocks: thematic breaks are 'other', including the spaced and list-lookalike forms", () => {
+  const body = L("---\n\n* * *\n\n___\n\n- - -\n\n- [ ] real");
+  const kinds = sectionBlocks(body).map((b) => b.kind);
+  assert.deepEqual(kinds, ["other", "other", "other", "other", "item"]);
+});
+
+t("sectionBlocks: a setext underline turns the paragraph run into 'other' (it renders a heading)", () => {
+  assert.deepEqual(sectionBlocks(L("Title text\n---\nafter")).map((b) => [b.kind, b.start, b.end]), [
+    ["other", 0, 2],       // setext h2
+    ["paragraph", 2, 3],
+  ]);
+  assert.deepEqual(sectionBlocks(L("Two lines\nof title\n===")).map((b) => b.kind), ["other"]);
+  assert.deepEqual(sectionBlocks(L("Short\n-")).map((b) => b.kind), ["other"]); // single dash is setext too
+});
+
+t("sectionBlocks: a '***' rule directly under a paragraph stays a separate <hr> block", () => {
+  const blocks = sectionBlocks(L("prose line\n***\nmore prose"));
+  assert.deepEqual(blocks.map((b) => [b.kind, b.start, b.end]), [
+    ["paragraph", 0, 1],
+    ["other", 1, 2],
+    ["paragraph", 2, 3],
+  ]);
+});
+
+t("unfiled card with a leading pseudo-frontmatter block: DOM and source blocks agree", () => {
+  // Text above the first heading: blanks, a ----fenced metadata run, then a task.
+  // The renderer shows: <hr>, <p>metadata…</p>, <hr>, <li>task</li> (via bodyForRender).
+  const lines = L("\n\n---\nStatus: Active\nTaskCount: 74\n\n---\n- [ ] put videos in presentation\n\n## July 2026\n- [ ] x");
+  const s = unfiledSection(lines, "_Unfiled_");
+  const blocks = sectionBlocks(s.body.split("\n"));
+  assert.deepEqual(blocks.map((b) => b.kind), ["other", "paragraph", "other", "item"]);
+  const movable = movableBlocks(s.body.split("\n"));
+  assert.equal(movable.length, 2);
+  assert.equal(s.body.split("\n")[movable[1].start], "- [ ] put videos in presentation");
+});
+
+t("bodyForRender: a blank line stops a leading '---' being swallowed as frontmatter", () => {
+  assert.equal(bodyForRender("---\na: b\n---\ntext"), "\n---\na: b\n---\ntext");
+  assert.equal(bodyForRender("plain text"), "plain text");
+  assert.equal(bodyForRender("text\n---\nmore"), "text\n---\nmore"); // only a leading --- needs it
 });
 
 t("moveBlock: a task moves to the end of another section, byte-identical", () => {

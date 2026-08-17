@@ -514,6 +514,10 @@ export interface BodyBlock {
 }
 
 const LIST_START_RE = /^(?:[-*+]|\d+[.)])\s+/;
+/** A thematic break: 3+ of the same marker, optionally space-separated — rendered <hr>. */
+const HR_RE = /^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/;
+/** A setext underline: with a paragraph line directly above, the pair renders <h1>/<h2>. */
+const SETEXT_RE = /^ {0,3}(?:=+|-+)[ \t]*$/;
 
 /**
  * Split a section body into blocks, mirroring what MarkdownRenderer turns into top-level
@@ -560,6 +564,9 @@ export function sectionBlocks(body: string[]): BodyBlock[] {
 				i++;
 			}
 			blocks.push({ kind: "other", start, end: i });
+		} else if (HR_RE.test(line)) {
+			// A thematic break renders <hr> — and outranks a list reading ("- - -").
+			blocks.push({ kind: "other", start, end: ++i });
 		} else if (LIST_START_RE.test(line)) {
 			i++;
 			// children: every following non-blank line that is indented deeper
@@ -571,6 +578,7 @@ export function sectionBlocks(body: string[]): BodyBlock[] {
 			blocks.push({ kind: "other", start, end: i });
 		} else {
 			i++;
+			let kind: BodyBlock["kind"] = "paragraph";
 			while (
 				i < body.length &&
 				!isBlank(body[i]) &&
@@ -580,9 +588,18 @@ export function sectionBlocks(body: string[]): BodyBlock[] {
 				!/^\s*>/.test(body[i]) &&
 				!/^\s*\|/.test(body[i])
 			) {
+				// Directly under a paragraph line, "---"/"===" makes a setext heading —
+				// the pair renders <h1>/<h2>, so the whole run stops being a paragraph.
+				if (SETEXT_RE.test(body[i])) {
+					i++;
+					kind = "other";
+					break;
+				}
+				// A "***"/"___" rule below the paragraph is its own <hr>, not part of it.
+				if (HR_RE.test(body[i])) break;
 				i++;
 			}
-			blocks.push({ kind: "paragraph", start, end: i });
+			blocks.push({ kind, start, end: i });
 		}
 	}
 	return blocks;
@@ -591,6 +608,16 @@ export function sectionBlocks(body: string[]): BodyBlock[] {
 /** The blocks a user can drag, in the same order the eligible DOM elements render. */
 export function movableBlocks(body: string[]): BodyBlock[] {
 	return sectionBlocks(body).filter((b) => b.kind !== "other");
+}
+
+/**
+ * A card body is a mid-note excerpt, so a leading "---" is a rule, not frontmatter —
+ * but MarkdownRenderer treats anything at the very start of its input as document
+ * start and would hide the block as YAML. A blank first line keeps it visible, the
+ * way the reading view shows those lines in the full note.
+ */
+export function bodyForRender(body: string): string {
+	return body.startsWith("---") ? "\n" + body : body;
 }
 
 /**
@@ -2805,7 +2832,8 @@ export class SectionCardsView extends ItemView {
 
 		let renderBody: (() => Promise<void>) | null = null;
 		if (section.body.trim()) {
-			renderBody = () => MarkdownRenderer.render(this.app, holder.section.body, bodyEl, file.path, scope);
+			renderBody = () =>
+				MarkdownRenderer.render(this.app, bodyForRender(holder.section.body), bodyEl, file.path, scope);
 		} else {
 			bodyEl.createDiv({ cls: "section-card-placeholder", text: "Empty section — click to add content." });
 		}
