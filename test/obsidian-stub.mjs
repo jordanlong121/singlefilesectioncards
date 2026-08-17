@@ -27,3 +27,16 @@ export const setIcon = () => {};
 export class SuggestModal { setPlaceholder() {} }
 export class Scope { register() {} }
 export const Platform = { isMobile: false, isPhone: false, isTablet: false };
+export const prepareFuzzySearch = (query) => {
+	const q = query.toLowerCase();
+	return (text) => {
+		const t = text.toLowerCase();
+		let i = 0;
+		for (const ch of q) {
+			i = t.indexOf(ch, i);
+			if (i < 0) return null;
+			i++;
+		}
+		return { score: -t.length, matches: [] };
+	};
+};

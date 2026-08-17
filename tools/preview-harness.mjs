@@ -158,6 +158,55 @@ ${sections.map((s) => cardHtml(s, { maxHeight })).join("\n")}
 <div class="section-cards-tray"></div>`;
 }
 
+/** Lucide path data for the icons openBlockMenu uses, so the staged menu matches the app. */
+const LUCIDE = {
+	"arrow-up": '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+	"arrow-down": '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+	check: '<path d="M20 6 9 17l-5-5"/>',
+	pencil:
+		'<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+	"list-plus": '<path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/>',
+	"trash-2":
+		'<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
+};
+
+const menuItem = (icon, title, selected = false) =>
+	`<div class="menu-item tappable${selected ? " selected" : ""}"><div class="menu-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-${icon}">${LUCIDE[icon]}</svg></div><div class="menu-item-title">${esc(title)}</div></div>`;
+
+/** The block context menu exactly as openBlockMenu builds it for an unchecked task
+ * on a middle card with the Tasks plugin installed. Anchored beside that task by
+ * MENU_SCRIPT once the grid has packed. */
+function menuHtml() {
+	const label = (target) => {
+		const title = target.title || "(untitled)";
+		return title.length > 28 ? `${title.slice(0, 27)}…` : title;
+	};
+	return `<div class="menu" style="left: 0; top: 0;"><div class="menu-scroll">
+${menuItem("arrow-up", `Move line to previous card (${label(sections[0])})`)}
+${menuItem("arrow-down", `Move line to next card (${label(sections[2])})`)}
+<div class="menu-separator"></div>
+${menuItem("check", "Mark done")}
+${menuItem("pencil", "Edit task (Tasks)…", true)}
+${menuItem("list-plus", "New task below (Tasks)…")}
+${menuItem("trash-2", "Delete line")}
+</div></div>`;
+}
+
+/** Positions the staged menu as showAtMouseEvent would: at a right-click on the
+ * second card's first unchecked task. Runs after PACK_SCRIPT has laid cards out. */
+const MENU_SCRIPT = `<script>
+(() => {
+	const menu = document.querySelector(".menu");
+	if (!menu) return;
+	const cards = [...document.querySelectorAll(".section-cards-grid > .section-card")];
+	const line = cards[1]?.querySelector("li.task-list-item:not(.is-checked)");
+	if (!line) return;
+	const r = line.getBoundingClientRect();
+	menu.style.left = Math.round(r.left + r.width * 0.45) + "px";
+	menu.style.top = Math.round(r.bottom + 4) + "px";
+})();
+</script>`;
+
 /** Replays layoutMasonry + insertRowRules so styles.css packs cards like the app does. */
 const PACK_SCRIPT = `<script>
 (() => {
@@ -184,7 +233,7 @@ const PACK_SCRIPT = `<script>
 })();
 </script>`;
 
-function pageHtml(layout) {
+function pageHtml(layout, { withMenu = false } = {}) {
 	return `<!doctype html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="app.css">
@@ -222,7 +271,9 @@ ${toolbarHtml(layout)}
 ${gridHtml(layout)}
 </div>
 </div></div></div></div></div></div></div></div>
+${withMenu ? menuHtml() : ""}
 ${PACK_SCRIPT.replace("<script>", `<script data-layout="${layout}">`)}
+${withMenu ? MENU_SCRIPT : ""}
 </body></html>`;
 }
 
@@ -232,4 +283,5 @@ if (!fs.existsSync(path.join(OUT_DIR, "theme.css"))) fs.writeFileSync(path.join(
 for (const layout of Object.keys(LAYOUT_LABELS)) {
 	fs.writeFileSync(path.join(OUT_DIR, `${layout}.html`), pageHtml(layout));
 }
-console.log("wrote", Object.keys(LAYOUT_LABELS).length, "layout pages to", OUT_DIR, "with", sections.length, "cards");
+fs.writeFileSync(path.join(OUT_DIR, "context-menu.html"), pageHtml("grid", { withMenu: true }));
+console.log("wrote", Object.keys(LAYOUT_LABELS).length + 1, "pages to", OUT_DIR, "with", sections.length, "cards");
