@@ -110,6 +110,43 @@ from *Wild ideas* to *Feature ideas* — everything stays plain markdown in the 
 
 ![Brainstorming on the Custom Grid canvas](screenshots/brainstorm-custom.png)
 
+## The right-click menu
+
+Right-click a task or paragraph on a card (long-press on mobile) for a menu that works that
+line without dragging or opening the editor:
+
+![The right-click menu on a task, with the Tasks plugin installed](screenshots/context-menu.png)
+
+- **Move line to previous / next card** — sends the block to the neighbouring card in the
+  current sort order, exactly like dragging it there; a task brings its indented sub-items
+  along.
+- **Mark done / Mark undone** — ticks or unticks the task where it sits.
+- **Delete line** — removes the block (and a task's sub-items) from the section.
+
+The two **(Tasks)…** entries appear when the Tasks plugin is installed — see below.
+
+## Working with the Tasks plugin
+
+When the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin is installed
+and enabled, the cards view hands task handling over to it — there's nothing to configure, the
+integration switches on by itself:
+
+- **Ticking a checkbox goes through Tasks.** Any checkbox ticked on a card (or via **Mark
+  done**) is toggled with Tasks' own toggle, so its semantics apply: a recurring task spawns
+  its next occurrence, and done dates follow your Tasks settings. This is the "Toggle tasks
+  with the Tasks plugin" setting — on by default; turn it off to keep this plugin's simpler
+  built-in toggle.
+- **Edit task (Tasks)…** — on a task line, the right-click menu can open the task in Tasks'
+  edit dialog for due dates, recurrence, and priority. (Tasks only edits at an editor cursor,
+  so this jumps to the line in a normal editor and opens the dialog there.)
+- **New task below (Tasks)…** — opens Tasks' create dialog and inserts the finished task line
+  right below the clicked block. Right-clicking a card's empty space offers **New task
+  (Tasks)…**, which appends the new task to the bottom of that section instead.
+
+Without Tasks installed, the menu simply omits those entries and checkboxes are toggled by this
+plugin itself — with the optional `✅ YYYY-MM-DD` completion date from the "Completion date on
+tasks" setting.
+
 ## Pinned cards
 
 Every card's title bar has a pin button. Pinning pulls the card into a pinned section at the top of

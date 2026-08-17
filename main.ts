@@ -21,6 +21,8 @@ import {
 	debounce,
 	moment,
 	normalizePath,
+	prepareFuzzySearch,
+	type SearchResult,
 } from "obsidian";
 import { createEmbeddedEditor, type EmbeddedEditor } from "./editor-embed";
 
@@ -4015,9 +4017,14 @@ class FileSuggestModal extends SuggestModal<string> {
 	}
 
 	/**
-	 * Notes the user has already touched lead — the configured default, notes with a
-	 * remembered cards view, recently opened notes — then the rest of the vault's
-	 * markdown files, alphabetically. Typing filters everything by name or path.
+	 * With no query, suggests only notes the plugin already knows about — the
+	 * configured default, notes with a remembered cards view, recently opened
+	 * notes. Once the user types, their query is resolved the way a wikilink
+	 * would be, then fuzzy-matched against the vault's markdown files.
+	 *
+	 * Vault enumeration happens only here, only while the user is actively
+	 * searching this picker, and only to fuzzy-match the query they typed;
+	 * the file list is discarded as soon as the suggestions are computed.
 	 */
 	getSuggestions(query: string): string[] {
 		const typed: string[] = [];
@@ -4036,15 +4043,17 @@ class FileSuggestModal extends SuggestModal<string> {
 		for (const path of this.app.workspace.getLastOpenFiles()) this.addCandidate(known, seen, path);
 
 		const needle = q.toLowerCase();
+		if (!needle) return typed.concat(known);
+
+		const fuzzy = prepareFuzzySearch(q);
 		const rest = this.app.vault
 			.getMarkdownFiles()
-			.map((file) => file.path)
-			.filter((path) => !seen.has(path) && (!needle || path.toLowerCase().includes(needle)))
-			.sort((a, b) => a.localeCompare(b));
+			.map((file) => ({ path: file.path, match: seen.has(file.path) ? null : fuzzy(file.path) }))
+			.filter((entry): entry is { path: string; match: SearchResult } => entry.match !== null)
+			.sort((a, b) => b.match.score - a.match.score || a.path.localeCompare(b.path))
+			.map((entry) => entry.path);
 
-		return typed
-			.concat(needle ? known.filter((path) => path.toLowerCase().includes(needle)) : known)
-			.concat(rest);
+		return typed.concat(known.filter((path) => path.toLowerCase().includes(needle))).concat(rest);
 	}
 
 	renderSuggestion(path: string, el: HTMLElement): void {
