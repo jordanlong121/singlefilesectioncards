@@ -14,6 +14,7 @@ import {
 	PluginSettingTab,
 	Scope,
 	Setting,
+	type SettingDefinition,
 	type SettingDefinitionItem,
 	setIcon,
 	TFile,
@@ -119,6 +120,8 @@ interface SectionCardsSettings {
 	/** Minutes between autosaves while a card editor is open. */
 	autosaveMinutes: number;
 	layout: Layout;
+	/** The nine card colors as configured (label + hex per slot); see CARD_COLORS. */
+	palette: PaletteColor[];
 	/** Remembered view per note, keyed by vault path. Lives here, never in the note. */
 	perFile: Record<string, PerFileView>;
 }
@@ -147,18 +150,154 @@ export interface ViewSettings {
 	sortOrder: SortOrder;
 }
 
-/** The card color palette. Names key the stored choice and the CSS swatch classes. */
-const CARD_COLORS: [name: string, label: string][] = [
-	["red", "Red"],
-	["orange", "Orange"],
-	["yellow", "Yellow"],
-	["green", "Green"],
-	["cyan", "Cyan"],
-	["blue", "Blue"],
-	["purple", "Purple"],
-	["pink", "Pink"],
-	["gray", "Grey"],
+/**
+ * The card color palette's nine slots. Slot names key the stored per-card choice and the
+ * CSS swatch rules, so they never change — the settings can restyle a slot's label and
+ * color, and every card already wearing it follows along.
+ */
+const CARD_COLORS: [name: string, label: string, hex: string][] = [
+	["red", "Red", "#e05252"],
+	["orange", "Orange", "#eb8c34"],
+	["yellow", "Yellow", "#d4aa14"],
+	["green", "Green", "#4ca85a"],
+	["cyan", "Cyan", "#2ca0c6"],
+	["blue", "Blue", "#4c82eb"],
+	["purple", "Purple", "#9b6ee6"],
+	["pink", "Pink", "#e26eaa"],
+	["gray", "Grey", "#848c94"],
 ];
+
+/** One palette slot as the user configured it. */
+export interface PaletteColor {
+	label: string;
+	hex: string;
+}
+
+/** Ready-made palettes for the settings' preset dropdown, nine colors each. */
+export const PALETTE_PRESETS: { name: string; colors: PaletteColor[] }[] = [
+	{ name: "Default", colors: CARD_COLORS.map(([, label, hex]) => ({ label, hex })) },
+	{
+		name: "Catppuccin Mocha",
+		colors: [
+			{ label: "Red", hex: "#f38ba8" },
+			{ label: "Peach", hex: "#fab387" },
+			{ label: "Yellow", hex: "#f9e2af" },
+			{ label: "Green", hex: "#a6e3a1" },
+			{ label: "Sky", hex: "#89dceb" },
+			{ label: "Blue", hex: "#89b4fa" },
+			{ label: "Mauve", hex: "#cba6f7" },
+			{ label: "Pink", hex: "#f5c2e7" },
+			{ label: "Overlay", hex: "#7f849c" },
+		],
+	},
+	{
+		name: "Nord",
+		colors: [
+			{ label: "Aurora red", hex: "#bf616a" },
+			{ label: "Aurora orange", hex: "#d08770" },
+			{ label: "Aurora yellow", hex: "#ebcb8b" },
+			{ label: "Aurora green", hex: "#a3be8c" },
+			{ label: "Frost teal", hex: "#8fbcbb" },
+			{ label: "Frost blue", hex: "#5e81ac" },
+			{ label: "Aurora purple", hex: "#b48ead" },
+			{ label: "Frost light", hex: "#88c0d0" },
+			{ label: "Polar night", hex: "#4c566a" },
+		],
+	},
+	{
+		name: "Solarized",
+		colors: [
+			{ label: "Red", hex: "#dc322f" },
+			{ label: "Orange", hex: "#cb4b16" },
+			{ label: "Yellow", hex: "#b58900" },
+			{ label: "Green", hex: "#859900" },
+			{ label: "Cyan", hex: "#2aa198" },
+			{ label: "Blue", hex: "#268bd2" },
+			{ label: "Violet", hex: "#6c71c4" },
+			{ label: "Magenta", hex: "#d33682" },
+			{ label: "Base", hex: "#839496" },
+		],
+	},
+	{
+		name: "Gruvbox",
+		colors: [
+			{ label: "Red", hex: "#cc241d" },
+			{ label: "Orange", hex: "#d65d0e" },
+			{ label: "Yellow", hex: "#d79921" },
+			{ label: "Green", hex: "#98971a" },
+			{ label: "Aqua", hex: "#689d6a" },
+			{ label: "Blue", hex: "#458588" },
+			{ label: "Purple", hex: "#b16286" },
+			{ label: "Bright purple", hex: "#d3869b" },
+			{ label: "Gray", hex: "#928374" },
+		],
+	},
+	{
+		name: "Dracula",
+		colors: [
+			{ label: "Red", hex: "#ff5555" },
+			{ label: "Orange", hex: "#ffb86c" },
+			{ label: "Yellow", hex: "#f1fa8c" },
+			{ label: "Green", hex: "#50fa7b" },
+			{ label: "Cyan", hex: "#8be9fd" },
+			{ label: "Comment", hex: "#6272a4" },
+			{ label: "Purple", hex: "#bd93f9" },
+			{ label: "Pink", hex: "#ff79c6" },
+			{ label: "Current line", hex: "#44475a" },
+		],
+	},
+	{
+		name: "Pastel",
+		colors: [
+			{ label: "Rose", hex: "#eaa1a6" },
+			{ label: "Peach", hex: "#f5c39a" },
+			{ label: "Lemon", hex: "#efe1a0" },
+			{ label: "Mint", hex: "#a8d8b9" },
+			{ label: "Sky", hex: "#a3d5e8" },
+			{ label: "Periwinkle", hex: "#aab8e8" },
+			{ label: "Lilac", hex: "#c9aee5" },
+			{ label: "Blush", hex: "#f0bcd5" },
+			{ label: "Stone", hex: "#b8bcc2" },
+		],
+	},
+];
+
+/** "#rgb"/"#rrggbb" → "r, g, b" for the rgba(var(--sfsc-c), α) rules; null when invalid. */
+export function hexToTriplet(hex: string): string | null {
+	const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+	if (!m) return null;
+	let digits = m[1];
+	if (digits.length === 3) digits = digits.replace(/./g, (c) => c + c);
+	const n = parseInt(digits, 16);
+	return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+}
+
+/**
+ * Black or white, whichever reads better on the given color (YIQ perceived brightness).
+ * Biased strongly toward white: mid-tone colors read as dark bars inside a dark theme,
+ * so only genuinely pale colors (pastels, near-whites) flip the foreground to black.
+ */
+export function contrastForeground(hex: string): string {
+	const triplet = hexToTriplet(hex);
+	if (!triplet) return "#ffffff";
+	const [r, g, b] = triplet.split(", ").map(Number);
+	return (r * 299 + g * 587 + b * 114) / 1000 >= 200 ? "#000000" : "#ffffff";
+}
+
+/**
+ * The palette as configured: saved entries over the slot defaults, always nine slots.
+ * Blank labels and unparseable colors fall back per field, so old or hand-edited data
+ * can't blank out a slot.
+ */
+export function normalizePalette(saved: Partial<PaletteColor>[] | undefined): PaletteColor[] {
+	return CARD_COLORS.map(([, label, hex], i) => {
+		const entry = saved?.[i];
+		return {
+			label: entry?.label?.trim() || label,
+			hex: entry?.hex && hexToTriplet(entry.hex) ? entry.hex : hex,
+		};
+	});
+}
 
 const DEFAULT_SETTINGS: SectionCardsSettings = {
 	filePath: "Daily Notes 2026.md",
@@ -179,6 +318,7 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	autosaveEnabled: true,
 	autosaveMinutes: 5,
 	layout: "grid",
+	palette: CARD_COLORS.map(([, label, hex]) => ({ label, hex })),
 	perFile: {},
 };
 
@@ -2338,24 +2478,31 @@ export class SectionCardsView extends ItemView {
 	private openColorMenu(evt: MouseEvent, file: TFile, headingRaw: string): void {
 		const base: ViewSettings = { layout: this.layout, headingLevel: this.headingLevel, sortOrder: this.sortOrder };
 		const current = this.plugin.getCardColors(file.path)[headingRaw];
+		const palette = this.plugin.palette();
 		const menu = new Menu();
-		for (const [name, label] of CARD_COLORS) {
+		CARD_COLORS.forEach(([name], i) => {
 			menu.addItem((item) => {
 				const title = createFragment();
 				title.createSpan({ cls: `sfsc-swatch sfsc-swatch-${name}` });
-				title.appendText(label);
+				title.appendText(palette[i].label);
 				item
 					.setTitle(title)
 					.setChecked(current === name)
 					.onClick(() => void this.plugin.setCardColor(file.path, headingRaw, name, base));
 			});
-		}
+		});
 		menu.addSeparator();
 		menu.addItem((item) =>
 			item
 				.setTitle("No color")
 				.setChecked(!current)
 				.onClick(() => void this.plugin.setCardColor(file.path, headingRaw, null, base)),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Configure colors…")
+				.setIcon("settings")
+				.onClick(() => this.plugin.openSettingsTab()),
 		);
 		menu.showAtMouseEvent(evt);
 	}
@@ -2758,7 +2905,11 @@ export class SectionCardsView extends ItemView {
 			this.untrayCard(holder.section.headingRaw);
 		});
 
-		const quickAddBtn = header.createEl("button", { cls: "section-card-quickadd" });
+		// The action buttons live in an overlay anchored to the header's right edge, so
+		// the title keeps the full width until a hover reveals them over it.
+		const actions = header.createDiv({ cls: "section-card-actions" });
+
+		const quickAddBtn = actions.createEl("button", { cls: "section-card-quickadd" });
 		setIcon(quickAddBtn, "plus");
 		quickAddBtn.setAttr("aria-label", "Quick add text to this card");
 		quickAddBtn.addEventListener("click", (evt) => {
@@ -2773,7 +2924,7 @@ export class SectionCardsView extends ItemView {
 			}).open();
 		});
 
-		const colorBtn = header.createEl("button", { cls: "section-card-color" });
+		const colorBtn = actions.createEl("button", { cls: "section-card-color" });
 		setIcon(colorBtn, "palette");
 		colorBtn.setAttr("aria-label", "Set this card's color");
 		colorBtn.addEventListener("click", (evt) => {
@@ -2781,18 +2932,7 @@ export class SectionCardsView extends ItemView {
 			this.openColorMenu(evt, file, holder.section.headingRaw);
 		});
 
-		const pinBtn = header.createEl("button", { cls: "section-card-pin" });
-		pinBtn.addEventListener("click", (evt) => {
-			evt.stopPropagation();
-			void this.plugin.togglePin(file.path, holder.section.headingRaw, {
-				layout: this.layout,
-				headingLevel: this.headingLevel,
-				sortOrder: this.sortOrder,
-			});
-		});
-		this.applyPinState(card, this.plugin.getPinned(file.path).includes(section.headingRaw));
-
-		const deleteBtn = header.createEl("button", { cls: "section-card-delete" });
+		const deleteBtn = actions.createEl("button", { cls: "section-card-delete" });
 		setIcon(deleteBtn, "trash-2");
 		deleteBtn.setAttr("aria-label", "Delete this card");
 		deleteBtn.addEventListener("click", (evt) => {
@@ -2809,7 +2949,7 @@ export class SectionCardsView extends ItemView {
 			}).open();
 		});
 
-		const bigBtn = header.createEl("button", { cls: "section-card-big" });
+		const bigBtn = actions.createEl("button", { cls: "section-card-big" });
 		// The four-way move icon covers both of this button's jobs: click to make the card
 		// big, or use it as the natural grab point for drag-to-reorder.
 		setIcon(bigBtn, "move");
@@ -2819,12 +2959,25 @@ export class SectionCardsView extends ItemView {
 			this.toggleMaximized(card);
 		});
 
-		const openBtn = header.createEl("button", { cls: "section-card-open", text: "↗" });
+		const openBtn = actions.createEl("button", { cls: "section-card-open" });
+		setIcon(openBtn, "arrow-up-right");
 		openBtn.setAttr("aria-label", "Open this section in the note");
 		openBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
 			void this.plugin.revealSection(file, holder.section.headingLine);
 		});
+
+		// Last, so a pinned card's always-visible pin sits at the header's right edge.
+		const pinBtn = actions.createEl("button", { cls: "section-card-pin" });
+		pinBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			void this.plugin.togglePin(file.path, holder.section.headingRaw, {
+				layout: this.layout,
+				headingLevel: this.headingLevel,
+				sortOrder: this.sortOrder,
+			});
+		});
+		this.applyPinState(card, this.plugin.getPinned(file.path).includes(section.headingRaw));
 
 		// markdown-rendered lets Obsidian's own reading-view CSS style lists, tasks, tags, etc.
 		const bodyEl = card.createDiv({ cls: "section-card-body markdown-rendered" });
@@ -4533,6 +4686,23 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			},
 			{
 				type: "group",
+				heading: "Card colors",
+				items: [
+					{
+						name: "Palette preset",
+						desc: "Replace all nine colors and labels with a ready-made palette. Cards keep their slot, so a card colored with the first swatch wears each palette's first color.",
+						render: (setting: Setting) => this.renderPresetRow(setting),
+					},
+					...CARD_COLORS.map(
+						(_, i): SettingDefinition => ({
+							name: `Color ${i + 1}`,
+							render: (setting: Setting) => this.renderColorRow(setting, i),
+						}),
+					),
+				],
+			},
+			{
+				type: "group",
 				heading: "Editing",
 				items: [
 					{
@@ -4614,6 +4784,35 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				],
 			},
 		];
+	}
+
+	/** The preset dropdown is an action, not a stored value: picking one rewrites the
+	 * whole palette, then the tab re-renders so the nine rows show the new colors. */
+	private renderPresetRow(setting: Setting): void {
+		setting.addDropdown((dropdown) => {
+			dropdown.addOption("", "Choose a preset…");
+			for (const preset of PALETTE_PRESETS) dropdown.addOption(preset.name, preset.name);
+			dropdown.setValue("");
+			dropdown.onChange(async (name) => {
+				const preset = PALETTE_PRESETS.find((p) => p.name === name);
+				if (!preset) return;
+				await this.plugin.applyPalettePreset(preset.colors);
+				this.update();
+			});
+		});
+	}
+
+	private renderColorRow(setting: Setting, index: number): void {
+		const entry = this.plugin.palette()[index];
+		setting.addColorPicker((picker) =>
+			picker.setValue(entry.hex).onChange((hex) => void this.plugin.setPaletteColor(index, { hex })),
+		);
+		setting.addText((text) =>
+			text
+				.setPlaceholder(CARD_COLORS[index][1])
+				.setValue(entry.label)
+				.onChange((label) => void this.plugin.setPaletteColor(index, { label })),
+		);
 	}
 
 	/** headingLevel is stored as a number, but dropdown controls speak strings. */
@@ -4729,15 +4928,65 @@ export default class SectionCardsPlugin extends Plugin {
 
 		this.addSettingTab(new SectionCardsSettingTab(this.app, this));
 		this.applyBodyClasses();
+		this.applyPaletteCss();
 	}
 
 	onunload(): void {
 		document.body.removeClass("sfsc-no-nested-strike");
+		for (const [name] of CARD_COLORS) {
+			document.body.style.removeProperty(`--sfsc-color-${name}`);
+			document.body.style.removeProperty(`--sfsc-color-${name}-fg`);
+		}
 	}
 
 	/** Global styling switches live as body classes so every cards view picks them up. */
 	applyBodyClasses(): void {
 		document.body.toggleClass("sfsc-no-nested-strike", !this.settings.strikeNestedUnderDone);
+	}
+
+	/** The nine palette slots as configured, saved entries over the defaults. */
+	palette(): PaletteColor[] {
+		return normalizePalette(this.settings.palette);
+	}
+
+	/** Jump to this plugin's settings tab (app.setting isn't in the public typings). */
+	openSettingsTab(): void {
+		const setting = (this.app as unknown as { setting?: { open(): void; openTabById(id: string): void } }).setting;
+		if (!setting) return;
+		setting.open();
+		setting.openTabById(this.manifest.id);
+	}
+
+	/** Update one slot's label and/or color, then restyle every colored card via CSS. */
+	async setPaletteColor(index: number, patch: Partial<PaletteColor>): Promise<void> {
+		const palette = this.palette();
+		if (!palette[index]) return;
+		palette[index] = { ...palette[index], ...patch };
+		this.settings.palette = palette;
+		await this.saveSettings();
+		this.applyPaletteCss();
+	}
+
+	async applyPalettePreset(colors: PaletteColor[]): Promise<void> {
+		this.settings.palette = normalizePalette(colors);
+		await this.saveSettings();
+		this.applyPaletteCss();
+	}
+
+	/**
+	 * Colors reach the cards as body-level CSS variables the swatch rules read, so a
+	 * settings change restyles every card, tray tile, and menu swatch without a refresh.
+	 */
+	applyPaletteCss(): void {
+		const palette = this.palette();
+		CARD_COLORS.forEach(([name, , fallbackHex], i) => {
+			const hex = hexToTriplet(palette[i].hex) ? palette[i].hex : fallbackHex;
+			const triplet = hexToTriplet(hex);
+			if (!triplet) return;
+			document.body.style.setProperty(`--sfsc-color-${name}`, triplet);
+			// Solid-color title bars flip their text black or white to stay readable.
+			document.body.style.setProperty(`--sfsc-color-${name}-fg`, contrastForeground(hex));
+		});
 	}
 
 	/**
