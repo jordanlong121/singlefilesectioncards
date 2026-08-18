@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -701,6 +701,44 @@ t("bodyForRender: a blank line stops a leading '---' being swallowed as frontmat
   assert.equal(bodyForRender("---\na: b\n---\ntext"), "\n---\na: b\n---\ntext");
   assert.equal(bodyForRender("plain text"), "plain text");
   assert.equal(bodyForRender("text\n---\nmore"), "text\n---\nmore"); // only a leading --- needs it
+});
+
+t("hexToTriplet parses #rrggbb and #rgb; rejects everything else", () => {
+  assert.equal(hexToTriplet("#e05252"), "224, 82, 82");
+  assert.equal(hexToTriplet("4C82EB"), "76, 130, 235");   // bare and uppercase
+  assert.equal(hexToTriplet("#f00"), "255, 0, 0");
+  assert.equal(hexToTriplet("red"), null);
+  assert.equal(hexToTriplet("#12345"), null);
+  assert.equal(hexToTriplet(""), null);
+});
+
+t("normalizePalette: always nine slots; blank labels and bad colors fall back per field", () => {
+  const defaults = normalizePalette(undefined);
+  assert.equal(defaults.length, 9);
+  assert.deepEqual(defaults[0], { label: "Red", hex: "#e05252" });
+  const merged = normalizePalette([{ label: "Urgent", hex: "#ff0000" }, { label: "  ", hex: "nope" }]);
+  assert.deepEqual(merged[0], { label: "Urgent", hex: "#ff0000" });
+  assert.deepEqual(merged[1], { label: "Orange", hex: "#eb8c34" }); // both fields fell back
+  assert.deepEqual(merged[8], defaults[8]);                          // missing entries fall back
+});
+
+t("contrastForeground stays light except on genuinely pale colors", () => {
+  assert.equal(contrastForeground("#d4aa14"), "#ffffff"); // default yellow: mid-tone, stays white
+  assert.equal(contrastForeground("#4c82eb"), "#ffffff"); // default blue
+  assert.equal(contrastForeground("#f0bcd5"), "#000000"); // pastel blush flips to black
+  assert.equal(contrastForeground("#ffffff"), "#000000");
+  assert.equal(contrastForeground("#000000"), "#ffffff");
+  assert.equal(contrastForeground("not-a-color"), "#ffffff"); // safe fallback
+});
+
+t("every palette preset has nine parseable colors and non-empty labels", () => {
+  for (const preset of PALETTE_PRESETS) {
+    assert.equal(preset.colors.length, 9, preset.name);
+    for (const c of preset.colors) {
+      assert.ok(hexToTriplet(c.hex), `${preset.name}: ${c.hex}`);
+      assert.ok(c.label.trim().length, `${preset.name}: empty label`);
+    }
+  }
 });
 
 t("moveBlock: a task moves to the end of another section, byte-identical", () => {

@@ -173,6 +173,12 @@ remembered per note in the plugin's data — never in your notes — and, like p
 the heading line, so renaming a section clears its color. Today's highlight still wins on
 today's card.
 
+The nine colors themselves are yours to shape: **Settings → Card colors** lets you change each
+slot's color and label, or swap the whole set for a preset palette (Catppuccin Mocha, Nord,
+Solarized, Gruvbox, Dracula, Pastel — or back to Default). Cards keep their slot, so a card
+wearing the third color simply wears each palette's third color. The palette button's menu
+ends with **Configure colors…**, which jumps straight to those settings.
+
 ## New-card options, per note
 
 The toolbar button beside **+ New card** holds the open note's new-card options: a template
@@ -262,6 +268,7 @@ flashes it — the same nudge a wikilink arrival gets.
 | Heading level | Which heading rank becomes a card (H1–H6) |
 | Jump to today's card | Scroll to today's card when a note opens in the view (on by default; needs the note's Dates checkbox) |
 | Keep pinned cards on screen | Pinned cards stay on screen while the rest scroll — below the toolbar, or left of the row in Vertical (on by default; not in Custom Grid) |
+| Card colors | Each of the nine card colors' RGB value and label, with preset palettes to apply in one pick |
 | Default sort | A→Z, Z→A, or document order |
 | Default layout | Grid, Grid Aligned, Tight, Horizontal, Vertical, Custom Grid |
 | Default heading name | Date format used to pre-fill "New card" (any note can set its own from the toolbar's new-card options menu) |

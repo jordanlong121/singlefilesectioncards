@@ -314,9 +314,13 @@
 }
 
 .is-layout-tight .section-card-body {
-	padding: 5px 9px 8px;
+	padding: 38px 9px 8px;
 	font-size: var(--font-ui-smaller);
 	line-height: 1.4;
+}
+
+body.is-mobile .is-layout-tight .section-card-body {
+	padding-top: 5px;
 }
 
 /* Uniform grid: real auto rows, so every row starts at the same height (the layout
@@ -513,7 +517,11 @@
 }
 
 .section-card.is-today .section-card-header {
-	background-color: var(--text-highlight-bg, var(--interactive-accent));
+	background: linear-gradient(
+			var(--text-highlight-bg, var(--interactive-accent)),
+			var(--text-highlight-bg, var(--interactive-accent))
+		),
+		linear-gradient(var(--sc-surface), var(--sc-surface)), var(--background-primary);
 	border-bottom-color: var(--text-highlight-bg, var(--interactive-accent));
 }
 
@@ -524,76 +532,88 @@
 
 /* ---------- per-card colors ----------
    data-sfsc-color carries the chosen swatch name; each name maps to one RGB triplet
-   so a single set of alpha rules covers every color in both themes. Today's own
-   highlight outranks a color on today's card (hence the :not(.is-today) guards). */
+   so a single set of alpha rules covers every color in both themes. The plugin sets
+   --sfsc-color-<name> on the body from the configured palette (Settings → Card colors);
+   the value here is only the fallback before it loads. Today's own highlight outranks
+   a color on today's card (hence the :not(.is-today) guards). */
 
 .section-card[data-sfsc-color="red"],
 .section-cards-tray-tile[data-sfsc-color="red"],
 .sfsc-swatch-red {
-	--sfsc-c: 224, 82, 82;
+	--sfsc-c: var(--sfsc-color-red, 224, 82, 82);
+	--sfsc-fg: var(--sfsc-color-red-fg, #fff);
 }
 
 .section-card[data-sfsc-color="orange"],
 .section-cards-tray-tile[data-sfsc-color="orange"],
 .sfsc-swatch-orange {
-	--sfsc-c: 235, 140, 52;
+	--sfsc-c: var(--sfsc-color-orange, 235, 140, 52);
+	--sfsc-fg: var(--sfsc-color-orange-fg, #fff);
 }
 
 .section-card[data-sfsc-color="yellow"],
 .section-cards-tray-tile[data-sfsc-color="yellow"],
 .sfsc-swatch-yellow {
-	--sfsc-c: 212, 170, 20;
+	--sfsc-c: var(--sfsc-color-yellow, 212, 170, 20);
+	--sfsc-fg: var(--sfsc-color-yellow-fg, #fff);
 }
 
 .section-card[data-sfsc-color="green"],
 .section-cards-tray-tile[data-sfsc-color="green"],
 .sfsc-swatch-green {
-	--sfsc-c: 76, 168, 90;
+	--sfsc-c: var(--sfsc-color-green, 76, 168, 90);
+	--sfsc-fg: var(--sfsc-color-green-fg, #fff);
 }
 
 .section-card[data-sfsc-color="cyan"],
 .section-cards-tray-tile[data-sfsc-color="cyan"],
 .sfsc-swatch-cyan {
-	--sfsc-c: 44, 160, 198;
+	--sfsc-c: var(--sfsc-color-cyan, 44, 160, 198);
+	--sfsc-fg: var(--sfsc-color-cyan-fg, #fff);
 }
 
 .section-card[data-sfsc-color="blue"],
 .section-cards-tray-tile[data-sfsc-color="blue"],
 .sfsc-swatch-blue {
-	--sfsc-c: 76, 130, 235;
+	--sfsc-c: var(--sfsc-color-blue, 76, 130, 235);
+	--sfsc-fg: var(--sfsc-color-blue-fg, #fff);
 }
 
 .section-card[data-sfsc-color="purple"],
 .section-cards-tray-tile[data-sfsc-color="purple"],
 .sfsc-swatch-purple {
-	--sfsc-c: 155, 110, 230;
+	--sfsc-c: var(--sfsc-color-purple, 155, 110, 230);
+	--sfsc-fg: var(--sfsc-color-purple-fg, #fff);
 }
 
 .section-card[data-sfsc-color="pink"],
 .section-cards-tray-tile[data-sfsc-color="pink"],
 .sfsc-swatch-pink {
-	--sfsc-c: 226, 110, 170;
+	--sfsc-c: var(--sfsc-color-pink, 226, 110, 170);
+	--sfsc-fg: var(--sfsc-color-pink-fg, #fff);
 }
 
 .section-card[data-sfsc-color="gray"],
 .section-cards-tray-tile[data-sfsc-color="gray"],
 .sfsc-swatch-gray {
-	--sfsc-c: 132, 140, 148;
+	--sfsc-c: var(--sfsc-color-gray, 132, 140, 148);
+	--sfsc-fg: var(--sfsc-color-gray-fg, #fff);
 }
 
 .section-card[data-sfsc-color]:not(.is-today) {
 	border-color: rgba(var(--sfsc-c), 0.55);
 }
 
+/* A colored card's title bar wears the palette color at full strength, with the
+   title and buttons flipped to black or white (--sfsc-fg) for contrast. */
 .section-card[data-sfsc-color]:not(.is-today) .section-card-header {
-	background-color: rgba(var(--sfsc-c), 0.16);
-	border-bottom-color: rgba(var(--sfsc-c), 0.3);
+	background: rgb(var(--sfsc-c));
+	border-bottom-color: rgb(var(--sfsc-c));
 }
 
-/* On a colored card the palette button fades in and out with the other buttons,
-   but shows in the card's own color when revealed. */
-.section-card[data-sfsc-color] .section-card-color {
-	color: rgb(var(--sfsc-c));
+.section-card[data-sfsc-color]:not(.is-today) .section-card-title,
+.section-card[data-sfsc-color]:not(.is-today) .section-card-header button {
+	color: var(--sfsc-fg);
 }
 
 .section-cards-tray-tile[data-sfsc-color] {
@@ -902,6 +922,15 @@
 	display: flex;
 }
 
+/* A maximized canvas card must shed its placed-card geometry (absolute position,
+   canvas zoom, resize grip) so it sits in the overlay's centered flex flow with
+   the same breathing room as in every other layout. */
+.is-layout-custom .section-card.is-placed.is-maximized {
+	position: static;
+	zoom: 1;
+	resize: none;
+}
+
 .is-layout-custom .section-card.is-placed .section-card-header {
 	cursor: grab;
 	touch-action: none;
@@ -1011,6 +1040,17 @@
 	color: var(--text-error);
 }
 
+/* In light mode the canvas ✕ reads light; the drop shadow keeps it visible
+   over pale headers. (Specific enough to outrank the colored-header rule.) */
+.theme-light .is-layout-custom .section-card.is-placed .section-card-untray {
+	color: #fff;
+	filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
+}
+
+.theme-light .is-layout-custom .section-card.is-placed .section-card-untray:hover {
+	color: var(--text-error);
+}
+
 .section-card-untray svg {
 	width: 19px;
 	height: 19px;
@@ -1104,12 +1144,16 @@
 }
 
 .section-card-header {
+	position: relative;
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	padding: 8px 12px;
 	border-bottom: 1px solid var(--sc-line);
-	background-color: var(--sc-header);
+	/* Opaque: the header veil and card veil are flattened onto the pane background,
+	   so nothing shows through the title bar (and the actions overlay can inherit it). */
+	background: linear-gradient(var(--sc-header), var(--sc-header)),
+		linear-gradient(var(--sc-surface), var(--sc-surface)), var(--background-primary);
 }
 
 /* What the title bar will do, per the "Clicking a card's title bar" setting. */
@@ -1162,13 +1206,102 @@
 	}
 }
 
+/* The buttons live in a compact full-width strip that drops down flush BELOW the
+   title bar when the pointer enters it, so the title always keeps the full header
+   width. The strip floats over the body's reserved top padding (so it never covers
+   text), on a translucent wash of the card's own color. */
+.section-card-actions {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	right: 0;
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 6px;
+	padding: 4px 8px;
+	background: rgba(var(--mono-rgb-0), 0.55);
+	visibility: hidden;
+	z-index: 1;
+}
+
+/* Colored cards wash the strip in their own color, kept translucent. */
+.section-card[data-sfsc-color]:not(.is-today) .section-card-actions {
+	background: rgba(var(--sfsc-c), 0.75);
+}
+
+/* Half-height controls: the strip stays well under the title bar's height.
+   Each button is a small square around its 9px icon — same height as before,
+   so the strip's own height is unchanged. */
+.section-card-actions button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+}
+
+.section-card-actions button svg {
+	width: 18px;
+	height: 18px;
+}
+
+
+/* Revealed by the pointer entering the title bar (the strip is a child of the
+   header, so moving down into the strip itself keeps it open). An invisible
+   extension below the header makes the reserved margin area part of the hover
+   target too — pointer-only, so touch layouts aren't affected. */
+@media (hover: hover) {
+	.section-card-header:hover .section-card-actions {
+		visibility: visible;
+	}
+
+	.section-card-header::after {
+		content: "";
+		position: absolute;
+		top: 100%;
+		left: 0;
+		right: 0;
+		height: 44px;
+	}
+
+	.is-layout-tight .section-card-header::after {
+		height: 38px;
+	}
+}
+
+/* Keyboard focus reveals the overlay without a pointer. */
+.section-card-actions:focus-within {
+	visibility: visible;
+}
+
+
+/* A pinned card's pin shows on its own: it is last in the row, so it sits at the
+   strip's right edge while the container itself stays unpainted. */
+.section-card.is-pinned .section-card-pin {
+	visibility: visible;
+}
+
+/* No hover on touch: the actions stay in the title row, always visible (sized below). */
+body.is-mobile .section-card-actions {
+	position: static;
+	visibility: visible;
+	padding: 0;
+	background: none;
+}
+
+body.is-mobile .section-card-actions button {
+	width: auto;
+	height: auto;
+}
+
 .section-card-delete:focus-visible,
 .section-card-big:focus-visible,
 .section-card-open:focus-visible,
 .section-card-pin:focus-visible,
 .section-card-color:focus-visible,
-.section-card-quickadd:focus-visible,
-.section-card.is-maximized .section-card-big {
+.section-card-quickadd:focus-visible {
 	opacity: 1;
 }
 
@@ -1188,6 +1321,7 @@
 
 .section-card-delete svg,
 .section-card-big svg,
+.section-card-open svg,
 .section-card-pin svg,
 .section-card-color svg,
 .section-card-quickadd svg {
@@ -1200,7 +1334,9 @@
 }
 
 .section-card-body {
-	padding: 8px 12px 12px;
+	/* The extra top padding reserves the strip the action buttons drop into on hover,
+	   so they never cover the body's first line. */
+	padding: 44px 12px 12px;
 	overflow-y: auto;
 	overflow-x: hidden;
 	font-size: var(--font-ui-small);
@@ -1208,6 +1344,11 @@
 	color: var(--text-normal);
 	/* Long URLs and code must wrap rather than force a horizontal scrollbar. */
 	overflow-wrap: anywhere;
+}
+
+/* On touch the buttons live in the title row instead, so no strip to reserve. */
+body.is-mobile .section-card-body {
+	padding-top: 8px;
 }
 
 /* Rendered markdown inside a card: tighten it up. */
@@ -1441,6 +1582,7 @@ body.is-mobile .section-card-quickadd {
 
 body.is-mobile .section-card-delete svg,
 body.is-mobile .section-card-big svg,
+body.is-mobile .section-card-open svg,
 body.is-mobile .section-card-pin svg,
 body.is-mobile .section-card-color svg,
 body.is-mobile .section-card-quickadd svg {

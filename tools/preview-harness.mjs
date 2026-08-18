@@ -83,8 +83,9 @@ function renderBody(md) {
 	return out.join("\n");
 }
 
-/** Header buttons exist on every card (opacity 0 until hover), matching renderCard. */
-const HEADER_BUTTONS = `<button class="section-card-untray"></button><button class="section-card-quickadd"></button><button class="section-card-pin"></button><button class="section-card-delete"></button><button class="section-card-big"></button><button class="section-card-open">↗</button>`;
+/** Header buttons exist on every card (hidden until hover), matching renderCard: the
+ * untray hugs the title's left in Custom Grid; the rest overlay from the right edge. */
+const HEADER_BUTTONS = `<button class="section-card-untray"></button><div class="section-card-actions"><button class="section-card-quickadd"></button><button class="section-card-color"></button><button class="section-card-delete"></button><button class="section-card-big"></button><button class="section-card-open"></button><button class="section-card-pin"></button></div>`;
 
 function cardHtml(s, { maxHeight = null, placed = null } = {}) {
 	const today = s.title.includes(TODAY) ? " is-today" : "";
