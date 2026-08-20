@@ -60,6 +60,10 @@ export type Placement = "top" | "logical" | "bottom";
  * - tight: denser masonry columns
  * - horizontal: one card per row, full width
  * - vertical: full-height cards in a row, scrolling sideways
+ *
+ * Hierarchy is not a layout but a toolbar toggle (ViewSettings.hierarchy): drill-down
+ * heading columns on the left, with the selected branch's cards rendered in whichever
+ * of these layouts is active.
  */
 export type Layout = "grid" | "aligned" | "tight" | "horizontal" | "vertical" | "custom";
 
@@ -120,6 +124,8 @@ interface SectionCardsSettings {
 	/** Minutes between autosaves while a card editor is open. */
 	autosaveMinutes: number;
 	layout: Layout;
+	/** Hierarchy layout: show a second badge per column row counting its unfinished tasks. */
+	hierTaskCounts: boolean;
 	/** The nine card colors as configured (label + hex per slot); see CARD_COLORS. */
 	palette: PaletteColor[];
 	/** Remembered view per note, keyed by vault path. Lives here, never in the note. */
@@ -148,6 +154,8 @@ export interface ViewSettings {
 	layout: Layout;
 	headingLevel: number;
 	sortOrder: SortOrder;
+	/** Hierarchy columns toggled on: drill-down heading columns beside the card pane. */
+	hierarchy?: boolean;
 }
 
 /**
@@ -318,6 +326,7 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	autosaveEnabled: true,
 	autosaveMinutes: 5,
 	layout: "grid",
+	hierTaskCounts: true,
 	palette: CARD_COLORS.map(([, label, hex]) => ({ label, hex })),
 	perFile: {},
 };
@@ -362,6 +371,9 @@ export function parseSections(lines: string[], level: number): Section[] {
 	const sections: Section[] = [];
 	let inFence = false;
 	let inFrontmatter = false;
+	// Only blanks seen so far: a properties block still counts after stray leading
+	// blank lines, so its `---` fences never read as content (see firstContentLine).
+	let beforeContent = true;
 
 	// A heading of rank <= level closes the current section.
 	const starts: { line: number; title: string; headingRaw: string }[] = [];
@@ -370,19 +382,27 @@ export function parseSections(lines: string[], level: number): Section[] {
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
 
-		if (i === 0 && line.trim() === "---") {
-			inFrontmatter = true;
-			continue;
+		if (beforeContent) {
+			if (line.trim() === "") continue;
+			beforeContent = false;
+			if (line.trim() === "---") {
+				inFrontmatter = true;
+				continue;
+			}
 		}
 		if (inFrontmatter) {
 			if (line.trim() === "---") inFrontmatter = false;
 			continue;
 		}
-		if (FENCE_RE.test(line)) {
+		// First-character gate: fences start with a backtick/tilde or indentation, and
+		// headings with '#'. Most lines are neither, and skipping both regexes for them
+		// makes this parse — which runs on every refresh — mostly a charCode scan.
+		const c0 = line.charCodeAt(0);
+		if ((c0 === 96 || c0 === 126 || c0 === 32 || c0 === 9) && FENCE_RE.test(line)) {
 			inFence = !inFence;
 			continue;
 		}
-		if (inFence) continue;
+		if (inFence || c0 !== 35) continue;
 
 		const match = HEADING_RE.exec(line);
 		if (!match) continue;
@@ -447,10 +467,17 @@ export function applyPinned(sections: Section[], pinned: string[]): Section[] {
 	return [...pin, ...sections.filter((s) => !keys.has(s.headingRaw))];
 }
 
-/** First line after any frontmatter block — the top of the note's real content. */
+/**
+ * First line after any frontmatter block — the top of the note's real content. The
+ * properties block is honored even when stray blank lines precede it (sync tools and
+ * hand edits leave them), so nothing computed from here ever writes above or into the
+ * `---` fences.
+ */
 function firstContentLine(lines: string[]): number {
-	if (lines[0]?.trim() !== "---") return 0;
-	for (let i = 1; i < lines.length; i++) {
+	let first = 0;
+	while (first < lines.length && lines[first].trim() === "") first++;
+	if (lines[first]?.trim() !== "---") return 0;
+	for (let i = first + 1; i < lines.length; i++) {
 		if (lines[i].trim() === "---") return i + 1;
 	}
 	return 0;
@@ -505,6 +532,94 @@ export function parseCards(lines: string[], level: number, unfiledTitle: string 
 	const sections = parseSections(lines, level);
 	const pre = unfiledTitle ? unfiledSection(lines, unfiledTitle) : null;
 	return pre ? [pre, ...sections] : sections;
+}
+
+/** A heading shallower than the card level — the Hierarchy layout's drill-down data. */
+export interface AncestorHeading {
+	level: number;
+	title: string;
+	/** The heading line exactly as it appears in the file. */
+	raw: string;
+	/** 0-based line number. */
+	line: number;
+}
+
+/**
+ * Every heading of rank < cardLevel, skipping frontmatter and code fences the same way
+ * parseSections does, so a card's ancestors agree with the card boundaries.
+ */
+export function parseAncestorHeadings(lines: string[], cardLevel: number): AncestorHeading[] {
+	const found: AncestorHeading[] = [];
+	let inFence = false;
+	let inFrontmatter = false;
+	let beforeContent = true; // as in parseSections: properties survive leading blanks
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		if (beforeContent) {
+			if (line.trim() === "") continue;
+			beforeContent = false;
+			if (line.trim() === "---") {
+				inFrontmatter = true;
+				continue;
+			}
+		}
+		if (inFrontmatter) {
+			if (line.trim() === "---") inFrontmatter = false;
+			continue;
+		}
+		// Same first-character gate as parseSections; this too runs per refresh.
+		const c0 = line.charCodeAt(0);
+		if ((c0 === 96 || c0 === 126 || c0 === 32 || c0 === 9) && FENCE_RE.test(line)) {
+			inFence = !inFence;
+			continue;
+		}
+		if (inFence || c0 !== 35) continue;
+		const match = HEADING_RE.exec(line);
+		if (!match) continue;
+		const rank = match[1].length;
+		if (rank < cardLevel) found.push({ level: rank, title: match[2].trim(), raw: line, line: i });
+	}
+	return found;
+}
+
+/** The Hierarchy layout's synthetic "no heading at this level" item key. Real items are
+ * keyed by their heading line, which always starts with #, so this can never collide. */
+export const HIER_GAP_KEY = "::hier-gap::";
+
+/** One clickable row in a Hierarchy column, with the [start, end) line range it owns. */
+export interface HierarchyItem {
+	/** The heading line as written, or HIER_GAP_KEY for the synthetic gap item. */
+	key: string;
+	label: string;
+	start: number;
+	end: number;
+}
+
+/**
+ * The items one Hierarchy column shows: the level-`level` headings inside the selected
+ * parent's [start, end) range, each owning the lines up to its next sibling. Cards that
+ * sit in the range before the first such heading (or in a range with none at all) get a
+ * synthetic "(no H`level`)" item, so every card stays reachable.
+ */
+export function hierarchyColumnItems(
+	headings: AncestorHeading[],
+	level: number,
+	start: number,
+	end: number,
+	cardLines: number[],
+): HierarchyItem[] {
+	const children = headings.filter((h) => h.level === level && h.line >= start && h.line < end);
+	const items: HierarchyItem[] = children.map((h, i) => ({
+		key: h.raw,
+		label: h.title || "(untitled)",
+		start: h.line,
+		end: i + 1 < children.length ? children[i + 1].line : end,
+	}));
+	const gapEnd = children.length ? children[0].line : end;
+	if (cardLines.some((l) => l >= start && l < gapEnd)) {
+		items.unshift({ key: HIER_GAP_KEY, label: `(no H${level})`, start, end: gapEnd });
+	}
+	return items;
 }
 
 /** First line of a section's body: the unfiled card has no heading line to skip. */
@@ -921,13 +1036,31 @@ export function taskLineIndexes(lines: string[]): number[] {
 	const out: number[] = [];
 	let inFence = false;
 	for (let i = 0; i < lines.length; i++) {
-		if (FENCE_RE.test(lines[i])) {
+		const line = lines[i];
+		// First-character gate: fences open with a backtick/tilde or indentation, and
+		// task lines with indentation, a list marker, or an ordinal. Body scans run per
+		// card per render (and per hierarchy badge count), so cheap rejection matters.
+		const c0 = line.charCodeAt(0);
+		const indented = c0 === 32 || c0 === 9;
+		if ((c0 === 96 || c0 === 126 || indented) && FENCE_RE.test(line)) {
 			inFence = !inFence;
 			continue;
 		}
-		if (!inFence && TASK_RE.test(lines[i])) out.push(i);
+		if (inFence) continue;
+		const listish = indented || c0 === 45 || c0 === 42 || c0 === 43 || (c0 >= 48 && c0 <= 57);
+		if (listish && TASK_RE.test(line)) out.push(i);
 	}
 	return out;
+}
+
+/** How many of a section body's tasks are still unchecked, skipping fenced code. */
+export function openTaskCount(body: string): number {
+	const lines = body.split("\n");
+	let open = 0;
+	for (const i of taskLineIndexes(lines)) {
+		if (TASK_RE.exec(lines[i])?.[2] === " ") open++;
+	}
+	return open;
 }
 
 /**
@@ -1267,11 +1400,18 @@ export function resolveViewSettings(
 	fromState: Partial<ViewSettings>,
 	defaults: ViewSettings,
 ): ViewSettings {
-	return {
+	const resolved: ViewSettings = {
 		layout: saved?.layout ?? fromState.layout ?? defaults.layout,
 		headingLevel: saved?.headingLevel ?? fromState.headingLevel ?? defaults.headingLevel,
 		sortOrder: saved?.sortOrder ?? fromState.sortOrder ?? defaults.sortOrder,
+		hierarchy: saved?.hierarchy ?? fromState.hierarchy ?? defaults.hierarchy ?? false,
 	};
+	// Hierarchy briefly shipped as a layout; stored views from then become grid + columns.
+	if ((resolved.layout as string) === "hierarchy") {
+		resolved.layout = "grid";
+		resolved.hierarchy = true;
+	}
+	return resolved;
 }
 
 /**
@@ -1552,6 +1692,7 @@ interface CardsViewState {
 	headingLevel?: number;
 	sortOrder?: SortOrder;
 	layout?: Layout;
+	hierarchy?: boolean;
 }
 
 export class SectionCardsView extends ItemView {
@@ -1561,6 +1702,8 @@ export class SectionCardsView extends ItemView {
 	headingLevel: number;
 	sortOrder: SortOrder;
 	layout: Layout;
+	/** Hierarchy columns toggled on (toolbar button); the cards keep the chosen layout. */
+	hierarchyOn = false;
 
 	private toolbarEl!: HTMLElement;
 	private gridEl!: HTMLElement;
@@ -1653,7 +1796,7 @@ export class SectionCardsView extends ItemView {
 		void this.plugin.saveCustomGrid(
 			file.path,
 			{ ...this.customPlacements },
-			{ layout: this.layout, headingLevel: this.headingLevel, sortOrder: this.sortOrder },
+			this.viewSettings(),
 			this.customZoom,
 		);
 	};
@@ -1671,6 +1814,22 @@ export class SectionCardsView extends ItemView {
 	/** Heading of a card that should still be blown up after the next render. */
 	private pendingMaximizeHeading: string | null = null;
 	private cardsByHeading = new Map<string, { el: HTMLElement; section: Section }>();
+	/** Hierarchy layout: the drill-down columns pane, between the toolbar and the grid. */
+	private hierEl!: HTMLElement;
+	/** Hierarchy: the selected item key per ancestor column (heading raw, or the gap key). */
+	private hierSelection: string[] = [];
+	/** Which note's hierarchy selection is loaded; a different note starts fresh. */
+	private hierFile: string | null = null;
+	/** The current note's ancestor headings (levels above headingLevel), refreshed per render. */
+	private hierHeadings: AncestorHeading[] = [];
+	/** The current note's line count — the last column item's range runs to here. */
+	private hierLineCount = 0;
+	/** Open-task counts per parsed section. Sections are fresh objects every refresh,
+	 * so this invalidates itself; hierarchy column clicks between refreshes hit it. */
+	private taskCountCache = new WeakMap<Section, number>();
+	/** Lowercased searchable text per section, so filter keystrokes don't re-lowercase
+	 * every card's full body on each character typed. Invalidates like the above. */
+	private searchTextCache = new WeakMap<Section, string>();
 
 	constructor(leaf: WorkspaceLeaf, plugin: SectionCardsPlugin) {
 		super(leaf);
@@ -1701,6 +1860,7 @@ export class SectionCardsView extends ItemView {
 			headingLevel: this.headingLevel,
 			sortOrder: this.sortOrder,
 			layout: this.layout,
+			hierarchy: this.hierarchyOn,
 		};
 	}
 
@@ -1712,6 +1872,7 @@ export class SectionCardsView extends ItemView {
 			layout: state?.layout,
 			headingLevel: state?.headingLevel,
 			sortOrder: state?.sortOrder,
+			hierarchy: state?.hierarchy,
 		});
 		await this.syncView();
 	}
@@ -1731,15 +1892,27 @@ export class SectionCardsView extends ItemView {
 		this.layout = resolved.layout;
 		this.headingLevel = resolved.headingLevel;
 		this.sortOrder = resolved.sortOrder;
+		this.hierarchyOn = resolved.hierarchy ?? false;
+	}
+
+	/** The current view as one ViewSettings value — the shape everything persists. */
+	private viewSettings(): ViewSettings {
+		return {
+			layout: this.layout,
+			headingLevel: this.headingLevel,
+			sortOrder: this.sortOrder,
+			hierarchy: this.hierarchyOn,
+		};
+	}
+
+	/** Whether the hierarchy columns actually show: toggled on, and not on the canvas. */
+	private hierarchyActive(): boolean {
+		return this.hierarchyOn && this.layout !== "custom";
 	}
 
 	/** Remember the current view for the current note (in the plugin's data, not the note). */
 	private rememberView(): void {
-		void this.plugin.storeView(this.currentPath(), {
-			layout: this.layout,
-			headingLevel: this.headingLevel,
-			sortOrder: this.sortOrder,
-		});
+		void this.plugin.storeView(this.currentPath(), this.viewSettings());
 	}
 
 	/**
@@ -1769,6 +1942,7 @@ export class SectionCardsView extends ItemView {
 		// Sticky pinned band, between the toolbar and the grid — refresh parents pinned
 		// cards here when the setting is on, and CSS hides it while it's empty.
 		this.pinnedEl = this.contentEl.createDiv({ cls: "section-cards-pinned" });
+		this.hierEl = this.contentEl.createDiv({ cls: "section-cards-hier" });
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
 		// A user scroll or click cancels the pending today-card re-aim, so it can't
 		// yank the view away from wherever they have already navigated to.
@@ -1875,6 +2049,12 @@ export class SectionCardsView extends ItemView {
 			const open = this.activeEditor;
 			if (open) void open.finish(true);
 		});
+		// Clicking anywhere in the hierarchy columns also settles an open editor —
+		// including column items, whose own handler may then hide the card.
+		this.registerDomEvent(this.hierEl, "click", () => {
+			const open = this.activeEditor;
+			if (open) void open.finish(true);
+		});
 
 		this.applyStoredView();
 		await this.syncView();
@@ -1899,8 +2079,12 @@ export class SectionCardsView extends ItemView {
 		const step = wheelDeltaToPixels(evt, this.gridEl.clientWidth);
 		if (!step) return;
 
-		const body = (evt.target as HTMLElement | null)?.closest<HTMLElement>(".section-card-body");
+		const target = evt.target as HTMLElement | null;
+		const body = target?.closest<HTMLElement>(".section-card-body");
 		if (body && canScrollVertically(body, step)) return;
+		// With the hierarchy columns beside the row, a wheel over a column scrolls it.
+		const hierCol = target?.closest<HTMLElement>(".section-cards-hier-col");
+		if (hierCol && canScrollVertically(hierCol, step)) return;
 
 		evt.preventDefault();
 		this.gridEl.scrollLeft += step;
@@ -1919,6 +2103,7 @@ export class SectionCardsView extends ItemView {
 		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical", "custom"]) {
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name);
 		}
+		this.contentEl.toggleClass("is-hier-on", this.hierarchyActive());
 		this.updateWheelPan();
 	}
 
@@ -2001,10 +2186,14 @@ export class SectionCardsView extends ItemView {
 		let shown = 0;
 		for (const entry of this.cardEntries) {
 			const section = entry.holder.section;
-			const hit =
-				!q ||
-				section.raw.toLowerCase().includes(q) ||
-				section.title.toLowerCase().includes(q);
+			// Title + raw, lowercased once per section (the title is display-only on
+			// the unfiled card, so raw alone wouldn't cover it).
+			let text = this.searchTextCache.get(section);
+			if (text === undefined) {
+				text = (section.title + "\n" + section.raw).toLowerCase();
+				this.searchTextCache.set(section, text);
+			}
+			const hit = !q || text.includes(q);
 			entry.el.toggleClass("is-filtered-out", !hit);
 			if (hit) shown++;
 		}
@@ -2141,7 +2330,13 @@ export class SectionCardsView extends ItemView {
 		// One column (a phone, a narrow pane, or the Horizontal layout) needs no packing:
 		// cards simply stack. CSS switches the grid to auto rows + row-gap — visually
 		// identical — and the per-card measure/span work below is skipped entirely.
-		const columns = style.gridTemplateColumns.split(" ").filter((t) => t.trim().length).length;
+		// Horizontal is one column by definition, not by measurement: a computed style
+		// read while the pane is hidden or mid-toggle (e.g. the hierarchy columns
+		// appearing) can misreport the track count and leave overlapping spans behind.
+		const columns =
+			this.layout === "horizontal"
+				? 1
+				: style.gridTemplateColumns.split(" ").filter((t) => t.trim().length).length;
 		if (columns <= 1) {
 			grid.addClass("is-one-col");
 			for (const card of Array.from(grid.children) as HTMLElement[]) {
@@ -2160,7 +2355,10 @@ export class SectionCardsView extends ItemView {
 		// (Cards are `align-items: start` grid items, so their box height is their content
 		// height regardless of the span currently assigned.)
 		const cards = (Array.from(grid.children) as HTMLElement[]).filter(
-			(card) => card.hasClass("section-card") && !card.hasClass("is-filtered-out"),
+			(card) =>
+				card.hasClass("section-card") &&
+				!card.hasClass("is-filtered-out") &&
+				!card.hasClass("is-hier-hidden"),
 		);
 		const heights = cards.map((card) => card.getBoundingClientRect().height);
 		cards.forEach((card, i) => {
@@ -2183,8 +2381,8 @@ export class SectionCardsView extends ItemView {
 		if (this.layout !== "aligned") return;
 
 		const all = (Array.from(grid.children) as HTMLElement[]).filter((c) => c.hasClass("section-card"));
-		// Filter-hidden cards occupy no grid cell, so they don't count toward rows.
-		const cards = all.filter((c) => !c.hasClass("is-filtered-out"));
+		// Filter- and hierarchy-hidden cards occupy no grid cell, so they don't count toward rows.
+		const cards = all.filter((c) => !c.hasClass("is-filtered-out") && !c.hasClass("is-hier-hidden"));
 		if (cards.length < 2) return;
 
 		const columns = window
@@ -2211,6 +2409,146 @@ export class SectionCardsView extends ItemView {
 				grid.insertBefore(rule, band[i]);
 			}
 		}
+	}
+
+	/** Hierarchy: adopt the note's current headings, then rebuild the columns. */
+	private renderHierarchy(lines: string[]): void {
+		if (this.hierFile !== this.filePath) {
+			this.hierFile = this.filePath;
+			this.hierSelection = [];
+		}
+		this.hierHeadings = parseAncestorHeadings(lines, this.headingLevel);
+		this.hierLineCount = lines.length;
+		this.rebuildHierarchy();
+	}
+
+	/** Leaving the Hierarchy layout: drop the columns and unhide every card. */
+	private clearHierarchy(): void {
+		if (!this.hierEl) return;
+		this.hierEl.empty();
+		for (const entry of this.cardEntries) {
+			if (entry.el.hasClass("is-hier-hidden")) entry.el.removeClass("is-hier-hidden");
+		}
+	}
+
+	/**
+	 * Build the ancestor columns (H1 … one level above the cards) from the current
+	 * selection — each unselected column defaults to its first item — then show only
+	 * the cards on the selected branch. Runs on every refresh and on every column click.
+	 */
+	private rebuildHierarchy(): void {
+		this.hierEl.empty();
+		const showTasks = this.plugin.settings.hierTaskCounts;
+		const cards = this.cardEntries.map((e) => {
+			const section = e.holder.section;
+			let open = 0;
+			if (showTasks) {
+				const cached = this.taskCountCache.get(section);
+				open = cached ?? openTaskCount(section.body);
+				if (cached === undefined) this.taskCountCache.set(section, open);
+			}
+			return { line: section.headingLine, open };
+		});
+		const cardLines = cards.map((c) => c.line);
+		let start = 0;
+		let end = this.hierLineCount;
+		for (let level = 1; level < this.headingLevel; level++) {
+			const idx = level - 1;
+			const items = hierarchyColumnItems(this.hierHeadings, level, start, end, cardLines);
+			// Nothing at this level under the selected branch: deeper levels are empty
+			// too, and the branch's whole range falls through to the cards pane.
+			if (!items.length) break;
+			// A level with no real headings here would be a lone "(no H2)" row — zero
+			// information, so skip the column; the gap spans the whole range anyway.
+			if (items.length === 1 && items[0].key === HIER_GAP_KEY) {
+				this.hierSelection[idx] = HIER_GAP_KEY;
+				continue;
+			}
+			const selected = items.find((it) => it.key === this.hierSelection[idx]) ?? items[0];
+			this.hierSelection[idx] = selected.key;
+			this.renderHierColumn(level, items, selected, idx, cards);
+			start = selected.start;
+			end = selected.end;
+		}
+		// Cards off the selected branch keep their DOM and rendered markdown; they only
+		// lose their grid cell, so clicking around the columns is instant.
+		const constrain = this.headingLevel > 1;
+		for (const entry of this.cardEntries) {
+			const line = entry.holder.section.headingLine;
+			entry.el.toggleClass("is-hier-hidden", constrain && (line < start || line >= end));
+		}
+	}
+
+	private renderHierColumn(
+		level: number,
+		items: HierarchyItem[],
+		selected: HierarchyItem,
+		idx: number,
+		cards: { line: number; open: number }[],
+	): void {
+		const col = this.hierEl.createDiv({ cls: "section-cards-hier-col" });
+		col.createDiv({ cls: "section-cards-hier-col-label", text: `H${level}` });
+		// One bucketing pass instead of a per-item scan over every card: the items'
+		// ranges are disjoint and sorted by start, so each card binary-searches its row.
+		const tallies = items.map(() => ({ count: 0, open: 0 }));
+		for (const c of cards) {
+			let lo = 0;
+			let hi = items.length - 1;
+			while (lo <= hi) {
+				const mid = (lo + hi) >> 1;
+				if (c.line < items[mid].start) hi = mid - 1;
+				else if (c.line >= items[mid].end) lo = mid + 1;
+				else {
+					tallies[mid].count++;
+					tallies[mid].open += c.open;
+					break;
+				}
+			}
+		}
+		for (let i = 0; i < items.length; i++) {
+			const item = items[i];
+			const btn = col.createEl("button", { cls: "section-cards-hier-item" });
+			btn.toggleClass("is-selected", item.key === selected.key);
+			btn.toggleClass("is-gap", item.key === HIER_GAP_KEY);
+			btn.createSpan({ cls: "section-cards-hier-item-label", text: item.label });
+			const count = tallies[i].count;
+			btn.createSpan({ cls: "section-cards-hier-count", text: String(count) });
+			// The square open-task badge; a row with nothing left to do goes without.
+			const open = this.plugin.settings.hierTaskCounts ? tallies[i].open : 0;
+			if (open > 0) btn.createSpan({ cls: "section-cards-hier-tasks", text: String(open) });
+			const openLabel = open > 0 ? `, ${open} unfinished ${open === 1 ? "task" : "tasks"}` : "";
+			btn.setAttr(
+				"aria-label",
+				item.key === HIER_GAP_KEY
+					? `Sections here with no H${level} heading (${count}${openLabel})`
+					: `${item.label} (${count} ${count === 1 ? "section" : "sections"}${openLabel})`,
+			);
+			btn.addEventListener("click", () => {
+				if (this.hierSelection[idx] === item.key) return;
+				// Deeper selections are kept, not cleared: rebuild re-validates them
+				// against the new branch and falls back to each column's first item.
+				this.hierSelection[idx] = item.key;
+				this.rebuildHierarchy();
+				this.layoutMasonry();
+			});
+		}
+	}
+
+	/** Hierarchy: select the ancestor path containing this line, so its card is visible. */
+	private hierRevealLine(line: number): void {
+		const cardLines = this.cardEntries.map((e) => e.holder.section.headingLine);
+		let start = 0;
+		let end = this.hierLineCount;
+		for (let level = 1; level < this.headingLevel; level++) {
+			const items = hierarchyColumnItems(this.hierHeadings, level, start, end, cardLines);
+			const hit = items.find((it) => line >= it.start && line < it.end);
+			if (!hit) break;
+			this.hierSelection[level - 1] = hit.key;
+			start = hit.start;
+			end = hit.end;
+		}
+		this.rebuildHierarchy();
+		this.layoutMasonry();
 	}
 
 	private observeCards(): void {
@@ -2308,6 +2646,36 @@ export class SectionCardsView extends ItemView {
 			if (jumpInput.value) this.jumpToDate(jumpInput.value);
 		});
 
+		// The hierarchy columns toggle, leading the view controls: drill-down heading
+		// columns beside the cards, which keep whatever layout the dropdown says.
+		// Not available on the canvas.
+		const hierWrap = bar.createDiv({ cls: "section-cards-control" });
+		const hierBtn = hierWrap.createEl("button", {
+			cls: "section-cards-icon-btn section-cards-hier-btn",
+		});
+		setIcon(hierBtn, "list-tree");
+		const syncHierBtn = () => {
+			hierBtn.toggleClass("is-active", this.hierarchyActive());
+			hierBtn.toggleAttribute("disabled", this.layout === "custom");
+			hierBtn.setAttr(
+				"aria-label",
+				this.layout === "custom"
+					? "Hierarchy columns aren't available on the Custom Grid canvas"
+					: this.hierarchyOn
+						? "Hide the hierarchy columns"
+						: "Show hierarchy columns: drill into the headings above the card level",
+			);
+		};
+		syncHierBtn();
+		hierBtn.addEventListener("click", () => {
+			if (this.layout === "custom") return;
+			this.hierarchyOn = !this.hierarchyOn;
+			this.rememberView();
+			this.applyLayoutClass();
+			syncHierBtn();
+			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+		});
+
 		const levelWrap = bar.createDiv({ cls: "section-cards-control" });
 		levelWrap.createSpan({ text: "Heading", cls: "section-cards-label" });
 		const levelSelect = levelWrap.createEl("select", { cls: "dropdown" });
@@ -2333,6 +2701,7 @@ export class SectionCardsView extends ItemView {
 			this.layout = layoutSelect.value as Layout;
 			this.rememberView();
 			this.applyLayoutClass();
+			syncHierBtn();
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 		});
 
@@ -2368,11 +2737,7 @@ export class SectionCardsView extends ItemView {
 		datesToggle.checked = this.containsDates;
 		this.datesToggle = datesToggle;
 		datesToggle.addEventListener("change", () => {
-			void this.plugin.setContainsDates(this.filePath, datesToggle.checked, {
-				layout: this.layout,
-				headingLevel: this.headingLevel,
-				sortOrder: this.sortOrder,
-			});
+			void this.plugin.setContainsDates(this.filePath, datesToggle.checked, this.viewSettings());
 		});
 
 		const newBtn = bar.createEl("button", { cls: "section-cards-new-btn mod-cta", text: "+ New card" });
@@ -2403,6 +2768,10 @@ export class SectionCardsView extends ItemView {
 			new Notice(`“${title}” isn't on the canvas — it's in the list on the right.`);
 			return;
 		}
+		// Off the selected branch: drill the columns down to it first.
+		if (this.hierarchyActive() && entry.el.hasClass("is-hier-hidden")) {
+			this.hierRevealLine(entry.holder.section.headingLine);
+		}
 		if (entry.el.hasClass("is-filtered-out")) {
 			new Notice(`“${title}” is hidden by the filter.`);
 			return;
@@ -2414,7 +2783,7 @@ export class SectionCardsView extends ItemView {
 
 	/** The new-card options menu: this note's template, and its own heading-name format. */
 	private openTemplateMenu(evt: MouseEvent, btn: HTMLElement): void {
-		const base: ViewSettings = { layout: this.layout, headingLevel: this.headingLevel, sortOrder: this.sortOrder };
+		const base: ViewSettings = this.viewSettings();
 		const current = this.plugin.getTemplatePath(this.filePath);
 		const menu = new Menu();
 		menu.addItem((item) =>
@@ -2476,7 +2845,7 @@ export class SectionCardsView extends ItemView {
 
 	/** The color button's menu: one swatch per palette color, plus "No color". */
 	private openColorMenu(evt: MouseEvent, file: TFile, headingRaw: string): void {
-		const base: ViewSettings = { layout: this.layout, headingLevel: this.headingLevel, sortOrder: this.sortOrder };
+		const base: ViewSettings = this.viewSettings();
 		const current = this.plugin.getCardColors(file.path)[headingRaw];
 		const palette = this.plugin.palette();
 		const menu = new Menu();
@@ -2609,6 +2978,7 @@ export class SectionCardsView extends ItemView {
 			this.hasDateHeadings = false;
 			this.jumpDateWrap?.toggleClass("is-hidden", true);
 			this.clearAllCards();
+			this.clearHierarchy();
 			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
 			empty.createEl("p", { text: `Can't find "${this.filePath}".` });
 			empty.createEl("p", { text: "Pick a note from the toolbar, or set a default in the plugin settings." });
@@ -2652,7 +3022,8 @@ export class SectionCardsView extends ItemView {
 			this.plugin.settings.stickyPinned &&
 			pinnedCount > 0 &&
 			pinnedCount < ordered.length &&
-			this.layout !== "custom";
+			this.layout !== "custom" &&
+			!this.hierarchyActive();
 		this.pinnedShown = stickyPinned ? 0 : pinnedCount;
 
 		this.countEl?.setText(
@@ -2661,6 +3032,10 @@ export class SectionCardsView extends ItemView {
 
 		if (!ordered.length) {
 			this.clearAllCards();
+			// The columns still show the note's structure (with zero counts), which is
+			// more useful next to the "no headings at this level" message than staleness.
+			if (this.hierarchyActive()) this.renderHierarchy(lines);
+			else this.clearHierarchy();
 			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
 			empty.createEl("p", { text: `No level-${this.headingLevel} headings in ${file.basename}.` });
 			empty.createEl("p", { text: "Try a different heading level in the toolbar." });
@@ -2764,11 +3139,22 @@ export class SectionCardsView extends ItemView {
 
 		// A full-width rule closes the pinned band; auto-placement can't put anything
 		// beside or above it, so the band holds even in the packed masonry layouts.
-		// (The canvas places cards absolutely, so a band makes no sense there.)
-		if (this.pinnedShown > 0 && this.pinnedShown < nextEntries.length && this.layout !== "custom") {
+		// (The canvas places cards absolutely, and the hierarchy pane hides cards off
+		// the selected branch, so a band divider makes no sense in either.)
+		if (
+			this.pinnedShown > 0 &&
+			this.pinnedShown < nextEntries.length &&
+			this.layout !== "custom" &&
+			!this.hierarchyActive()
+		) {
 			const rule = createDiv({ cls: "section-cards-pin-rule" });
 			this.gridEl.insertBefore(rule, nextEntries[this.pinnedShown].el);
 		}
+
+		// Hierarchy: rebuild the drill-down columns and hide off-branch cards before the
+		// masonry pass below measures anything.
+		if (this.hierarchyActive()) this.renderHierarchy(lines);
+		else this.clearHierarchy();
 
 		// Pack once with what's laid out, again once the first markdown batch has landed.
 		this.layoutMasonry();
@@ -2813,6 +3199,13 @@ export class SectionCardsView extends ItemView {
 		if (this.todayJumpedFor !== file.path) {
 			this.todayJumpedFor = file.path;
 			if (this.plugin.settings.jumpToToday && today && !this.pendingEditHeading && !this.pendingMaximizeHeading) {
+				// The hierarchy columns may be sitting on a different branch than today's.
+				if (this.hierarchyActive()) {
+					const todayEntry = this.cardEntries.find((e) => e.el.hasClass("is-today"));
+					if (todayEntry && todayEntry.el.hasClass("is-hier-hidden")) {
+						this.hierRevealLine(todayEntry.holder.section.headingLine);
+					}
+				}
 				const todayCard = this.gridEl.querySelector(".section-card.is-today");
 				if (todayCard) {
 					todayCard.scrollIntoView({ block: "center", inline: "center" });
@@ -2838,6 +3231,10 @@ export class SectionCardsView extends ItemView {
 					this.persistCustom();
 					this.applyCustomLayout();
 				}
+				// A card created on another branch: drill the columns down to it first.
+				if (this.hierarchyActive() && target.el.hasClass("is-hier-hidden")) {
+					this.hierRevealLine(target.section.headingLine);
+				}
 				target.el.scrollIntoView({ block: "center" });
 				this.startEditing(target.el, file, target.section);
 			}
@@ -2846,7 +3243,12 @@ export class SectionCardsView extends ItemView {
 		if (this.pendingMaximizeHeading) {
 			const target = this.cardsByHeading.get(this.pendingMaximizeHeading);
 			this.pendingMaximizeHeading = null;
-			if (target) this.toggleMaximized(target.el);
+			if (target) {
+				if (this.hierarchyActive() && target.el.hasClass("is-hier-hidden")) {
+					this.hierRevealLine(target.section.headingLine);
+				}
+				this.toggleMaximized(target.el);
+			}
 		}
 
 		// Keep the tab title in sync with the note being shown (undocumented but stable API).
@@ -2971,11 +3373,7 @@ export class SectionCardsView extends ItemView {
 		const pinBtn = actions.createEl("button", { cls: "section-card-pin" });
 		pinBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
-			void this.plugin.togglePin(file.path, holder.section.headingRaw, {
-				layout: this.layout,
-				headingLevel: this.headingLevel,
-				sortOrder: this.sortOrder,
-			});
+			void this.plugin.togglePin(file.path, holder.section.headingRaw, this.viewSettings());
 		});
 		this.applyPinState(card, this.plugin.getPinned(file.path).includes(section.headingRaw));
 
@@ -4761,6 +5159,11 @@ class SectionCardsSettingTab extends PluginSettingTab {
 						desc: "When off, ticking a task strikes through only its own line — sub-tasks and notes nested beneath it keep their normal styling until ticked themselves.",
 						control: { type: "toggle", key: "strikeNestedUnderDone" },
 					},
+					{
+						name: "Show open-task counts in Hierarchy columns",
+						desc: "Each row in the Hierarchy layout's drill-down columns gets a square badge counting the unfinished tasks beneath it, next to the section count.",
+						control: { type: "toggle", key: "hierTaskCounts" },
+					},
 				],
 			},
 			{
@@ -4839,7 +5242,12 @@ class SectionCardsSettingTab extends PluginSettingTab {
 		}
 		await super.setControlValue(key, value);
 		if (key === "strikeNestedUnderDone") this.plugin.applyBodyClasses();
-		if (key === "titleBarClick" || key === "stickyPinned" || key === "unfiledEnabled") {
+		if (
+			key === "titleBarClick" ||
+			key === "stickyPinned" ||
+			key === "unfiledEnabled" ||
+			key === "hierTaskCounts"
+		) {
 			this.plugin.refreshAllViews();
 		}
 	}
@@ -5053,7 +5461,8 @@ export default class SectionCardsPlugin extends Plugin {
 			current &&
 			current.layout === view.layout &&
 			current.headingLevel === view.headingLevel &&
-			current.sortOrder === view.sortOrder
+			current.sortOrder === view.sortOrder &&
+			(current.hierarchy ?? false) === (view.hierarchy ?? false)
 		) {
 			return;
 		}
@@ -5218,6 +5627,8 @@ export default class SectionCardsPlugin extends Plugin {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, stored);
 		// "Headings contain" used to be a global setting; it's the per-note Dates checkbox now.
 		delete (this.settings as unknown as Record<string, unknown>)["headingType"];
+		// Hierarchy briefly shipped as a layout; it's the toolbar columns toggle now.
+		if ((this.settings.layout as string) === "hierarchy") this.settings.layout = "grid";
 	}
 
 	async saveSettings(): Promise<void> {

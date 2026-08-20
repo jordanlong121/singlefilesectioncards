@@ -283,10 +283,13 @@
 }
 
 /* One column (a phone, a narrow pane, the Horizontal layout): masonry packing is a
-   no-op, so main.ts sets this class and skips the measure/span pass. Auto rows plus a
-   real row gap render identically to the spans they replace. */
+   no-op, so main.ts sets this class and skips the measure/span pass. Content-sized
+   rows plus a real row gap render identically to the spans they replace. (max-content
+   rather than auto: with the hierarchy columns on, the grid is a fixed-height
+   scrolling pane, and auto rows refuse to grow past a definite height — every row
+   collapsed to its card's header and the cards overlapped.) */
 .section-cards-grid.is-one-col {
-	grid-auto-rows: auto;
+	grid-auto-rows: max-content;
 	row-gap: var(--sc-card-gap);
 }
 
@@ -323,10 +326,11 @@ body.is-mobile .is-layout-tight .section-card-body {
 	padding-top: 5px;
 }
 
-/* Uniform grid: real auto rows, so every row starts at the same height (the layout
-   this plugin shipped with). Shorter cards leave space below them — that's the point. */
+/* Uniform grid: real content-sized rows, so every row starts at the same height (the
+   layout this plugin shipped with). Shorter cards leave space below them — that's the
+   point. (max-content, not auto, for the same fixed-height-pane reason as is-one-col.) */
 .is-layout-aligned .section-cards-grid {
-	grid-auto-rows: auto;
+	grid-auto-rows: max-content;
 	row-gap: var(--sc-card-gap);
 }
 
@@ -422,9 +426,21 @@ body.is-mobile .is-layout-tight .section-card-body {
 	min-height: 0;
 }
 
-/* One card per row, full width. */
+/* One card per row, full width. Content-sized rows are declared here as well as via
+   .is-one-col: the layout must never depend on the measure/span pass, which can
+   leave stale spans behind when the hierarchy columns hide and reveal cards.
+   (max-content, not auto, for the same fixed-height-pane reason as is-one-col.) */
 .is-layout-horizontal .section-cards-grid {
 	grid-template-columns: 1fr;
+	grid-auto-rows: max-content;
+	row-gap: var(--sc-card-gap);
+}
+
+/* !important so a stale inline `grid-row-end: span N` from a previous
+   multi-column layout can never make full-width cards overlap. */
+.is-layout-horizontal .section-cards-grid .section-card,
+.is-layout-horizontal .section-cards-grid .section-cards-empty {
+	grid-row-end: auto !important;
 }
 
 /* Full-height cards side by side; the row scrolls sideways instead of the page.
@@ -474,6 +490,213 @@ body.is-mobile .is-layout-tight .section-card-body {
 
 .is-layout-vertical .section-cards-empty {
 	margin: auto;
+}
+
+/* ---------- hierarchy columns ----------
+   A toolbar toggle, not a layout: drill-down columns (one per heading level above the
+   card level) sit on the left, and the cards pane keeps whatever layout is selected,
+   showing only the selected branch. Same two-column grid trick as the Vertical
+   layout's pinned band: toolbar across the top, columns in column 1, cards in
+   column 2 — and the cards span both columns when the pane is empty (headings at H1,
+   or a note with no ancestor headings). */
+.workspace-leaf-content .view-content.section-cards-view.is-hier-on {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	grid-template-rows: auto minmax(0, 1fr);
+	overflow: hidden;
+}
+
+.is-hier-on .section-cards-toolbar {
+	position: static;
+	grid-column: 1 / -1;
+}
+
+/* The columns pane exists in every layout's DOM; only the toggle shows it. */
+.section-cards-hier {
+	display: none;
+}
+
+.is-hier-on .section-cards-hier:not(:empty) {
+	display: flex;
+	grid-row: 2;
+	grid-column: 1;
+	min-height: 0;
+	max-width: 50vw;
+	overflow-x: auto;
+	overflow-y: hidden;
+	border-right: 1px solid var(--sc-line);
+	background-image: linear-gradient(var(--sc-header), var(--sc-header));
+}
+
+.is-hier-on .section-cards-grid {
+	grid-row: 2;
+	grid-column: 1 / -1;
+	min-height: 0;
+	overflow-y: auto;
+	align-content: start;
+}
+
+.is-hier-on .section-cards-hier:not(:empty) ~ .section-cards-grid {
+	grid-column: 2;
+}
+
+/* Vertical keeps its sideways row inside the pane: the row scrolls x, never y. */
+.is-hier-on.is-layout-vertical .section-cards-grid {
+	overflow-y: hidden;
+	overflow-x: auto;
+}
+
+.is-hier-on .section-cards-empty {
+	grid-column: 1 / -1;
+}
+
+/* The glyph always wears the theme's full foreground so it can't fade into the
+   toolbar; while the columns are showing the button inverts outright — foreground
+   as the fill, page color as the glyph. --mono-rgb-100/0 are the theme's own
+   foreground/background triplets, so the pair is opposite by construction in both
+   themes (and in themes that restyle buttons or define --text-on-accent badly). */
+.section-cards-hier-btn {
+	color: var(--text-normal);
+}
+
+.section-cards-hier-btn.is-active,
+.section-cards-hier-btn.is-active:hover {
+	background-color: rgba(var(--mono-rgb-100), 0.9);
+	color: rgb(var(--mono-rgb-0));
+}
+
+.section-cards-hier-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.section-cards-hier-col {
+	flex: 0 0 auto;
+	width: 210px;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 8px 6px;
+	overflow-y: auto;
+	border-right: 1px solid var(--sc-line);
+}
+
+.section-cards-hier-col:last-child {
+	border-right: none;
+}
+
+body.is-mobile .section-cards-hier-col {
+	width: 150px;
+}
+
+.section-cards-hier-col-label {
+	flex: 0 0 auto;
+	padding: 2px 8px 6px;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--text-muted);
+}
+
+/* Item buttons: flat rows, not Obsidian's raised buttons (some themes hard-style
+   button internals, so the reset is explicit). */
+.section-cards-hier-item {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 5px 8px;
+	background: none;
+	border: none;
+	box-shadow: none;
+	border-radius: 6px;
+	height: auto;
+	font-size: var(--font-ui-small);
+	font-weight: 500;
+	color: var(--text-normal);
+	text-align: left;
+	cursor: pointer;
+}
+
+@media (hover: hover) {
+	.section-cards-hier-item:hover {
+		background-color: var(--sc-surface-hover);
+		box-shadow: none;
+	}
+}
+
+.section-cards-hier-item.is-selected,
+.section-cards-hier-item.is-selected:hover {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent, #fff);
+}
+
+/* The synthetic "(no H2)" row for cards that sit above this level's first heading. */
+.section-cards-hier-item.is-gap .section-cards-hier-item-label {
+	font-style: italic;
+	color: var(--text-muted);
+}
+
+.section-cards-hier-item.is-selected.is-gap .section-cards-hier-item-label {
+	color: var(--text-on-accent, #fff);
+}
+
+.section-cards-hier-item-label {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.section-cards-hier-count {
+	flex: 0 0 auto;
+	padding: 0 5px;
+	border-radius: 7px;
+	font-size: calc(var(--font-ui-smaller) - 2px);
+	line-height: 1.7;
+	color: var(--text-muted);
+	background-color: rgba(var(--mono-rgb-100), 0.08);
+}
+
+.section-cards-hier-item.is-selected .section-cards-hier-count {
+	color: var(--text-on-accent, #fff);
+	background-color: rgba(var(--mono-rgb-0), 0.22);
+}
+
+/* The square badge beside the count: unfinished tasks under this row. Rendered only
+   when the count is non-zero (and the setting is on), so a done branch stays quiet.
+   A sharp-cornered outline with no fill — an unticked checkbox, in spirit — with an
+   orange edge where the theme provides the color. */
+.section-cards-hier-tasks {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: calc(var(--font-ui-smaller) + 5px);
+	height: calc(var(--font-ui-smaller) + 5px);
+	padding: 0 3px;
+	border-radius: 0;
+	border: 1px solid rgba(var(--color-orange-rgb, 235, 140, 52), 0.8);
+	background: none;
+	font-size: calc(var(--font-ui-smaller) - 2px);
+	font-weight: 600;
+	line-height: 1;
+	color: var(--text-normal);
+}
+
+.section-cards-hier-item.is-selected .section-cards-hier-tasks {
+	color: var(--text-on-accent, #fff);
+	border-color: currentColor;
+}
+
+/* A card off the selected branch occupies no grid cell, exactly like a filtered-out
+   card (and with the same maximized-card exemption). */
+.section-cards-view .section-card.is-hier-hidden:not(.is-maximized) {
+	display: none;
 }
 
 /* Safety net: if the span pass hasn't run yet, cards get a roomy default instead
@@ -1450,6 +1673,12 @@ body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
 /* Live-preview editor host: Obsidian's embedded markdown editor mounts inside.
    Styled like the textarea so the two modes feel like the same control. */
 .section-card-editor-embed {
+	/* The editor renders at the card body's size, not the note font size, so
+	   entering edit mode doesn't visibly zoom the text. Headings and everything
+	   else derived from --font-text-size scale down with it. */
+	--font-text-size: var(--font-ui-small);
+	font-size: var(--font-ui-small);
+	line-height: 1.5;
 	display: flex;
 	flex-direction: column;
 	width: 100%;
@@ -1467,18 +1696,39 @@ body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
 	border-color: var(--background-modifier-border-focus, var(--interactive-accent));
 }
 
+/* Tight's cards render smaller still; the editor follows suit. */
+.is-layout-tight .section-card-editor-embed {
+	--font-text-size: var(--font-ui-smaller);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+}
+
 .section-card-editor-embed .cm-editor {
 	flex: 1 1 auto;
 	min-height: 0;
 	width: 100%;
 }
 
-/* The embed arrives dressed as a full note view; trim it down to a field. */
+/* The embed arrives dressed as a full note view; trim it down to a field.
+   Themes commonly style .cm-content directly with a fixed reading font size,
+   width, and padding (bypassing --font-text-size), so these out-rank them:
+   edit mode must keep the card's own text size and box. */
+.section-card-editor-embed .markdown-source-view,
+.section-card-editor-embed .markdown-source-view.mod-cm6 .cm-scroller,
+.section-card-editor-embed .markdown-source-view.mod-cm6 .cm-content {
+	font-size: var(--font-text-size);
+	line-height: inherit;
+}
+
 .section-card-editor-embed .markdown-source-view {
 	padding: 0;
 }
 
+.section-card-editor-embed .markdown-source-view.mod-cm6 .cm-content,
 .section-card-editor-embed .cm-content {
+	max-width: none;
+	margin-left: 0;
+	margin-right: 0;
 	padding: 8px 10px;
 }
 

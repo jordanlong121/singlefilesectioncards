@@ -13,7 +13,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { parseCards, sortSections } from "../test/.tmp/main.js";
+import { parseCards, sortSections, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount } from "../test/.tmp/main.js";
 
 const OUT_DIR = process.argv[2] ?? "harness-out";
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -87,9 +87,9 @@ function renderBody(md) {
  * untray hugs the title's left in Custom Grid; the rest overlay from the right edge. */
 const HEADER_BUTTONS = `<button class="section-card-untray"></button><div class="section-card-actions"><button class="section-card-quickadd"></button><button class="section-card-color"></button><button class="section-card-delete"></button><button class="section-card-big"></button><button class="section-card-open"></button><button class="section-card-pin"></button></div>`;
 
-function cardHtml(s, { maxHeight = null, placed = null } = {}) {
+function cardHtml(s, { maxHeight = null, placed = null, hierHidden = false } = {}) {
 	const today = s.title.includes(TODAY) ? " is-today" : "";
-	const placedCls = placed ? " is-placed" : "";
+	const placedCls = (placed ? " is-placed" : "") + (hierHidden ? " is-hier-hidden" : "");
 	const style = placed ? ` style="left:${placed.x}px;top:${placed.y}px;width:${placed.w}px;height:${placed.h}px"` : "";
 	const bodyStyle = maxHeight ? ` style="max-height: ${maxHeight}px;"` : "";
 	return `<div class="section-card${today}${placedCls}"${style} draggable="true">
@@ -105,11 +105,12 @@ const DECK_ICON = `<svg viewBox="0 0 100 100" class="svg-icon" width="16" height
 const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid" };
 const SORT_LABELS = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 
-function toolbarHtml(layout) {
+function toolbarHtml(layout, hier = false) {
 	return `<div class="section-cards-toolbar">
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
 	<div class="section-cards-spacer"><span class="section-cards-count">${sections.length} sections · H${LEVEL}</span></div>
 	<div class="section-cards-control section-cards-filter"><input type="text" class="section-cards-filter-input" placeholder="Filter…" spellcheck="false"><button class="section-cards-filter-clear"></button></div>
+	<div class="section-cards-control"><button class="section-cards-icon-btn section-cards-hier-btn${hier ? " is-active" : ""}"${layout === "custom" ? " disabled" : ""}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-list-tree"><path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/></svg></button></div>
 	<div class="section-cards-control"><span class="section-cards-label">Heading</span><select class="dropdown"><option>H${LEVEL}</option></select></div>
 	<div class="section-cards-control"><span class="section-cards-label">Layout</span><select class="dropdown"><option>${LAYOUT_LABELS[layout]}</option></select></div>
 	<div class="section-cards-control"><span class="section-cards-label">Sort</span><select class="dropdown"><option>${SORT_LABELS[SORT]}</option></select></div>
@@ -129,7 +130,7 @@ const PLACEMENTS = process.env.PLACEMENTS
 			{ x: 480, y: 288, w: 312, h: 240 },
 		];
 
-function gridHtml(layout) {
+function gridHtml(layout, hier = false) {
 	if (layout === "custom") {
 		const placedCards = sections.slice(0, PLACEMENTS.length).map((s, i) => cardHtml(s, { placed: PLACEMENTS[i] }));
 		const hidden = sections.slice(PLACEMENTS.length).map((s) => cardHtml(s));
@@ -150,6 +151,59 @@ ${hidden.join("\n")}
 ${tiles}
 </div>
 <div class="section-cards-zoom"><button>−</button><button class="section-cards-zoom-label">100%</button><button>+</button></div>`;
+	}
+	if (hier) {
+		// Replays rebuildHierarchy: each column defaults to its first item, and cards
+		// off the selected branch wear is-hier-hidden. The cards keep `layout`.
+		const lines = note.split(/\r?\n/);
+		const heads = parseAncestorHeadings(lines, LEVEL);
+		const cardInfo = sections.map((s) => ({ line: s.headingLine, open: openTaskCount(s.body) }));
+		const cardLines = cardInfo.map((c) => c.line);
+		let start = 0;
+		let end = lines.length;
+		const cols = [];
+		for (let level = 1; level < LEVEL; level++) {
+			const items = hierarchyColumnItems(heads, level, start, end, cardLines);
+			if (!items.length) break;
+			// Mirrors rebuildHierarchy: a lone gap item means no headings at this level,
+			// so the column is skipped and the range falls through unchanged.
+			if (items.length === 1 && items[0].key === HIER_GAP_KEY) continue;
+			const selected = items[0];
+			cols.push({ level, items, selected });
+			start = selected.start;
+			end = selected.end;
+		}
+		const colHtml = cols
+			.map(
+				({ level, items, selected }) => `<div class="section-cards-hier-col">
+	<div class="section-cards-hier-col-label">H${level}</div>
+${items
+	.map((it) => {
+		const inRange = cardInfo.filter((c) => c.line >= it.start && c.line < it.end);
+		const open = inRange.reduce((n, c) => n + c.open, 0);
+		const cls = (it === selected ? " is-selected" : "") + (it.key === HIER_GAP_KEY ? " is-gap" : "");
+		const tasks = open > 0 ? `<span class="section-cards-hier-tasks">${open}</span>` : "";
+		return `	<button class="section-cards-hier-item${cls}"><span class="section-cards-hier-item-label">${esc(it.label)}</span><span class="section-cards-hier-count">${inRange.length}</span>${tasks}</button>`;
+	})
+	.join("\n")}
+</div>`,
+			)
+			.join("\n");
+		const constrain = LEVEL > 1;
+		const hierMaxHeight = layout === "vertical" ? null : layout === "tight" ? 190 : 320;
+		return `<div class="section-cards-pinned"></div>
+<div class="section-cards-hier">${colHtml}</div>
+<div class="section-cards-grid">
+${sections
+	.map((s) =>
+		cardHtml(s, {
+			maxHeight: hierMaxHeight,
+			hierHidden: constrain && (s.headingLine < start || s.headingLine >= end),
+		}),
+	)
+	.join("\n")}
+</div>
+<div class="section-cards-tray"></div>`;
 	}
 	const maxHeight = layout === "vertical" ? null : layout === "tight" ? 190 : 320;
 	return `<div class="section-cards-pinned"></div>
@@ -215,7 +269,7 @@ const PACK_SCRIPT = `<script>
 	const grid = document.querySelector(".section-cards-grid");
 	if (layout === "vertical" || layout === "custom") return;
 	const style = getComputedStyle(grid);
-	const cards = [...grid.children].filter((c) => c.classList.contains("section-card"));
+	const cards = [...grid.children].filter((c) => c.classList.contains("section-card") && !c.classList.contains("is-hier-hidden"));
 	const columns = style.gridTemplateColumns.split(" ").filter((t) => t.trim()).length;
 	if (layout === "aligned") {
 		for (let i = columns; i < cards.length; i += columns) {
@@ -234,7 +288,7 @@ const PACK_SCRIPT = `<script>
 })();
 </script>`;
 
-function pageHtml(layout, { withMenu = false } = {}) {
+function pageHtml(layout, { withMenu = false, hier = false } = {}) {
 	return `<!doctype html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="app.css">
@@ -267,9 +321,9 @@ html, body { height: 100%; margin: 0; }
 </div>
 <div class="workspace-tab-container">
 <div class="workspace-leaf mod-active"><div class="workspace-leaf-content" data-type="section-cards-view">
-<div class="view-content section-cards-view is-layout-${layout}">
-${toolbarHtml(layout)}
-${gridHtml(layout)}
+<div class="view-content section-cards-view is-layout-${layout}${hier ? " is-hier-on" : ""}">
+${toolbarHtml(layout, hier)}
+${gridHtml(layout, hier)}
 </div>
 </div></div></div></div></div></div></div></div>
 ${withMenu ? menuHtml() : ""}
@@ -284,5 +338,8 @@ if (!fs.existsSync(path.join(OUT_DIR, "theme.css"))) fs.writeFileSync(path.join(
 for (const layout of Object.keys(LAYOUT_LABELS)) {
 	fs.writeFileSync(path.join(OUT_DIR, `${layout}.html`), pageHtml(layout));
 }
+// The hierarchy toggle, staged on the Grid layout (HIER_LAYOUT overrides).
+const hierLayout = process.env.HIER_LAYOUT ?? "grid";
+fs.writeFileSync(path.join(OUT_DIR, "hierarchy.html"), pageHtml(hierLayout, { hier: true }));
 fs.writeFileSync(path.join(OUT_DIR, "context-menu.html"), pageHtml("grid", { withMenu: true }));
-console.log("wrote", Object.keys(LAYOUT_LABELS).length + 1, "pages to", OUT_DIR, "with", sections.length, "cards");
+console.log("wrote", Object.keys(LAYOUT_LABELS).length + 2, "pages to", OUT_DIR, "with", sections.length, "cards");
