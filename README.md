@@ -16,30 +16,19 @@ day. This plugin turns those headings into a card wall you can scan, sort, and t
 ## What it does
 
 - **One card per heading.** Pick which level becomes a card (H1–H6); deeper headings stay nested
-  inside their parent card. Multiple layouts and sort orders. Use a front-matter (no heading)
-  card as an inbox.
-- **Work directly on the cards.** Click a card to edit its raw markdown (`Ctrl/⌘+Enter` saves,
-  `Esc` cancels, `Tab` indents), tick task checkboxes — with optional `✅ 2026-08-06` done
-  dates — create a new card pre-filled with today's date, or delete one after a confirmation.
-- **Pin and quick add.** The pin button keeps a card at the top regardless of sort order, in every
-  layout and view of that note — and by default the pinned band stays on screen while the rest
-  scrolls (beside the row in Vertical). The `+` button pops a text box that appends what you type
-  to the bottom of the section (or the top), without opening the editor.
-- **Color, template, jump.** Give any card its own color from the palette button in its title
-  bar. Point a note at a template note and every new card starts from its contents, with
-  `{{title}}`, `{{date}}` and `{{time}}` filled in. When headings are dates, a calendar button
-  jumps straight to any date's card.
-- **Drag and drop.** Reorder cards in Document order, or drag a task or paragraph onto another
-  card in any view — a task brings its sub-items along. Or skip the drag: right-click
-  (long-press on mobile) a task or paragraph for a menu — move it to the next or previous card,
-  mark it done or undone, or delete it.
+  inside their parent card. Multiple layouts, sort orders, and per-card colors.
+- **Work directly on the cards.** Click a card to edit its markdown, tick task checkboxes (with
+  optional `✅` done dates), quick-add a line with the `+` button, create a new card pre-filled
+  with today's date, or delete one. Pinned cards stay at the top — on screen by default.
+- **Drag and drop.** Reorder cards, or drag a task or paragraph onto another card (sub-items come
+  along) — or right-click a line for a menu: move, mark done, or delete.
 - **Plays with the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin.**
-  When Tasks is installed, ticking a checkbox uses its toggle — recurring tasks spawn their next
-  occurrence — and the right-click menu gains its dialogs: create a task below the clicked line
-  (or anywhere in a card, right-click empty space), or edit one in place.
-- **Navigate as cards.** Wikilinks switch the tab to the linked note's card wall, ↗ opens the
-  section in a normal editor, the four-arrow button blows a card up over the others, and you can
-  open as many cards tabs as you like — including several of the same note.
+  Ticking a checkbox uses its toggle (recurring tasks recur), and the right-click menu gains its
+  create/edit dialogs.
+- **Templates and dates.** New cards can start from a template note (`{{title}}`, `{{date}}`,
+  `{{time}}`); when headings are dates, a calendar button jumps to any date's card.
+- **Navigate as cards.** Wikilinks open the linked note's card wall, ↗ opens the section in a
+  normal editor, and a card can be maximized over the others.
 - **Writes are surgical.** Only the touched section's lines change, and every write re-locates
   its section by content first, so a stale card refuses rather than touching the wrong lines.
 
@@ -55,17 +44,10 @@ until it reaches its end.
 
 ### Custom Grid
 
-A freeform canvas. Every section starts as a heading-only tile in the column on the right — drag
-one onto the dot-patterned canvas and it becomes a full card you can place anywhere, move by its
-title bar, and resize by its corner grip. Cards snap to the dot grid (a dashed preview shows where
-a drag or resize will land, amber when the no-overlap rule will nudge it), and may never overlap
-or touch. The ✕ in a card's corner — or dragging it onto the column — returns it to the list.
-
-The right column keeps permanent controls: **Clear layout** (with confirmation) returns every card
-to the list, the **A→Z / Z→A / Doc** buttons re-sort the sections, and today's heading is
-highlighted. Zoom controls in the canvas's bottom-left go from 40% to 160%; scroll bars run in
-every direction and **middle-click drag pans**. Placements and zoom are remembered per note in the
-plugin's data — never in your notes.
+A freeform canvas. Drag sections from the tray on the right onto the dot grid, then place, move,
+and resize them however you like — cards snap to the grid and never overlap; the ✕ (or a drag back
+onto the tray) returns one to the list. Zoom runs 40–160%, middle-click drag pans, and placements
+are remembered per note in the plugin's data — never in your notes.
 
 ![Custom Grid](screenshots/custom.png)
 
@@ -97,20 +79,11 @@ One card per row, full pane width.
 
 ### Hierarchy columns
 
-Not a layout but a toolbar toggle (the tree button beside the Layout dropdown), so it combines
-with whichever layout is selected — drill-down columns on the left, and the selected branch's
-cards on the right in Grid, Tight, Vertical, or any other layout (only the Custom Grid canvas
-sits it out). With the heading level at H3, the first column lists the note's H1 headings; click
-one and its H2 headings appear in the next column; click an H2 and the cards pane shows that
-branch's H3 sections as full cards.
-
-Each row shows how many cards sit beneath it, plus a square badge counting its unfinished tasks
-(toggleable in settings). Sections with no heading at some level stay reachable through an italic
-*(no H2)* row — while a level with no headings at all under the branch is skipped entirely (a
-daily note with no H1s starts straight at its months column, for instance). The first row of each
-column is selected automatically, jump-to-date and new-card creation drill the columns to the
-right branch on their own, and at H1 there is nothing above the cards, so the columns disappear
-and every card shows.
+A toolbar toggle (the tree button), not a layout: drill-down columns appear on the left — one per
+heading level above the card level — and the cards pane shows the selected branch in whichever
+layout is active (every layout except the Custom Grid canvas). At H3, click an H1 to list its H2s,
+click an H2 to see its cards. Each row shows a card count plus a square unfinished-task badge
+(toggleable in settings); jump-to-date and new-card creation drill to the right branch on their own.
 
 ![Hierarchy](screenshots/hierarchy.png)
 
@@ -168,35 +141,19 @@ tasks" setting.
 
 ## Pinned cards
 
-Every card's title bar has a pin button. Pinning pulls the card into a pinned section at the top of
-the wall, regardless of the sort order — within the pinned section and below it, cards still follow
-the current sort. Pins are remembered per note, so they hold across every layout, every open view
-of that note, and restarts. Click the pin again to unpin.
-
-With **Keep pinned cards on screen** (on by default), the pinned section doesn't scroll away:
-
-- **Grid, Grid Aligned, Tight, Horizontal** — the pinned cards sit in a band that sticks just below
-  the toolbar while the rest of the cards scroll beneath it.
-- **Vertical** — the pinned cards form a static column on the left, scrolling on its own if it
-  outgrows the pane, while the card row scrolls sideways next to it.
-- **Custom Grid** — not applied; cards on the canvas stay exactly where you placed them.
-
-With the setting off, the pinned section still leads the wall but scrolls with it, separated by a
-divider. Pins are keyed to the heading line, so renaming a section unpins it.
+Every card's title bar has a pin button (click again to unpin). Pinning pulls the card into a
+pinned section at the top of the wall regardless of sort order, remembered per note across
+layouts, views, and restarts. With **Keep pinned cards on screen** (on by default), that section
+sticks below the toolbar while the rest scrolls — beside the row in Vertical; not applied on the
+Custom Grid canvas. Pins are keyed to the heading line, so renaming a section unpins it.
 
 ## Card colors
 
-Every card's title bar has a palette button offering nine colors; a colored card tints its
-border and title bar in every layout, and its tile in the Custom Grid list. Colors are
-remembered per note in the plugin's data — never in your notes — and, like pins, are keyed to
-the heading line, so renaming a section clears its color. Today's highlight still wins on
-today's card.
-
-The nine colors themselves are yours to shape: **Settings → Card colors** lets you change each
-slot's color and label, or swap the whole set for a preset palette (Catppuccin Mocha, Nord,
-Solarized, Gruvbox, Dracula, Pastel — or back to Default). Cards keep their slot, so a card
-wearing the third color simply wears each palette's third color. The palette button's menu
-ends with **Configure colors…**, which jumps straight to those settings.
+Every card's title bar has a palette button offering nine colors, which tint the card's border and
+title bar in every layout. Colors are remembered per note in the plugin's data — never in your
+notes — and are keyed to the heading line, so renaming a section clears its color. The nine slots
+are configurable under **Settings → Card colors**: change any color or label, or swap in a preset
+palette (Catppuccin Mocha, Nord, Solarized, Gruvbox, Dracula, Pastel); cards keep their slot.
 
 ## New-card options, per note
 
