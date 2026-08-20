@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -298,24 +298,31 @@ t("sample vault: checkbox N maps to task line N for every card", () => {
 const DEFAULTS = { layout: "grid", headingLevel: 3, sortOrder: "asc" };
 
 t("a note with no saved view falls back to the defaults (grid)", () => {
-  assert.deepEqual(resolveViewSettings(undefined, {}, DEFAULTS), DEFAULTS);
+  assert.deepEqual(resolveViewSettings(undefined, {}, DEFAULTS), { ...DEFAULTS, hierarchy: false });
 });
 
 t("a note's saved view wins over restored tab state and defaults", () => {
-  const saved = { layout: "vertical", headingLevel: 2, sortOrder: "desc" };
-  const state = { layout: "tight", headingLevel: 4, sortOrder: "asc" };
+  const saved = { layout: "vertical", headingLevel: 2, sortOrder: "desc", hierarchy: true };
+  const state = { layout: "tight", headingLevel: 4, sortOrder: "asc", hierarchy: false };
   assert.deepEqual(resolveViewSettings(saved, state, DEFAULTS), saved);
 });
 
 t("restored tab state is used when the note has no saved view", () => {
-  const state = { layout: "aligned", headingLevel: 2, sortOrder: "desc" };
+  const state = { layout: "aligned", headingLevel: 2, sortOrder: "desc", hierarchy: true };
   assert.deepEqual(resolveViewSettings(undefined, state, DEFAULTS), state);
 });
 
 t("partial saved views fall through field by field", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "horizontal" }, { sortOrder: "desc" }, DEFAULTS),
-    { layout: "horizontal", headingLevel: 3, sortOrder: "desc" },
+    { layout: "horizontal", headingLevel: 3, sortOrder: "desc", hierarchy: false },
+  );
+});
+
+t("a stale 'hierarchy' layout becomes grid with the columns toggled on", () => {
+  assert.deepEqual(
+    resolveViewSettings({ layout: "hierarchy" }, {}, DEFAULTS),
+    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true },
   );
 });
 
@@ -685,16 +692,31 @@ t("sectionBlocks: a '***' rule directly under a paragraph stays a separate <hr> 
   ]);
 });
 
-t("unfiled card with a leading pseudo-frontmatter block: DOM and source blocks agree", () => {
-  // Text above the first heading: blanks, a ----fenced metadata run, then a task.
-  // The renderer shows: <hr>, <p>metadata…</p>, <hr>, <li>task</li> (via bodyForRender).
+t("unfiled card starts below a properties block even with stray leading blanks", () => {
+  // Blanks, a ----fenced properties run, then a task. The properties are never part
+  // of the card, so no unfiled write can land above or inside the --- fences.
   const lines = L("\n\n---\nStatus: Active\nTaskCount: 74\n\n---\n- [ ] put videos in presentation\n\n## July 2026\n- [ ] x");
   const s = unfiledSection(lines, "_Unfiled_");
+  assert.equal(s.body, "- [ ] put videos in presentation");
+  assert.equal(s.startLine, 7, "card begins on the task line, below the closing ---");
   const blocks = sectionBlocks(s.body.split("\n"));
-  assert.deepEqual(blocks.map((b) => b.kind), ["other", "paragraph", "other", "item"]);
-  const movable = movableBlocks(s.body.split("\n"));
-  assert.equal(movable.length, 2);
-  assert.equal(s.body.split("\n")[movable[1].start], "- [ ] put videos in presentation");
+  assert.deepEqual(blocks.map((b) => b.kind), ["item"]);
+});
+
+t("adding to the unfiled card never writes above the properties block", () => {
+  const lines = L("\n---\nStatus: Active\n---\nunfiled text\n### 2026-08-20");
+  const s = unfiledSection(lines, "_Unfiled_");
+  assert.equal(s.body, "unfiled text", "the --- fences are not card content");
+  const top = insertIntoSection(lines, s, "NEW LINE", "top");
+  assert.deepEqual(top.slice(0, 6), ["", "---", "Status: Active", "---", "NEW LINE", "unfiled text"]);
+  const bottom = insertIntoSection(lines, s, "NEW LINE", "bottom");
+  assert.deepEqual(bottom.slice(3, 6), ["---", "unfiled text", "NEW LINE"]);
+});
+
+t("parseSections honors a properties block behind leading blank lines", () => {
+  const secs = parseSections(L("\n\n---\ntags: x\n---\n### real\nbody"), 3);
+  assert.equal(secs.length, 1);
+  assert.equal(secs[0].title, "real");
 });
 
 t("bodyForRender: a blank line stops a leading '---' being swallowed as frontmatter", () => {
@@ -1085,6 +1107,95 @@ t("template placeholders fill title, the card's own date, and formats", () => {
 t("a template without placeholders passes through untouched", () => {
   const raw = "- [ ] standing item\n\ttab-indented note";
   assert.equal(applyTemplatePlaceholders(raw, "Groceries", "YYYY-MM-DD, dddd"), raw);
+});
+
+// ---------- hierarchy layout ----------
+
+const HIER_NOTE = L(`intro card text
+# Alpha
+## A1
+### card1
+- a
+### card2
+## A2
+### card3
+# Beta
+### card4
+## B1
+### card5`);
+
+t("parseAncestorHeadings collects only headings above the card level", () => {
+  const heads = parseAncestorHeadings(HIER_NOTE, 3);
+  assert.deepEqual(heads.map((h) => [h.level, h.title]), [
+    [1, "Alpha"], [2, "A1"], [2, "A2"], [1, "Beta"], [2, "B1"],
+  ]);
+  assert.equal(heads[0].line, 1);
+});
+
+t("parseAncestorHeadings skips fences and frontmatter", () => {
+  const heads = parseAncestorHeadings(L(`---
+title: x
+---
+\`\`\`
+# fake
+\`\`\`
+# real`), 3);
+  assert.deepEqual(heads.map((h) => h.title), ["real"]);
+});
+
+t("hierarchy column 1 lists H1s with ranges to the next H1", () => {
+  const heads = parseAncestorHeadings(HIER_NOTE, 3);
+  const cards = parseSections(HIER_NOTE, 3).map((s) => s.headingLine);
+  const items = hierarchyColumnItems(heads, 1, 0, HIER_NOTE.length, cards);
+  assert.deepEqual(items.map((i) => i.label), ["Alpha", "Beta"]);
+  assert.equal(items[0].start, 1);
+  assert.equal(items[0].end, 8, "Alpha ends where Beta starts");
+  assert.equal(items[1].end, HIER_NOTE.length);
+});
+
+t("a drilled column lists only the selected branch's children", () => {
+  const heads = parseAncestorHeadings(HIER_NOTE, 3);
+  const cards = parseSections(HIER_NOTE, 3).map((s) => s.headingLine);
+  const alpha = hierarchyColumnItems(heads, 1, 0, HIER_NOTE.length, cards)[0];
+  const items = hierarchyColumnItems(heads, 2, alpha.start, alpha.end, cards);
+  assert.deepEqual(items.map((i) => i.label), ["A1", "A2"]);
+  // cards under A1 are card1+card2, under A2 just card3
+  assert.equal(cards.filter((l) => l >= items[0].start && l < items[0].end).length, 2);
+  assert.equal(cards.filter((l) => l >= items[1].start && l < items[1].end).length, 1);
+});
+
+t("cards before the level's first heading get a synthetic gap item", () => {
+  const heads = parseAncestorHeadings(HIER_NOTE, 3);
+  const cards = parseSections(HIER_NOTE, 3).map((s) => s.headingLine);
+  const beta = hierarchyColumnItems(heads, 1, 0, HIER_NOTE.length, cards)[1];
+  const items = hierarchyColumnItems(heads, 2, beta.start, beta.end, cards);
+  assert.equal(items[0].key, HIER_GAP_KEY, "card4 has no H2, so Beta leads with the gap item");
+  assert.ok(cards.some((l) => l >= items[0].start && l < items[0].end), "card4 falls in the gap");
+  assert.deepEqual(items.slice(1).map((i) => i.label), ["B1"]);
+});
+
+t("the unfiled preamble reaches the cards pane through gap items", () => {
+  const heads = parseAncestorHeadings(HIER_NOTE, 3);
+  const pre = unfiledSection(HIER_NOTE, "Unfiled");
+  const cards = [pre.headingLine, ...parseSections(HIER_NOTE, 3).map((s) => s.headingLine)];
+  const items = hierarchyColumnItems(heads, 1, 0, HIER_NOTE.length, cards);
+  assert.equal(items[0].key, HIER_GAP_KEY);
+  assert.ok(pre.headingLine >= items[0].start && pre.headingLine < items[0].end);
+});
+
+t("openTaskCount counts unchecked tasks only, skipping fences", () => {
+  assert.equal(openTaskCount("- [ ] a\n- [x] done\n\t- [ ] nested\nplain text\n1. [ ] numbered"), 3);
+  assert.equal(openTaskCount("```\n- [ ] fenced\n```\n- [ ] real"), 1);
+  assert.equal(openTaskCount("no tasks here"), 0);
+});
+
+t("a range with no headings at the level yields only the gap item (or nothing)", () => {
+  const heads = parseAncestorHeadings(HIER_NOTE, 3);
+  const cards = parseSections(HIER_NOTE, 3).map((s) => s.headingLine);
+  const withCards = hierarchyColumnItems(heads, 2, 9, 10, cards); // Beta's headingless start
+  assert.deepEqual(withCards.map((i) => i.key), [HIER_GAP_KEY]);
+  const empty = hierarchyColumnItems(heads, 2, 0, 1, []); // just the intro text
+  assert.equal(empty.length, 0);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

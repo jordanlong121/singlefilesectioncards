@@ -95,6 +95,25 @@ One card per row, full pane width.
 
 ![Horizontal](screenshots/horizontal.png)
 
+### Hierarchy columns
+
+Not a layout but a toolbar toggle (the tree button beside the Layout dropdown), so it combines
+with whichever layout is selected — drill-down columns on the left, and the selected branch's
+cards on the right in Grid, Tight, Vertical, or any other layout (only the Custom Grid canvas
+sits it out). With the heading level at H3, the first column lists the note's H1 headings; click
+one and its H2 headings appear in the next column; click an H2 and the cards pane shows that
+branch's H3 sections as full cards.
+
+Each row shows how many cards sit beneath it, plus a square badge counting its unfinished tasks
+(toggleable in settings). Sections with no heading at some level stay reachable through an italic
+*(no H2)* row — while a level with no headings at all under the branch is skipped entirely (a
+daily note with no H1s starts straight at its months column, for instance). The first row of each
+column is selected automatically, jump-to-date and new-card creation drill the columns to the
+right branch on their own, and at H1 there is nothing above the cards, so the columns disappear
+and every card shows.
+
+![Hierarchy](screenshots/hierarchy.png)
+
 ## Brainstorming with cards
 
 A single note makes a whole brainstorm: one `###` heading per theme, and the wall becomes your
@@ -271,6 +290,7 @@ flashes it — the same nudge a wikilink arrival gets.
 | Card colors | Each of the nine card colors' RGB value and label, with preset palettes to apply in one pick |
 | Default sort | A→Z, Z→A, or document order |
 | Default layout | Grid, Grid Aligned, Tight, Horizontal, Vertical, Custom Grid |
+| Show open-task counts in Hierarchy columns | Square badge per column row counting the unfinished tasks beneath it (on by default) |
 | Default heading name | Date format used to pre-fill "New card" (any note can set its own from the toolbar's new-card options menu) |
 | Default placement | Where a new card is inserted |
 | Clicking a card's title bar | Makes the card big (default), or edits the raw markdown |
