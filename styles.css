@@ -294,6 +294,7 @@
 }
 
 .section-cards-grid.is-one-col .section-card,
+.section-cards-grid.is-one-col .section-cards-section-bar,
 .section-cards-grid.is-one-col .section-cards-empty {
 	grid-row-end: auto;
 }
@@ -366,6 +367,63 @@ body.is-mobile .is-layout-tight .section-card-body {
 	flex: 0 0 1px;
 	height: auto;
 	align-self: stretch;
+}
+
+/* ---------- Sections layout ----------
+   A clickable divider bar above each group of cards — the group's ancestor heading,
+   a card count, and a horizontal rule filling the rest of the row. Spanning every
+   column also keeps the group's cards below it. Clicking collapses/expands. */
+.section-cards-section-bar {
+	grid-column: 1 / -1;
+	/* Padding rather than margin: the masonry span pass measures the border box,
+	   so the breathing room must be inside it. Span 8 (~32px) is the pre-measure
+	   safety net, exactly like the cards' own span default. */
+	grid-row-end: span 8;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 12px 2px 4px;
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	user-select: none;
+}
+
+.section-cards-section-bar:hover {
+	color: var(--text-normal);
+}
+
+.section-cards-section-bar.is-hidden {
+	display: none;
+}
+
+.section-cards-section-chevron {
+	display: flex;
+	align-items: center;
+}
+
+.section-cards-section-chevron svg {
+	width: 14px;
+	height: 14px;
+	transition: transform 120ms ease;
+}
+
+.section-cards-section-bar.is-collapsed .section-cards-section-chevron svg {
+	transform: rotate(-90deg);
+}
+
+.section-cards-section-count {
+	color: var(--text-faint);
+	font-weight: 400;
+}
+
+/* The horizontal rule filling the remainder of the bar's row. */
+.section-cards-section-bar::after {
+	content: "";
+	flex: 1 1 auto;
+	height: 1px;
+	background-color: var(--sc-line);
 }
 
 /* ---------- sticky pinned band ----------
@@ -697,6 +755,11 @@ body.is-mobile .section-cards-hier-col {
 /* A card off the selected branch occupies no grid cell, exactly like a filtered-out
    card (and with the same maximized-card exemption). */
 .section-cards-view .section-card.is-hier-hidden:not(.is-maximized) {
+	display: none;
+}
+
+/* A card in a collapsed Sections group, likewise. */
+.section-cards-view .section-card.is-section-hidden:not(.is-maximized) {
 	display: none;
 }
 
