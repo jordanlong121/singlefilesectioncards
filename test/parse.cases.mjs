@@ -298,32 +298,44 @@ t("sample vault: checkbox N maps to task line N for every card", () => {
 const DEFAULTS = { layout: "grid", headingLevel: 3, sortOrder: "asc" };
 
 t("a note with no saved view falls back to the defaults (grid)", () => {
-  assert.deepEqual(resolveViewSettings(undefined, {}, DEFAULTS), { ...DEFAULTS, hierarchy: false });
+  assert.deepEqual(resolveViewSettings(undefined, {}, DEFAULTS), { ...DEFAULTS, hierarchy: false, sections: false });
 });
 
 t("a note's saved view wins over restored tab state and defaults", () => {
-  const saved = { layout: "vertical", headingLevel: 2, sortOrder: "desc", hierarchy: true };
-  const state = { layout: "tight", headingLevel: 4, sortOrder: "asc", hierarchy: false };
+  const saved = { layout: "vertical", headingLevel: 2, sortOrder: "desc", hierarchy: true, sections: false };
+  const state = { layout: "tight", headingLevel: 4, sortOrder: "asc", hierarchy: false, sections: true };
   assert.deepEqual(resolveViewSettings(saved, state, DEFAULTS), saved);
 });
 
 t("restored tab state is used when the note has no saved view", () => {
-  const state = { layout: "aligned", headingLevel: 2, sortOrder: "desc", hierarchy: true };
+  const state = { layout: "aligned", headingLevel: 2, sortOrder: "desc", hierarchy: false, sections: true };
   assert.deepEqual(resolveViewSettings(undefined, state, DEFAULTS), state);
 });
 
 t("partial saved views fall through field by field", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "horizontal" }, { sortOrder: "desc" }, DEFAULTS),
-    { layout: "horizontal", headingLevel: 3, sortOrder: "desc", hierarchy: false },
+    { layout: "horizontal", headingLevel: 3, sortOrder: "desc", hierarchy: false, sections: false },
   );
 });
 
 t("a stale 'hierarchy' layout becomes grid with the columns toggled on", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "hierarchy" }, {}, DEFAULTS),
-    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true },
+    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false },
   );
+});
+
+t("a stale 'sections' layout becomes grid with the dividers toggled on", () => {
+  assert.deepEqual(
+    resolveViewSettings({ layout: "sections" }, {}, DEFAULTS),
+    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: false, sections: true },
+  );
+});
+
+t("hierarchy and section dividers are never both on — the columns win", () => {
+  const both = resolveViewSettings({ layout: "grid", hierarchy: true, sections: true }, {}, DEFAULTS);
+  assert.deepEqual(both, { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false });
 });
 
 // ---------- wheel panning ----------

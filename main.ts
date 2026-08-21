@@ -68,7 +68,7 @@ export type Placement = "top" | "logical" | "bottom";
  * heading columns on the left, with the selected branch's cards rendered in whichever
  * of these layouts is active.
  */
-export type Layout = "grid" | "aligned" | "tight" | "sections" | "horizontal" | "vertical" | "custom";
+export type Layout = "grid" | "aligned" | "tight" | "horizontal" | "vertical" | "custom";
 
 const SORT_LABELS: Record<SortOrder, string> = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 
@@ -77,7 +77,6 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["grid", "Grid", "Masonry columns"],
 	["aligned", "Grid Aligned", "Uniform grid: every row starts at the same height"],
 	["tight", "Tight", "Denser, narrower masonry columns"],
-	["sections", "Sections", "Masonry columns with a collapsible divider per heading above the card level"],
 	["horizontal", "Horizontal", "One card per row, full width"],
 	["vertical", "Vertical", "Full-height cards side by side, scrolling sideways"],
 	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
@@ -164,6 +163,8 @@ export interface ViewSettings {
 	sortOrder: SortOrder;
 	/** Hierarchy columns toggled on: drill-down heading columns beside the card pane. */
 	hierarchy?: boolean;
+	/** Section dividers toggled on: a collapsible bar per heading above the card level. */
+	sections?: boolean;
 }
 
 /**
@@ -1460,12 +1461,21 @@ export function resolveViewSettings(
 		headingLevel: saved?.headingLevel ?? fromState.headingLevel ?? defaults.headingLevel,
 		sortOrder: saved?.sortOrder ?? fromState.sortOrder ?? defaults.sortOrder,
 		hierarchy: saved?.hierarchy ?? fromState.hierarchy ?? defaults.hierarchy ?? false,
+		sections: saved?.sections ?? fromState.sections ?? defaults.sections ?? false,
 	};
 	// Hierarchy briefly shipped as a layout; stored views from then become grid + columns.
 	if ((resolved.layout as string) === "hierarchy") {
 		resolved.layout = "grid";
 		resolved.hierarchy = true;
 	}
+	// Sections did too; stored views from then become grid + divider bars.
+	if ((resolved.layout as string) === "sections") {
+		resolved.layout = "grid";
+		resolved.sections = true;
+	}
+	// The divider bars and the hierarchy columns both group by the ancestor headings —
+	// never both at once. The columns win a stale both-on state.
+	if (resolved.hierarchy) resolved.sections = false;
 	return resolved;
 }
 
@@ -1748,6 +1758,7 @@ interface CardsViewState {
 	sortOrder?: SortOrder;
 	layout?: Layout;
 	hierarchy?: boolean;
+	sections?: boolean;
 }
 
 export class SectionCardsView extends ItemView {
@@ -1759,6 +1770,8 @@ export class SectionCardsView extends ItemView {
 	layout: Layout;
 	/** Hierarchy columns toggled on (toolbar button); the cards keep the chosen layout. */
 	hierarchyOn = false;
+	/** Section dividers toggled on (toolbar button); mutually exclusive with the columns. */
+	sectionsOn = false;
 
 	private toolbarEl!: HTMLElement;
 	private gridEl!: HTMLElement;
@@ -1935,6 +1948,7 @@ export class SectionCardsView extends ItemView {
 			sortOrder: this.sortOrder,
 			layout: this.layout,
 			hierarchy: this.hierarchyOn,
+			sections: this.sectionsOn,
 		};
 	}
 
@@ -1947,6 +1961,7 @@ export class SectionCardsView extends ItemView {
 			headingLevel: state?.headingLevel,
 			sortOrder: state?.sortOrder,
 			hierarchy: state?.hierarchy,
+			sections: state?.sections,
 		});
 		await this.syncView();
 	}
@@ -1967,6 +1982,7 @@ export class SectionCardsView extends ItemView {
 		this.headingLevel = resolved.headingLevel;
 		this.sortOrder = resolved.sortOrder;
 		this.hierarchyOn = resolved.hierarchy ?? false;
+		this.sectionsOn = resolved.sections ?? false;
 	}
 
 	/** The current view as one ViewSettings value — the shape everything persists. */
@@ -1976,14 +1992,20 @@ export class SectionCardsView extends ItemView {
 			headingLevel: this.headingLevel,
 			sortOrder: this.sortOrder,
 			hierarchy: this.hierarchyOn,
+			sections: this.sectionsOn,
 		};
 	}
 
 	/** Whether the hierarchy columns actually show: toggled on, and not on the canvas. */
 	private hierarchyActive(): boolean {
-		// Not on the canvas (cards are placed by hand), and not in the Sections layout
-		// (its divider bars already group by the headings the columns would drill).
-		return this.hierarchyOn && this.layout !== "custom" && this.layout !== "sections";
+		return this.hierarchyOn && this.layout !== "custom";
+	}
+
+	/** Whether the section divider bars actually show: toggled on, not on the canvas
+	 * (cards are placed by hand there), and never alongside the hierarchy columns —
+	 * both group by the ancestor headings, so the columns win a both-on state. */
+	private sectionsActive(): boolean {
+		return this.sectionsOn && this.layout !== "custom" && !this.hierarchyActive();
 	}
 
 	/** Remember the current view for the current note (in the plugin's data, not the note). */
@@ -2084,15 +2106,28 @@ export class SectionCardsView extends ItemView {
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 			return false;
 		});
-		// H: show/hide the hierarchy columns (not available on the Custom Grid canvas
-		// or in the Sections layout, whose bars already group by heading).
+		// H: show/hide the hierarchy columns (not available on the Custom Grid canvas).
+		// Turning them on turns the section dividers off — never both at once.
 		this.scope.register([], "H", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
-			if (this.layout === "custom" || this.layout === "sections") return true;
+			if (this.layout === "custom") return true;
 			this.hierarchyOn = !this.hierarchyOn;
+			if (this.hierarchyOn) this.sectionsOn = false;
 			this.rememberView();
 			this.applyLayoutClass();
-			this.buildToolbar(); // the hierarchy toggle reflects the state
+			this.buildToolbar(); // both toggles reflect the state
+			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+			return false;
+		});
+		// S: show/hide the section dividers (not on the canvas); turns the columns off.
+		this.scope.register([], "S", (evt) => {
+			if (!this.plainShortcutOk(evt)) return true;
+			if (this.layout === "custom") return true;
+			this.sectionsOn = !this.sectionsOn;
+			if (this.sectionsOn) this.hierarchyOn = false;
+			this.rememberView();
+			this.applyLayoutClass();
+			this.buildToolbar(); // both toggles reflect the state
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 			return false;
 		});
@@ -2230,7 +2265,7 @@ export class SectionCardsView extends ItemView {
 
 	/** The layout lives as a class on the view root so CSS can restyle grid *and* scrolling. */
 	private applyLayoutClass(): void {
-		for (const name of ["grid", "aligned", "tight", "sections", "horizontal", "vertical", "custom"]) {
+		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical", "custom"]) {
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name);
 		}
 		this.contentEl.toggleClass("is-hier-on", this.hierarchyActive());
@@ -2238,7 +2273,7 @@ export class SectionCardsView extends ItemView {
 		// previous layout's spans in place would let the other layouts paint overlapping
 		// cards for a frame before the masonry pass clears them, so shed them here,
 		// synchronously with the class change (this used to lean on a CSS !important).
-		if (this.layout !== "grid" && this.layout !== "tight" && this.layout !== "sections" && this.gridEl) {
+		if (this.layout !== "grid" && this.layout !== "tight" && this.gridEl) {
 			for (const card of Array.from(this.gridEl.children) as HTMLElement[]) {
 				if (card.style?.gridRowEnd) card.setCssStyles({ gridRowEnd: "" });
 			}
@@ -2525,7 +2560,9 @@ export class SectionCardsView extends ItemView {
 		if (!grid || !grid.isConnected) return;
 
 		for (const old of Array.from(grid.querySelectorAll(".section-cards-row-rule"))) old.remove();
-		if (this.layout !== "aligned") return;
+		// With the divider bars on, they do the separating — and every-Nth-card row
+		// math is wrong anyway once bars restart the rows per group.
+		if (this.layout !== "aligned" || this.sectionsActive()) return;
 
 		const all = (Array.from(grid.children) as HTMLElement[]).filter((c) => c.hasClass("section-card"));
 		// Filter- and hierarchy-hidden cards occupy no grid cell, so they don't count toward rows.
@@ -2570,7 +2607,7 @@ export class SectionCardsView extends ItemView {
 		for (const old of Array.from(grid.querySelectorAll(".section-cards-section-bar"))) old.remove();
 		this.sectionBars = [];
 		for (const entry of this.cardEntries) entry.el.removeClass("is-section-hidden");
-		if (this.layout !== "sections") return;
+		if (!this.sectionsActive()) return;
 
 		for (const group of this.sectionGroups) {
 			const first = this.cardsByHeading.get(group.keys[0]);
@@ -2866,25 +2903,55 @@ export class SectionCardsView extends ItemView {
 		setIcon(hierBtn, "list-tree");
 		const syncHierBtn = () => {
 			hierBtn.toggleClass("is-active", this.hierarchyActive());
-			hierBtn.toggleAttribute("disabled", this.layout === "custom" || this.layout === "sections");
+			hierBtn.toggleAttribute("disabled", this.layout === "custom");
 			hierBtn.setAttr(
 				"aria-label",
 				this.layout === "custom"
 					? "Hierarchy columns aren't available on the Custom Grid canvas"
-					: this.layout === "sections"
-						? "Hierarchy columns aren't available in the Sections layout — its divider bars already group by heading"
-						: this.hierarchyOn
-							? "Hide the hierarchy columns (H)"
-							: "Show hierarchy columns: drill into the headings above the card level (H)",
+					: this.hierarchyOn
+						? "Hide the hierarchy columns (H)"
+						: "Show hierarchy columns: drill into the headings above the card level (H)",
 			);
 		};
 		syncHierBtn();
 		hierBtn.addEventListener("click", () => {
-			if (this.layout === "custom" || this.layout === "sections") return;
+			if (this.layout === "custom") return;
 			this.hierarchyOn = !this.hierarchyOn;
+			if (this.hierarchyOn) this.sectionsOn = false; // never both groupers at once
 			this.rememberView();
 			this.applyLayoutClass();
-			syncHierBtn();
+			this.buildToolbar(); // both toggles reflect the state
+			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+		});
+
+		// The section dividers toggle, beside the columns: a collapsible bar per heading
+		// above the card level, in whatever layout is active (not the canvas). The two
+		// grouping toggles are mutually exclusive — switching one on switches the other off.
+		const sectionsWrap = bar.createDiv({ cls: "section-cards-control" });
+		const sectionsBtn = sectionsWrap.createEl("button", {
+			cls: "section-cards-icon-btn section-cards-sections-btn",
+		});
+		setIcon(sectionsBtn, "separator-horizontal");
+		const syncSectionsBtn = () => {
+			sectionsBtn.toggleClass("is-active", this.sectionsActive());
+			sectionsBtn.toggleAttribute("disabled", this.layout === "custom");
+			sectionsBtn.setAttr(
+				"aria-label",
+				this.layout === "custom"
+					? "Section dividers aren't available on the Custom Grid canvas"
+					: this.sectionsOn
+						? "Hide the section dividers (S)"
+						: "Show section dividers: group the cards under the heading above the card level (S)",
+			);
+		};
+		syncSectionsBtn();
+		sectionsBtn.addEventListener("click", () => {
+			if (this.layout === "custom") return;
+			this.sectionsOn = !this.sectionsOn;
+			if (this.sectionsOn) this.hierarchyOn = false; // never both groupers at once
+			this.rememberView();
+			this.applyLayoutClass();
+			this.buildToolbar(); // both toggles reflect the state
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 		});
 
@@ -2918,6 +2985,7 @@ export class SectionCardsView extends ItemView {
 			this.rememberView();
 			this.applyLayoutClass();
 			syncHierBtn();
+			syncSectionsBtn();
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 		});
 
@@ -3291,12 +3359,12 @@ export class SectionCardsView extends ItemView {
 			!this.hierarchyActive();
 		this.pinnedShown = stickyPinned ? 0 : pinnedCount;
 
-		// Sections layout: after the pinned prefix, regroup the cards under their nearest
+		// Section dividers: after the pinned prefix, regroup the cards under their nearest
 		// ancestor heading — the divider bar each group renders beneath. Groups keep the
 		// order the active sort gave their first card, so a newest-first note leads with
 		// its newest section; within a group the sort applies unchanged.
 		this.sectionGroups = [];
-		if (this.layout === "sections") {
+		if (this.sectionsActive()) {
 			if (this.collapsedFile !== file.path) {
 				this.collapsedFile = file.path;
 				this.collapsedSections.clear();
@@ -5984,6 +6052,8 @@ export default class SectionCardsPlugin extends Plugin {
 		delete (this.settings as unknown as Record<string, unknown>)["headingType"];
 		// Hierarchy briefly shipped as a layout; it's the toolbar columns toggle now.
 		if ((this.settings.layout as string) === "hierarchy") this.settings.layout = "grid";
+		// Sections did too; it's the toolbar dividers toggle now.
+		if ((this.settings.layout as string) === "sections") this.settings.layout = "grid";
 	}
 
 	async saveSettings(): Promise<void> {

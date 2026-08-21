@@ -336,6 +336,7 @@ body.is-mobile .is-layout-tight .section-card-body {
 }
 
 .is-layout-aligned .section-card,
+.is-layout-aligned .section-cards-section-bar,
 .is-layout-aligned .section-cards-empty {
 	grid-row-end: auto;
 }
@@ -369,7 +370,7 @@ body.is-mobile .is-layout-tight .section-card-body {
 	align-self: stretch;
 }
 
-/* ---------- Sections layout ----------
+/* ---------- section dividers (toolbar toggle) ----------
    A clickable divider bar above each group of cards — the group's ancestor heading,
    a card count, and a horizontal rule filling the rest of the row. Spanning every
    column also keeps the group's cards below it. Clicking collapses/expands. */
@@ -424,6 +425,20 @@ body.is-mobile .is-layout-tight .section-card-body {
 	flex: 1 1 auto;
 	height: 1px;
 	background-color: var(--sc-line);
+}
+
+/* In the sideways layout the card row is a flex row, so the bar turns into a
+   vertical divider with sideways text, the same way the pin rule turns vertical. */
+.is-layout-vertical .section-cards-section-bar {
+	flex: 0 0 auto;
+	align-self: stretch;
+	writing-mode: vertical-lr;
+	padding: 4px 12px 4px 4px;
+}
+
+.is-layout-vertical .section-cards-section-bar::after {
+	width: 1px;
+	height: auto;
 }
 
 /* ---------- sticky pinned band ----------
@@ -614,17 +629,21 @@ body.is-mobile .is-layout-tight .section-card-body {
    as the fill, page color as the glyph. --mono-rgb-100/0 are the theme's own
    foreground/background triplets, so the pair is opposite by construction in both
    themes (and in themes that restyle buttons or define --text-on-accent badly). */
-.section-cards-hier-btn {
+.section-cards-hier-btn,
+.section-cards-sections-btn {
 	color: var(--text-normal);
 }
 
 .section-cards-hier-btn.is-active,
-.section-cards-hier-btn.is-active:hover {
+.section-cards-hier-btn.is-active:hover,
+.section-cards-sections-btn.is-active,
+.section-cards-sections-btn.is-active:hover {
 	background-color: rgba(var(--mono-rgb-100), 0.9);
 	color: rgb(var(--mono-rgb-0));
 }
 
-.section-cards-hier-btn:disabled {
+.section-cards-hier-btn:disabled,
+.section-cards-sections-btn:disabled {
 	opacity: 0.4;
 	cursor: not-allowed;
 }
