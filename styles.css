@@ -317,7 +317,7 @@
 }
 
 .is-layout-tight .section-card-body {
-	padding: 38px 9px 8px;
+	padding: 19px 9px 8px;
 	font-size: var(--font-ui-smaller);
 	line-height: 1.4;
 }
@@ -436,11 +436,12 @@ body.is-mobile .is-layout-tight .section-card-body {
 	row-gap: var(--sc-card-gap);
 }
 
-/* !important so a stale inline `grid-row-end: span N` from a previous
-   multi-column layout can never make full-width cards overlap. */
+/* Stale inline `grid-row-end: span N` from a previous masonry layout is cleared
+   in code (applyLayoutClass), synchronously with the layout switch, so this only
+   has to out-rank the .section-card span-60 safety net. */
 .is-layout-horizontal .section-cards-grid .section-card,
 .is-layout-horizontal .section-cards-grid .section-cards-empty {
-	grid-row-end: auto !important;
+	grid-row-end: auto;
 }
 
 /* Full-height cards side by side; the row scrolls sideways instead of the page.
@@ -1379,9 +1380,16 @@ body.is-mobile .section-cards-hier-col {
 		linear-gradient(var(--sc-surface), var(--sc-surface)), var(--background-primary);
 }
 
-/* What the title bar will do, per the "Clicking a card's title bar" setting. */
+/* What the title bar will do, per the "Clicking a card's title bar" setting.
+   The title bar both maximizes on click and drags to reorder/reposition, so the
+   cursor is a custom combo glyph: a zoom-in lens with move arrows around it,
+   white-haloed to stay visible on any card color. Hotspot at the lens center;
+   zoom-in is the fallback where custom cursors don't render. */
 .section-card-header.is-click-big {
-	cursor: zoom-in;
+	cursor:
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cg stroke='%23fff' stroke-width='4' stroke-linecap='round' fill='none'%3E%3Ccircle cx='12' cy='12' r='4.5'/%3E%3Cpath d='M12 10v4M10 12h4'/%3E%3Cpath d='M15.4 15.4L17.6 17.6'/%3E%3Cpath d='M12 4.2v2.2M12 17.6v2.2M4.2 12h2.2M17.6 12h2.2'/%3E%3C/g%3E%3Cg fill='%23fff' stroke='%23fff' stroke-width='2.4' stroke-linejoin='round'%3E%3Cpath d='M12 0.8L9.6 4h4.8z'/%3E%3Cpath d='M12 23.2L9.6 20h4.8z'/%3E%3Cpath d='M0.8 12L4 9.6v4.8z'/%3E%3Cpath d='M23.2 12L20 9.6v4.8z'/%3E%3C/g%3E%3Cg stroke='%23000' stroke-width='1.8' stroke-linecap='round' fill='none'%3E%3Ccircle cx='12' cy='12' r='4.5'/%3E%3Cpath d='M12 10v4M10 12h4'/%3E%3Cpath d='M15.4 15.4L17.6 17.6'/%3E%3Cpath d='M12 4.2v2.2M12 17.6v2.2M4.2 12h2.2M17.6 12h2.2'/%3E%3C/g%3E%3Cg fill='%23000'%3E%3Cpath d='M12 0.8L9.6 4h4.8z'/%3E%3Cpath d='M12 23.2L9.6 20h4.8z'/%3E%3Cpath d='M0.8 12L4 9.6v4.8z'/%3E%3Cpath d='M23.2 12L20 9.6v4.8z'/%3E%3C/g%3E%3C/svg%3E")
+			12 12,
+		zoom-in;
 }
 
 .section-card.is-maximized .section-card-header.is-click-big {
@@ -1557,9 +1565,10 @@ body.is-mobile .section-card-actions button {
 }
 
 .section-card-body {
-	/* The extra top padding reserves the strip the action buttons drop into on hover,
-	   so they never cover the body's first line. */
-	padding: 44px 12px 12px;
+	/* Some extra top padding for the strip the action buttons drop into on hover;
+	   deliberately about half the strip's height, so the body's first line starts
+	   close under the title and the strip overlays it a little while hovered. */
+	padding: 22px 12px 12px;
 	overflow-y: auto;
 	overflow-x: hidden;
 	font-size: var(--font-ui-small);
@@ -1856,4 +1865,16 @@ body.is-mobile .section-cards-grid.is-one-col .section-card {
    dropping the dropdowns' text labels; the controls are self-describing. */
 body.is-phone .section-cards-label {
 	display: none;
+}
+
+/* ---------- settings tab ----------
+   The nine Card colors rows read as one block: Obsidian's default setting-item
+   padding makes them a tall wall of whitespace, so tighten it. The settings tab
+   wraps items in .setting-group, whose own `.setting-group .setting-item` rule
+   out-ranks a bare class — hence the compound selector. */
+.setting-group .setting-item.sfsc-color-row,
+.setting-item.sfsc-color-row {
+	padding-top: 3px;
+	padding-bottom: 3px;
+	border-top: none;
 }

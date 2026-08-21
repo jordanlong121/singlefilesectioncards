@@ -35,6 +35,9 @@ export const VIEW_TYPE_SECTION_CARDS = "section-cards-view";
 const INITIAL_RENDER_COUNT = Platform.isPhone ? 8 : 24;
 const DEFERRED_RENDER_BATCH = Platform.isPhone ? 6 : 12;
 
+/** Modifier-key name used in tooltip shortcut hints, matching the platform. */
+const MOD_LABEL = Platform.isMacOS ? "⌘" : "Ctrl";
+
 export const DECK_ICON = "section-cards-deck";
 
 /**
@@ -97,7 +100,11 @@ interface TasksApiV1 {
 
 interface SectionCardsSettings {
 	filePath: string;
+	/** A note with a remembered cards view reopens in the cards view, not the editor. */
+	autoOpenCards: boolean;
 	headingLevel: number;
+	/** Heading dropdown lists only the levels the open note contains (else always H1–H6). */
+	dynamicLevelOptions: boolean;
 	sortOrder: SortOrder;
 	cardMaxHeight: number;
 	newCardFormat: string;
@@ -309,7 +316,9 @@ export function normalizePalette(saved: Partial<PaletteColor>[] | undefined): Pa
 
 const DEFAULT_SETTINGS: SectionCardsSettings = {
 	filePath: "Daily Notes 2026.md",
+	autoOpenCards: false,
 	headingLevel: 3,
+	dynamicLevelOptions: true,
 	sortOrder: "asc",
 	cardMaxHeight: 320,
 	newCardFormat: "YYYY-MM-DD, dddd",
@@ -580,6 +589,14 @@ export function parseAncestorHeadings(lines: string[], cardLevel: number): Ances
 		if (rank < cardLevel) found.push({ level: rank, title: match[2].trim(), raw: line, line: i });
 	}
 	return found;
+}
+
+/** Which heading levels (1–6) actually occur in the note, ascending — the toolbar's
+ * Heading dropdown offers only these. (Rank < 7 collects every heading.) */
+export function headingLevelsIn(lines: string[]): number[] {
+	const found = new Set<number>();
+	for (const h of parseAncestorHeadings(lines, 7)) found.add(h.level);
+	return [...found].sort((a, b) => a - b);
 }
 
 /** The Hierarchy layout's synthetic "no heading at this level" item key. Real items are
@@ -1830,6 +1847,14 @@ export class SectionCardsView extends ItemView {
 	/** Lowercased searchable text per section, so filter keystrokes don't re-lowercase
 	 * every card's full body on each character typed. Invalidates like the above. */
 	private searchTextCache = new WeakMap<Section, string>();
+	/** Heading levels the current note actually contains; the Heading dropdown offers
+	 * only these (plus the current level). All six until the first scan. */
+	private availableLevels: number[] = [1, 2, 3, 4, 5, 6];
+	/** The toolbar's Heading dropdown, so refresh can repopulate it in place when an
+	 * edit introduces or removes a heading level. */
+	private levelSelect: HTMLSelectElement | null = null;
+	/** The toolbar's filter box, so the Ctrl/⌘+F shortcut can focus it. */
+	private filterInput: HTMLInputElement | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: SectionCardsPlugin) {
 		super(leaf);
@@ -1981,6 +2006,59 @@ export class SectionCardsView extends ItemView {
 			return false; // consumed
 		});
 
+		// View shortcuts, none of which run while a card editor is open. The plain keys
+		// additionally never fire while typing in a field (the filter box, a rename).
+		// 1–6: switch to that heading level (only levels the dropdown offers).
+		for (let level = 1; level <= 6; level++) {
+			this.scope.register([], String(level), (evt) => {
+				if (!this.plainShortcutOk(evt)) return true;
+				if (!this.levelOptionValues().includes(level)) return true;
+				if (this.headingLevel !== level) {
+					this.headingLevel = level;
+					this.rememberView();
+					this.populateLevelOptions();
+					void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+				}
+				return false;
+			});
+		}
+		// L: cycle through the layouts, in the dropdown's order.
+		this.scope.register([], "L", (evt) => {
+			if (!this.plainShortcutOk(evt)) return true;
+			const values = LAYOUT_OPTIONS.map(([value]) => value);
+			this.layout = values[(values.indexOf(this.layout) + 1) % values.length];
+			this.rememberView();
+			this.applyLayoutClass();
+			this.buildToolbar(); // the layout dropdown and hierarchy toggle follow along
+			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+			return false;
+		});
+		// H: show/hide the hierarchy columns (not available on the Custom Grid canvas).
+		this.scope.register([], "H", (evt) => {
+			if (!this.plainShortcutOk(evt)) return true;
+			if (this.layout === "custom") return true;
+			this.hierarchyOn = !this.hierarchyOn;
+			this.rememberView();
+			this.applyLayoutClass();
+			this.buildToolbar(); // the hierarchy toggle reflects the state
+			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+			return false;
+		});
+		// N: create a new card, same as the "+ New card" button.
+		this.scope.register([], "N", (evt) => {
+			if (!this.plainShortcutOk(evt)) return true;
+			this.promptNewCard();
+			return false;
+		});
+		// Ctrl/⌘+F: jump to the filter box (from anywhere in the view, fields included).
+		this.scope.register(["Mod"], "F", (evt) => {
+			if (this.activeEditor) return true; // edit mode keeps its own Ctrl+F
+			evt.preventDefault();
+			this.filterInput?.focus();
+			this.filterInput?.select();
+			return false;
+		});
+
 		// Ctrl/⌘+Enter saves the open editor from anywhere: clicking the card's padding or
 		// a button moves focus off the textarea, and the textarea-level handler then never
 		// hears the shortcut. finish() is settled-guarded, so both firing is harmless.
@@ -2104,6 +2182,15 @@ export class SectionCardsView extends ItemView {
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name);
 		}
 		this.contentEl.toggleClass("is-hier-on", this.hierarchyActive());
+		// Only the masonry layouts pack with inline `grid-row-end` spans. Leaving a
+		// previous layout's spans in place would let the other layouts paint overlapping
+		// cards for a frame before the masonry pass clears them, so shed them here,
+		// synchronously with the class change (this used to lean on a CSS !important).
+		if (this.layout !== "grid" && this.layout !== "tight" && this.gridEl) {
+			for (const card of Array.from(this.gridEl.children) as HTMLElement[]) {
+				if (card.style?.gridRowEnd) card.setCssStyles({ gridRowEnd: "" });
+			}
+		}
 		this.updateWheelPan();
 	}
 
@@ -2589,13 +2676,19 @@ export class SectionCardsView extends ItemView {
 		const filterWrap = bar.createDiv({ cls: "section-cards-control section-cards-filter" });
 		const filterInput = filterWrap.createEl("input", {
 			cls: "section-cards-filter-input",
-			attr: { type: "text", placeholder: "Filter…", "aria-label": "Show only cards containing this text", spellcheck: "false" },
+			attr: {
+				type: "text",
+				placeholder: "Filter…",
+				"aria-label": `Show only cards containing this text (${MOD_LABEL}+F)`,
+				spellcheck: "false",
+			},
 		});
+		this.filterInput = filterInput;
 		filterInput.value = this.filterQuery;
 		filterWrap.toggleClass("has-query", this.filterQuery.length > 0);
 		const clearBtn = filterWrap.createEl("button", { cls: "section-cards-filter-clear" });
 		setIcon(clearBtn, "x");
-		clearBtn.setAttr("aria-label", "Clear the filter and show all cards");
+		clearBtn.setAttr("aria-label", "Clear the filter and show all cards (Esc)");
 		const setQuery = (q: string) => {
 			this.filterQuery = q;
 			filterWrap.toggleClass("has-query", q.length > 0);
@@ -2662,8 +2755,8 @@ export class SectionCardsView extends ItemView {
 				this.layout === "custom"
 					? "Hierarchy columns aren't available on the Custom Grid canvas"
 					: this.hierarchyOn
-						? "Hide the hierarchy columns"
-						: "Show hierarchy columns: drill into the headings above the card level",
+						? "Hide the hierarchy columns (H)"
+						: "Show hierarchy columns: drill into the headings above the card level (H)",
 			);
 		};
 		syncHierBtn();
@@ -2676,13 +2769,15 @@ export class SectionCardsView extends ItemView {
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 		});
 
+		// Tooltips sit on the wrapper as well as the control, so hovering the text
+		// label ("Heading", "Layout", …) shows them too, not just the dropdown.
 		const levelWrap = bar.createDiv({ cls: "section-cards-control" });
+		levelWrap.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
 		levelWrap.createSpan({ text: "Heading", cls: "section-cards-label" });
 		const levelSelect = levelWrap.createEl("select", { cls: "dropdown" });
-		for (let l = 1; l <= 6; l++) {
-			levelSelect.createEl("option", { text: `H${l}`, value: String(l) });
-		}
-		levelSelect.value = String(this.headingLevel);
+		levelSelect.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
+		this.levelSelect = levelSelect;
+		this.populateLevelOptions();
 		levelSelect.addEventListener("change", () => {
 			this.headingLevel = Number(levelSelect.value);
 			this.rememberView();
@@ -2690,8 +2785,10 @@ export class SectionCardsView extends ItemView {
 		});
 
 		const layoutWrap = bar.createDiv({ cls: "section-cards-control" });
+		layoutWrap.setAttr("aria-label", "Card layout (L cycles)");
 		layoutWrap.createSpan({ text: "Layout", cls: "section-cards-label" });
 		const layoutSelect = layoutWrap.createEl("select", { cls: "dropdown" });
+		layoutSelect.setAttr("aria-label", "Card layout (L cycles)");
 		for (const [value, label, hint] of LAYOUT_OPTIONS) {
 			const option = layoutSelect.createEl("option", { text: label, value });
 			option.title = hint;
@@ -2706,8 +2803,10 @@ export class SectionCardsView extends ItemView {
 		});
 
 		const sortWrap = bar.createDiv({ cls: "section-cards-control" });
+		sortWrap.setAttr("aria-label", "Order the cards are shown in");
 		sortWrap.createSpan({ text: "Sort", cls: "section-cards-label" });
 		const sortSelect = sortWrap.createEl("select", { cls: "dropdown" });
+		sortSelect.setAttr("aria-label", "Order the cards are shown in");
 		sortSelect.createEl("option", { text: "A → Z", value: "asc" });
 		sortSelect.createEl("option", { text: "Z → A", value: "desc" });
 		sortSelect.createEl("option", { text: "Document order", value: "doc" });
@@ -2723,6 +2822,10 @@ export class SectionCardsView extends ItemView {
 		// what the note's headings look like (refresh keeps it current).
 		const datesWrap = bar.createDiv({ cls: "section-cards-control" });
 		const datesLabel = datesWrap.createEl("label", { cls: "section-cards-dates-label" });
+		datesLabel.setAttr(
+			"aria-label",
+			"This note's headings contain dates — highlight today's card and offer jump-to-date",
+		);
 		const datesToggle = datesLabel.createEl("input", {
 			cls: "section-cards-dates-toggle",
 			attr: { type: "checkbox" },
@@ -2741,7 +2844,7 @@ export class SectionCardsView extends ItemView {
 		});
 
 		const newBtn = bar.createEl("button", { cls: "section-cards-new-btn mod-cta", text: "+ New card" });
-		newBtn.setAttr("aria-label", "Create a new section in this note");
+		newBtn.setAttr("aria-label", "Create a new section in this note (N)");
 		newBtn.addEventListener("click", () => this.promptNewCard());
 
 		const templateBtn = bar.createEl("button", { cls: "section-cards-icon-btn section-cards-template-btn" });
@@ -2753,6 +2856,37 @@ export class SectionCardsView extends ItemView {
 		const refreshBtn = bar.createEl("button", { cls: "section-cards-icon-btn", text: "↻" });
 		refreshBtn.setAttr("aria-label", "Reload from file");
 		refreshBtn.addEventListener("click", () => void this.refresh());
+	}
+
+	/**
+	 * What the Heading dropdown should offer: the levels the note actually contains,
+	 * plus the current level — which always stays listed, even when the note (no
+	 * longer) has headings at it, so the select never shows a value it doesn't offer.
+	 * With the setting off, all six levels as before.
+	 */
+	private levelOptionValues(): number[] {
+		if (!this.plugin.settings.dynamicLevelOptions) return [1, 2, 3, 4, 5, 6];
+		return [...new Set([...this.availableLevels, this.headingLevel])].sort((a, b) => a - b);
+	}
+
+	private populateLevelOptions(): void {
+		const select = this.levelSelect;
+		if (!select) return;
+		select.empty();
+		for (const l of this.levelOptionValues()) {
+			select.createEl("option", { text: `H${l}`, value: String(l) });
+		}
+		select.value = String(this.headingLevel);
+	}
+
+	/** Whether a plain-key view shortcut may run: no card editor open, and the key
+	 * wasn't typed into a field (input, textarea, select, or an editable region). */
+	private plainShortcutOk(evt: KeyboardEvent): boolean {
+		if (this.activeEditor) return false;
+		const el = evt.target as HTMLElement | null;
+		if (!el) return true;
+		if (el.isContentEditable) return false;
+		return !el.closest("input, textarea, select");
 	}
 
 	/** Scroll the card whose heading is the picked ISO date into view, like the today jump. */
@@ -2990,6 +3124,18 @@ export class SectionCardsView extends ItemView {
 		if (gen !== this.renderGeneration) return;
 		const lines = content.split(/\r?\n/);
 
+		// The Heading dropdown offers only the levels the note actually has (plus the
+		// current one); an edit that introduces or removes a level updates it in place
+		// on the post-save refresh.
+		this.availableLevels = headingLevelsIn(lines);
+		if (this.levelSelect) {
+			const want = this.levelOptionValues().join(",");
+			const have = Array.from(this.levelSelect.options)
+				.map((o) => o.value)
+				.join(",");
+			if (want !== have) this.populateLevelOptions();
+		}
+
 		// A note the user hasn't set a view for opens at a level that actually has headings.
 		if (!this.plugin.getStoredView(file.path)) {
 			const level = pickHeadingLevel(lines, this.headingLevel);
@@ -3041,6 +3187,10 @@ export class SectionCardsView extends ItemView {
 			empty.createEl("p", { text: "Try a different heading level in the toolbar." });
 			return;
 		}
+
+		// A note that actually rendered cards is remembered (storeView dedupes), so
+		// "Reopen remembered notes as cards" knows this note belongs to this view.
+		this.rememberView();
 
 		// Helper elements go; the cards themselves are reconciled below, so an edit to one
 		// section rebuilds one card and every other card's rendered markdown is kept.
@@ -3352,9 +3502,9 @@ export class SectionCardsView extends ItemView {
 		});
 
 		const bigBtn = actions.createEl("button", { cls: "section-card-big" });
-		// The four-way move icon covers both of this button's jobs: click to make the card
-		// big, or use it as the natural grab point for drag-to-reorder.
-		setIcon(bigBtn, "move");
+		// Magnifier for the click action (make the card big); the button doubles as the
+		// grab point for drag-to-reorder, which the tooltip spells out.
+		setIcon(bigBtn, "zoom-in");
 		bigBtn.setAttr("aria-label", "Make this card big · drag to reorder");
 		bigBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -3691,8 +3841,8 @@ export class SectionCardsView extends ItemView {
 		overlay.appendChild(card);
 		card.addClass("is-maximized");
 		body.setCssStyles({ maxHeight: "" });
-		setIcon(button, "shrink");
-		button.setAttr("aria-label", "Shrink this card");
+		setIcon(button, "zoom-out");
+		button.setAttr("aria-label", "Shrink this card (Esc)");
 		restoreCaret(caret);
 	}
 
@@ -3704,7 +3854,7 @@ export class SectionCardsView extends ItemView {
 		open.card.removeClass("is-maximized");
 		open.card.setCssStyles(open.inlineRect);
 		open.body.setCssStyles({ maxHeight: open.bodyMaxHeight });
-		setIcon(open.button, "move");
+		setIcon(open.button, "zoom-in");
 		open.button.setAttr("aria-label", "Make this card big · drag to reorder");
 
 		const caret = captureCaret(open.card);
@@ -5013,6 +5163,11 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				},
 			},
 			{
+				name: "Reopen remembered notes as cards",
+				desc: "A note you've viewed as cards before opens in the cards view instead of the editor. A card's ↗ button still reaches the editor.",
+				control: { type: "toggle", key: "autoOpenCards" },
+			},
+			{
 				type: "group",
 				heading: "What becomes a card",
 				items: [
@@ -5024,6 +5179,11 @@ class SectionCardsSettingTab extends PluginSettingTab {
 							key: "headingLevel",
 							options: { "1": "Heading 1", "2": "Heading 2", "3": "Heading 3", "4": "Heading 4", "5": "Heading 5", "6": "Heading 6" },
 						},
+					},
+					{
+						name: "Only list heading levels the note contains",
+						desc: "The toolbar's Heading dropdown offers just the levels found in the open note, updating after edits. Turn off to always list H1–H6.",
+						control: { type: "toggle", key: "dynamicLevelOptions" },
 					},
 					{
 						name: "Show unfiled text as a card",
@@ -5206,6 +5366,8 @@ class SectionCardsSettingTab extends PluginSettingTab {
 	}
 
 	private renderColorRow(setting: Setting, index: number): void {
+		// The nine rows read as one block; CSS tightens their vertical padding.
+		setting.settingEl.addClass("sfsc-color-row");
 		const entry = this.plugin.palette()[index];
 		setting.addColorPicker((picker) =>
 			picker.setValue(entry.hex).onChange((hex) => void this.plugin.setPaletteColor(index, { hex })),
@@ -5246,7 +5408,8 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			key === "titleBarClick" ||
 			key === "stickyPinned" ||
 			key === "unfiledEnabled" ||
-			key === "hierTaskCounts"
+			key === "hierTaskCounts" ||
+			key === "dynamicLevelOptions"
 		) {
 			this.plugin.refreshAllViews();
 		}
@@ -5263,7 +5426,7 @@ export default class SectionCardsPlugin extends Plugin {
 
 		this.registerView(VIEW_TYPE_SECTION_CARDS, (leaf) => new SectionCardsView(leaf, this));
 
-		this.addRibbonIcon(DECK_ICON, "Single File Section Cards", (evt) => {
+		this.addRibbonIcon(DECK_ICON, `Single File Section Cards (${MOD_LABEL}+Click: new tab)`, (evt) => {
 			// Ctrl/⌘-click opens an additional tab even when one already shows the note.
 			void this.openCardsView(undefined, undefined, evt.ctrlKey || evt.metaKey ? "new" : "reuse");
 		});
@@ -5331,6 +5494,46 @@ export default class SectionCardsPlugin extends Plugin {
 					const view = leaf.view as SectionCardsView;
 					if (view.filePath === oldPath) view.filePath = file.path;
 				}
+			}),
+		);
+
+		// With the setting on, a note that has a remembered cards view opens as cards:
+		// the markdown leaf that just opened it is swapped to this plugin's view. The
+		// swap is deferred a tick — replacing the view from inside file-open re-enters
+		// the workspace mid-open. revealSection sets skipAutoOpen so the ↗ button's
+		// deliberate trip to the editor isn't hijacked straight back.
+		this.registerEvent(
+			this.app.workspace.on("file-open", (file) => {
+				if (!file || file.extension !== "md" || !this.settings.autoOpenCards) return;
+				const skip = this.skipAutoOpen;
+				if (skip && skip.path === file.path && Date.now() < skip.until) {
+					this.skipAutoOpen = null;
+					return;
+				}
+				if (!this.getStoredView(file.path)) return;
+				// The markdown leaf that just opened the file. Focus may still sit in the
+				// file explorer or quick switcher, so the active view can't be relied on:
+				// prefer it, else fall back to the one markdown leaf showing this file.
+				// (Several showing it is ambiguous — a deliberate split stays untouched.)
+				const active = this.app.workspace.getActiveViewOfType(MarkdownView);
+				let leaf = active?.file?.path === file.path ? active.leaf : null;
+				if (!leaf) {
+					const showing = this.app.workspace
+						.getLeavesOfType("markdown")
+						.filter((l) => l.view instanceof MarkdownView && l.view.file?.path === file.path);
+					if (showing.length === 1) leaf = showing[0];
+				}
+				if (!leaf) return;
+				const target = leaf;
+				window.setTimeout(() => {
+					const v = target.view;
+					if (!(v instanceof MarkdownView) || v.file?.path !== file.path) return;
+					void target.setViewState({
+						type: VIEW_TYPE_SECTION_CARDS,
+						active: true,
+						state: { filePath: file.path },
+					});
+				}, 0);
 			}),
 		);
 
@@ -5609,8 +5812,13 @@ export default class SectionCardsPlugin extends Plugin {
 		}
 	}
 
+	/** The one note whose next markdown open must NOT be swapped back to cards (the ↗
+	 * button's deliberate editor trip); time-boxed so a stale flag can't linger. */
+	private skipAutoOpen: { path: string; until: number } | null = null;
+
 	/** Open the note in an editor with the cursor parked on the given heading line. */
 	async revealSection(file: TFile, line: number): Promise<void> {
+		this.skipAutoOpen = { path: file.path, until: Date.now() + 2000 };
 		const leaf = this.app.workspace.getLeaf("tab");
 		await leaf.openFile(file, { active: true, state: { mode: "source" } });
 		const view = leaf.view;

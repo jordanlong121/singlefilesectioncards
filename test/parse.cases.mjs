@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -1181,6 +1181,12 @@ t("the unfiled preamble reaches the cards pane through gap items", () => {
   const items = hierarchyColumnItems(heads, 1, 0, HIER_NOTE.length, cards);
   assert.equal(items[0].key, HIER_GAP_KEY);
   assert.ok(pre.headingLine >= items[0].start && pre.headingLine < items[0].end);
+});
+
+t("headingLevelsIn lists only levels present, skipping fences and frontmatter", () => {
+  assert.deepEqual(headingLevelsIn(L(HIER_NOTE.join("\n"))), [1, 2, 3]);
+  assert.deepEqual(headingLevelsIn(L("---\ntags: x\n---\n\`\`\`\n# fake\n\`\`\`\n## real\n##### deep")), [2, 5]);
+  assert.deepEqual(headingLevelsIn(L("no headings here")), []);
 });
 
 t("openTaskCount counts unchecked tasks only, skipping fences", () => {

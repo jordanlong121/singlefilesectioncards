@@ -12,6 +12,7 @@ That plugin keeps all your daily notes in a single file, one `### YYYY-MM-DD` he
 day. This plugin turns those headings into a card wall you can scan, sort, and tick off.
 
 **[Install it from the Obsidian community plugin directory →](https://community.obsidian.md/plugins/single-file-section-cards)**
+· [Release notes](https://github.com/jordanlong121/singlefilesectioncards/releases)
 
 ## What it does
 
@@ -29,6 +30,9 @@ day. This plugin turns those headings into a card wall you can scan, sort, and t
   `{{time}}`); when headings are dates, a calendar button jumps to any date's card.
 - **Navigate as cards.** Wikilinks open the linked note's card wall, ↗ opens the section in a
   normal editor, and a card can be maximized over the others.
+- **Keyboard shortcuts.** With a cards view focused and no editor open: `1`–`6` switch the
+  heading level, `L` cycles layouts, `H` shows/hides the hierarchy columns, `N` creates a new
+  card, and `Ctrl/⌘+F` jumps to the filter box.
 - **Writes are surgical.** Only the touched section's lines change, and every write re-locates
   its section by content first, so a stale card refuses rather than touching the wrong lines.
 
@@ -241,6 +245,7 @@ flashes it — the same nudge a wikilink arrival gets.
 | Setting | What it does |
 | --- | --- |
 | Default note | Vault-relative path opened by the ribbon icon and command |
+| Reopen remembered notes as cards | A note you've viewed as cards before opens in the cards view instead of the editor; a card's ↗ button still reaches the editor (off by default) |
 | Heading level | Which heading rank becomes a card (H1–H6) |
 | Jump to today's card | Scroll to today's card when a note opens in the view (on by default; needs the note's Dates checkbox) |
 | Keep pinned cards on screen | Pinned cards stay on screen while the rest scroll — below the toolbar, or left of the row in Vertical (on by default; not in Custom Grid) |
