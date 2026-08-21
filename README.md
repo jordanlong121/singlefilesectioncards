@@ -75,6 +75,12 @@ height of Grid on the same note.
 
 ![Tight](screenshots/tight.png)
 
+### Sections
+
+Masonry columns divided by horizontal bars — one per heading above the card level (an H1 bar over
+H2 cards, and so on). Click a bar to collapse or expand its group of cards; the count on the bar
+shows what's folded away.
+
 ### Horizontal
 
 One card per row, full pane width.
@@ -85,7 +91,8 @@ One card per row, full pane width.
 
 A toolbar toggle (the tree button), not a layout: drill-down columns appear on the left — one per
 heading level above the card level — and the cards pane shows the selected branch in whichever
-layout is active (every layout except the Custom Grid canvas). At H3, click an H1 to list its H2s,
+layout is active (every layout except the Custom Grid canvas and Sections, whose divider bars
+already group by heading). At H3, click an H1 to list its H2s,
 click an H2 to see its cards. Each row shows a card count plus a square unfinished-task badge
 (toggleable in settings); jump-to-date and new-card creation drill to the right branch on their own.
 

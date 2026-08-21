@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -1202,6 +1202,28 @@ t("a range with no headings at the level yields only the gap item (or nothing)",
   assert.deepEqual(withCards.map((i) => i.key), [HIER_GAP_KEY]);
   const empty = hierarchyColumnItems(heads, 2, 0, 1, []); // just the intro text
   assert.equal(empty.length, 0);
+});
+
+t("groupByAncestor groups cards under their nearest ancestor heading", () => {
+  const heads = parseAncestorHeadings(HIER_NOTE, 3);
+  const cards = parseSections(HIER_NOTE, 3);
+  const groups = groupByAncestor(cards, heads);
+  assert.deepEqual(groups.map((g) => g.title), ["A1", "A2", "Beta", "B1"]);
+  assert.deepEqual(groups.map((g) => g.sections.map((s) => s.title)), [
+    ["card1", "card2"], ["card3"], ["card4"], ["card5"],
+  ], "card4 has no H2, so its nearest ancestor is the H1 Beta");
+  assert.ok(groups.every((g) => g.key.startsWith("#")), "keys are the raw heading lines");
+});
+
+t("groupByAncestor: groups follow their first card's order; no ancestor means key \"\"", () => {
+  const heads = parseAncestorHeadings(HIER_NOTE, 3);
+  const cards = sortSections(parseSections(HIER_NOTE, 3), "desc");
+  const groups = groupByAncestor(cards, heads);
+  assert.deepEqual(groups.map((g) => g.title), ["B1", "Beta", "A2", "A1"]);
+  assert.deepEqual(groups[3].sections.map((s) => s.title), ["card2", "card1"], "in-group sort order kept");
+  const pre = unfiledSection(HIER_NOTE, "Unfiled");
+  const withPre = groupByAncestor([pre, ...parseSections(HIER_NOTE, 3)], heads);
+  assert.equal(withPre[0].key, "", "the preamble card has no ancestor");
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

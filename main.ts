@@ -68,7 +68,7 @@ export type Placement = "top" | "logical" | "bottom";
  * heading columns on the left, with the selected branch's cards rendered in whichever
  * of these layouts is active.
  */
-export type Layout = "grid" | "aligned" | "tight" | "horizontal" | "vertical" | "custom";
+export type Layout = "grid" | "aligned" | "tight" | "sections" | "horizontal" | "vertical" | "custom";
 
 const SORT_LABELS: Record<SortOrder, string> = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 
@@ -77,6 +77,7 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["grid", "Grid", "Masonry columns"],
 	["aligned", "Grid Aligned", "Uniform grid: every row starts at the same height"],
 	["tight", "Tight", "Denser, narrower masonry columns"],
+	["sections", "Sections", "Masonry columns with a collapsible divider per heading above the card level"],
 	["horizontal", "Horizontal", "One card per row, full width"],
 	["vertical", "Vertical", "Full-height cards side by side, scrolling sideways"],
 	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
@@ -637,6 +638,43 @@ export function hierarchyColumnItems(
 		items.unshift({ key: HIER_GAP_KEY, label: `(no H${level})`, start, end: gapEnd });
 	}
 	return items;
+}
+
+/** One Sections-layout group: the cards under the same nearest ancestor heading. */
+export interface SectionGroup {
+	/** The ancestor heading's raw line, or "" for cards with no ancestor. */
+	key: string;
+	title: string;
+	sections: Section[];
+}
+
+/**
+ * Sections layout: split an ordered card list into groups by nearest ancestor
+ * heading (any level above the cards', so skipped levels still divide). Groups keep
+ * the order of their first card, so the active sort decides which group leads;
+ * within a group the given order is unchanged. Duplicate ancestor text stays two
+ * groups (grouping is by line) but shares one collapse key (the raw line).
+ */
+export function groupByAncestor(sections: Section[], ancestors: AncestorHeading[]): SectionGroup[] {
+	const groups = new Map<number, SectionGroup>();
+	for (const section of sections) {
+		let parent: AncestorHeading | undefined;
+		for (const a of ancestors) {
+			if (a.line > section.headingLine) break;
+			parent = a;
+		}
+		let group = groups.get(parent?.line ?? -1);
+		if (!group) {
+			group = {
+				key: parent?.raw ?? "",
+				title: parent ? parent.title || "(untitled)" : "(no parent heading)",
+				sections: [],
+			};
+			groups.set(parent?.line ?? -1, group);
+		}
+		group.sections.push(section);
+	}
+	return [...groups.values()];
 }
 
 /** First line of a section's body: the unfiled card has no heading line to skip. */
@@ -1841,6 +1879,17 @@ export class SectionCardsView extends ItemView {
 	private hierHeadings: AncestorHeading[] = [];
 	/** The current note's line count — the last column item's range runs to here. */
 	private hierLineCount = 0;
+	/** Sections layout: the card groups in render order, one divider bar each. `key` is
+	 * the ancestor heading's raw line ("" for cards with no ancestor), `keys` the group's
+	 * card headingRaws. Rebuilt every refresh. */
+	private sectionGroups: { key: string; title: string; keys: string[] }[] = [];
+	/** The bars currently in the grid, with their group's card keys — so filter and
+	 * hierarchy passes can hide a bar whose cards are all hidden. */
+	private sectionBars: { el: HTMLElement; keys: string[] }[] = [];
+	/** Collapsed Sections groups, keyed by ancestor heading raw. In-memory, per note. */
+	private collapsedSections = new Set<string>();
+	/** Which note's collapsed set is loaded; a different note starts expanded. */
+	private collapsedFile: string | null = null;
 	/** Open-task counts per parsed section. Sections are fresh objects every refresh,
 	 * so this invalidates itself; hierarchy column clicks between refreshes hit it. */
 	private taskCountCache = new WeakMap<Section, number>();
@@ -1932,7 +1981,9 @@ export class SectionCardsView extends ItemView {
 
 	/** Whether the hierarchy columns actually show: toggled on, and not on the canvas. */
 	private hierarchyActive(): boolean {
-		return this.hierarchyOn && this.layout !== "custom";
+		// Not on the canvas (cards are placed by hand), and not in the Sections layout
+		// (its divider bars already group by the headings the columns would drill).
+		return this.hierarchyOn && this.layout !== "custom" && this.layout !== "sections";
 	}
 
 	/** Remember the current view for the current note (in the plugin's data, not the note). */
@@ -2033,10 +2084,11 @@ export class SectionCardsView extends ItemView {
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 			return false;
 		});
-		// H: show/hide the hierarchy columns (not available on the Custom Grid canvas).
+		// H: show/hide the hierarchy columns (not available on the Custom Grid canvas
+		// or in the Sections layout, whose bars already group by heading).
 		this.scope.register([], "H", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
-			if (this.layout === "custom") return true;
+			if (this.layout === "custom" || this.layout === "sections") return true;
 			this.hierarchyOn = !this.hierarchyOn;
 			this.rememberView();
 			this.applyLayoutClass();
@@ -2178,7 +2230,7 @@ export class SectionCardsView extends ItemView {
 
 	/** The layout lives as a class on the view root so CSS can restyle grid *and* scrolling. */
 	private applyLayoutClass(): void {
-		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical", "custom"]) {
+		for (const name of ["grid", "aligned", "tight", "sections", "horizontal", "vertical", "custom"]) {
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name);
 		}
 		this.contentEl.toggleClass("is-hier-on", this.hierarchyActive());
@@ -2186,7 +2238,7 @@ export class SectionCardsView extends ItemView {
 		// previous layout's spans in place would let the other layouts paint overlapping
 		// cards for a frame before the masonry pass clears them, so shed them here,
 		// synchronously with the class change (this used to lean on a CSS !important).
-		if (this.layout !== "grid" && this.layout !== "tight" && this.gridEl) {
+		if (this.layout !== "grid" && this.layout !== "tight" && this.layout !== "sections" && this.gridEl) {
 			for (const card of Array.from(this.gridEl.children) as HTMLElement[]) {
 				if (card.style?.gridRowEnd) card.setCssStyles({ gridRowEnd: "" });
 			}
@@ -2401,6 +2453,10 @@ export class SectionCardsView extends ItemView {
 		const grid = this.gridEl;
 		if (!grid || !grid.isConnected) return;
 
+		// Every path that hides or reveals cards (filter, hierarchy, collapse) ends
+		// here, so the Sections divider bars sync their visibility in the same pass.
+		this.updateSectionBars();
+
 		// Masonry spans only apply to the packed column layouts. The aligned grid wants
 		// real auto rows, and the sideways layout is a flex row, so clear any leftovers.
 		if (this.layout === "vertical" || this.layout === "aligned" || this.layout === "custom") {
@@ -2441,11 +2497,15 @@ export class SectionCardsView extends ItemView {
 		// full reflow per card — ~150 reflows per pack on a year of daily notes.
 		// (Cards are `align-items: start` grid items, so their box height is their content
 		// height regardless of the span currently assigned.)
+		// The Sections divider bars are grid items too: without a measured span their
+		// content would overflow the 4px auto-row and paint under the cards below.
 		const cards = (Array.from(grid.children) as HTMLElement[]).filter(
-			(card) =>
-				card.hasClass("section-card") &&
-				!card.hasClass("is-filtered-out") &&
-				!card.hasClass("is-hier-hidden"),
+			(el) =>
+				(el.hasClass("section-card") &&
+					!el.hasClass("is-filtered-out") &&
+					!el.hasClass("is-hier-hidden") &&
+					!el.hasClass("is-section-hidden")) ||
+				(el.hasClass("section-cards-section-bar") && !el.hasClass("is-hidden")),
 		);
 		const heights = cards.map((card) => card.getBoundingClientRect().height);
 		cards.forEach((card, i) => {
@@ -2495,6 +2555,63 @@ export class SectionCardsView extends ItemView {
 				rule.className = "section-cards-row-rule";
 				grid.insertBefore(rule, band[i]);
 			}
+		}
+	}
+
+	/**
+	 * Sections layout: a full-width, clickable divider bar above each group of cards,
+	 * labeled with the group's ancestor heading. Spanning every column is also what
+	 * keeps the group's cards below their bar (as with the pinned rule). Clicking a
+	 * bar collapses or expands its group; collapsed state is in-memory, per note.
+	 */
+	private insertSectionBars(): void {
+		const grid = this.gridEl;
+		if (!grid) return;
+		for (const old of Array.from(grid.querySelectorAll(".section-cards-section-bar"))) old.remove();
+		this.sectionBars = [];
+		for (const entry of this.cardEntries) entry.el.removeClass("is-section-hidden");
+		if (this.layout !== "sections") return;
+
+		for (const group of this.sectionGroups) {
+			const first = this.cardsByHeading.get(group.keys[0]);
+			if (!first) continue;
+			const bar = createDiv({ cls: "section-cards-section-bar" });
+			const chevron = bar.createSpan({ cls: "section-cards-section-chevron" });
+			setIcon(chevron, "chevron-down");
+			bar.createSpan({ cls: "section-cards-section-title", text: group.title });
+			bar.createSpan({ cls: "section-cards-section-count", text: String(group.keys.length) });
+			const sync = () => {
+				const collapsed = this.collapsedSections.has(group.key);
+				bar.toggleClass("is-collapsed", collapsed);
+				bar.setAttr(
+					"aria-label",
+					collapsed ? "Expand this section's cards" : "Collapse this section's cards",
+				);
+				for (const key of group.keys) {
+					this.cardsByHeading.get(key)?.el.toggleClass("is-section-hidden", collapsed);
+				}
+			};
+			sync();
+			bar.addEventListener("click", () => {
+				if (this.collapsedSections.has(group.key)) this.collapsedSections.delete(group.key);
+				else this.collapsedSections.add(group.key);
+				sync();
+				this.layoutMasonry();
+			});
+			grid.insertBefore(bar, first.el);
+			this.sectionBars.push({ el: bar, keys: group.keys });
+		}
+	}
+
+	/** A bar whose cards are all hidden (filtered out, or off the hierarchy branch)
+	 * hides with them, instead of stacking up as a run of empty dividers. */
+	private updateSectionBars(): void {
+		for (const { el, keys } of this.sectionBars) {
+			const anyVisible = keys.some((key) => {
+				const card = this.cardsByHeading.get(key)?.el;
+				return !!card && !card.hasClass("is-filtered-out") && !card.hasClass("is-hier-hidden");
+			});
+			el.toggleClass("is-hidden", !anyVisible);
 		}
 	}
 
@@ -2749,19 +2866,21 @@ export class SectionCardsView extends ItemView {
 		setIcon(hierBtn, "list-tree");
 		const syncHierBtn = () => {
 			hierBtn.toggleClass("is-active", this.hierarchyActive());
-			hierBtn.toggleAttribute("disabled", this.layout === "custom");
+			hierBtn.toggleAttribute("disabled", this.layout === "custom" || this.layout === "sections");
 			hierBtn.setAttr(
 				"aria-label",
 				this.layout === "custom"
 					? "Hierarchy columns aren't available on the Custom Grid canvas"
-					: this.hierarchyOn
-						? "Hide the hierarchy columns (H)"
-						: "Show hierarchy columns: drill into the headings above the card level (H)",
+					: this.layout === "sections"
+						? "Hierarchy columns aren't available in the Sections layout — its divider bars already group by heading"
+						: this.hierarchyOn
+							? "Hide the hierarchy columns (H)"
+							: "Show hierarchy columns: drill into the headings above the card level (H)",
 			);
 		};
 		syncHierBtn();
 		hierBtn.addEventListener("click", () => {
-			if (this.layout === "custom") return;
+			if (this.layout === "custom" || this.layout === "sections") return;
 			this.hierarchyOn = !this.hierarchyOn;
 			this.rememberView();
 			this.applyLayoutClass();
@@ -3159,7 +3278,7 @@ export class SectionCardsView extends ItemView {
 		const pinnedList = this.plugin.getPinned(file.path);
 		const pinnedKeys = new Set(pinnedList);
 		const cardColors = this.plugin.getCardColors(file.path);
-		const ordered = applyPinned(sortSections(sections, this.sortOrder), pinnedList);
+		let ordered = applyPinned(sortSections(sections, this.sortOrder), pinnedList);
 		const pinnedCount = pinnedKeys.size ? ordered.filter((s) => pinnedKeys.has(s.headingRaw)).length : 0;
 		// Sticky pins render in their own band between toolbar and grid. pinnedShown
 		// tracks only pins leading the grid itself — the divider and Grid Aligned's
@@ -3171,6 +3290,30 @@ export class SectionCardsView extends ItemView {
 			this.layout !== "custom" &&
 			!this.hierarchyActive();
 		this.pinnedShown = stickyPinned ? 0 : pinnedCount;
+
+		// Sections layout: after the pinned prefix, regroup the cards under their nearest
+		// ancestor heading — the divider bar each group renders beneath. Groups keep the
+		// order the active sort gave their first card, so a newest-first note leads with
+		// its newest section; within a group the sort applies unchanged.
+		this.sectionGroups = [];
+		if (this.layout === "sections") {
+			if (this.collapsedFile !== file.path) {
+				this.collapsedFile = file.path;
+				this.collapsedSections.clear();
+			}
+			const grouped = groupByAncestor(
+				ordered.slice(pinnedCount),
+				parseAncestorHeadings(lines, this.headingLevel),
+			);
+			ordered = [...ordered.slice(0, pinnedCount), ...grouped.flatMap((g) => g.sections)];
+			this.sectionGroups = grouped.map((g) => ({
+				key: g.key,
+				title: g.title,
+				keys: g.sections.map((s) => s.headingRaw),
+			}));
+			// Ancestor-less cards leading the wall read as a preamble — no divider.
+			if (this.sectionGroups[0]?.key === "") this.sectionGroups.shift();
+		}
 
 		this.countEl?.setText(
 			`${ordered.length} ${ordered.length === 1 ? "section" : "sections"} · H${this.headingLevel}`,
@@ -3195,7 +3338,9 @@ export class SectionCardsView extends ItemView {
 		// Helper elements go; the cards themselves are reconciled below, so an edit to one
 		// section rebuilds one card and every other card's rendered markdown is kept.
 		for (const stray of Array.from(
-			this.gridEl.querySelectorAll(".section-cards-row-rule, .section-cards-pin-rule, .section-cards-empty"),
+			this.gridEl.querySelectorAll(
+				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty",
+			),
 		)) {
 			stray.remove();
 		}
@@ -3300,6 +3445,8 @@ export class SectionCardsView extends ItemView {
 			const rule = createDiv({ cls: "section-cards-pin-rule" });
 			this.gridEl.insertBefore(rule, nextEntries[this.pinnedShown].el);
 		}
+
+		this.insertSectionBars();
 
 		// Hierarchy: rebuild the drill-down columns and hide off-branch cards before the
 		// masonry pass below measures anything.
