@@ -31,8 +31,8 @@ day. This plugin turns those headings into a card wall you can scan, sort, and t
 - **Navigate as cards.** Wikilinks open the linked note's card wall, ↗ opens the section in a
   normal editor, and a card can be maximized over the others.
 - **Keyboard shortcuts.** With a cards view focused and no editor open: `1`–`6` switch the
-  heading level, `L` cycles layouts, `H` shows/hides the hierarchy columns, `N` creates a new
-  card, and `Ctrl/⌘+F` jumps to the filter box.
+  heading level, `L` cycles layouts, `H` shows/hides the hierarchy columns, `S` shows/hides the
+  section dividers, `N` creates a new card, and `Ctrl/⌘+F` jumps to the filter box.
 - **Writes are surgical.** Only the touched section's lines change, and every write re-locates
   its section by content first, so a stale card refuses rather than touching the wrong lines.
 
@@ -75,12 +75,6 @@ height of Grid on the same note.
 
 ![Tight](screenshots/tight.png)
 
-### Sections
-
-Masonry columns divided by horizontal bars — one per heading above the card level (an H1 bar over
-H2 cards, and so on). Click a bar to collapse or expand its group of cards; the count on the bar
-shows what's folded away.
-
 ### Horizontal
 
 One card per row, full pane width.
@@ -91,12 +85,20 @@ One card per row, full pane width.
 
 A toolbar toggle (the tree button), not a layout: drill-down columns appear on the left — one per
 heading level above the card level — and the cards pane shows the selected branch in whichever
-layout is active (every layout except the Custom Grid canvas and Sections, whose divider bars
-already group by heading). At H3, click an H1 to list its H2s,
+layout is active (every layout except the Custom Grid canvas). At H3, click an H1 to list its H2s,
 click an H2 to see its cards. Each row shows a card count plus a square unfinished-task badge
 (toggleable in settings); jump-to-date and new-card creation drill to the right branch on their own.
 
 ![Hierarchy](screenshots/hierarchy.png)
+
+### Section dividers
+
+Also a toolbar toggle (the divider button, next to the tree): horizontal bars split the card wall
+into groups, one bar per heading above the card level — an H1 bar over H2 cards, and so on, with
+the nearest ancestor dividing when levels are skipped. Click a bar to collapse or expand its group;
+the count on the bar shows what's folded away. Works with every layout except the Custom Grid
+canvas, and is mutually exclusive with the hierarchy columns (both group by the same headings, so
+switching one on switches the other off).
 
 ## Brainstorming with cards
 
