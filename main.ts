@@ -107,6 +107,10 @@ interface SectionCardsSettings {
 	dynamicLevelOptions: boolean;
 	sortOrder: SortOrder;
 	cardMaxHeight: number;
+	/** Card text size as a percentage of the theme's sizes (100 = theme default). */
+	fontScale: number;
+	/** Divider-bar text size, percent — independent of the card text scale. */
+	dividerFontScale: number;
 	newCardFormat: string;
 	newCardPlacement: Placement;
 	/** Show text above the file's first heading as its own card. */
@@ -323,6 +327,8 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	dynamicLevelOptions: true,
 	sortOrder: "asc",
 	cardMaxHeight: 320,
+	fontScale: 100,
+	dividerFontScale: 100,
 	newCardFormat: "YYYY-MM-DD, dddd",
 	newCardPlacement: "logical",
 	unfiledEnabled: false,
@@ -2119,8 +2125,8 @@ export class SectionCardsView extends ItemView {
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 			return false;
 		});
-		// S: show/hide the section dividers (not on the canvas); turns the columns off.
-		this.scope.register([], "S", (evt) => {
+		// D: show/hide the dividers (not on the canvas); turns the columns off.
+		this.scope.register([], "D", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
 			if (this.layout === "custom") return true;
 			this.sectionsOn = !this.sectionsOn;
@@ -2327,7 +2333,8 @@ export class SectionCardsView extends ItemView {
 		card.toggleClass("is-pinned", pinned);
 		const btn = card.querySelector<HTMLElement>(".section-card-pin");
 		if (!btn) return;
-		setIcon(btn, pinned ? "pin-off" : "pin");
+		// Always the same glyph; the states differ by strength (CSS), not icon.
+		setIcon(btn, "pin");
 		btn.setAttr("aria-label", pinned ? "Unpin this card" : "Pin this card to the top");
 	}
 
@@ -2712,11 +2719,13 @@ export class SectionCardsView extends ItemView {
 			end = selected.end;
 		}
 		// Cards off the selected branch keep their DOM and rendered markdown; they only
-		// lose their grid cell, so clicking around the columns is instant.
+		// lose their grid cell, so clicking around the columns is instant. Cards in the
+		// sticky pinned band are exempt: pins stay visible whatever branch is selected.
 		const constrain = this.headingLevel > 1;
 		for (const entry of this.cardEntries) {
 			const line = entry.holder.section.headingLine;
-			entry.el.toggleClass("is-hier-hidden", constrain && (line < start || line >= end));
+			const inBand = entry.el.parentElement === this.pinnedEl;
+			entry.el.toggleClass("is-hier-hidden", constrain && !inBand && (line < start || line >= end));
 		}
 	}
 
@@ -2823,8 +2832,20 @@ export class SectionCardsView extends ItemView {
 			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path)).open();
 		});
 
-		const spacer = bar.createDiv({ cls: "section-cards-spacer" });
-		this.countEl = spacer.createSpan({ cls: "section-cards-count" });
+		// Heading level leads the controls, the filter box beside it: what becomes a
+		// card sits on the left with the note name; the view options keep the right.
+		const levelWrap = bar.createDiv({ cls: "section-cards-control" });
+		levelWrap.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
+		levelWrap.createSpan({ text: "Heading", cls: "section-cards-label" });
+		const levelSelect = levelWrap.createEl("select", { cls: "dropdown" });
+		levelSelect.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
+		this.levelSelect = levelSelect;
+		this.populateLevelOptions();
+		levelSelect.addEventListener("change", () => {
+			this.headingLevel = Number(levelSelect.value);
+			this.rememberView();
+			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+		});
 
 		// Filter box: typing narrows the wall to cards containing the text; X clears.
 		const filterWrap = bar.createDiv({ cls: "section-cards-control section-cards-filter" });
@@ -2866,10 +2887,18 @@ export class SectionCardsView extends ItemView {
 			filterInput.focus();
 		});
 
+		const spacer = bar.createDiv({ cls: "section-cards-spacer" });
+		this.countEl = spacer.createSpan({ cls: "section-cards-count" });
+
+		// The date controls sit mid-bar, between the note cluster on the left and the
+		// view controls on the right: jump-to-date and the per-note Dates checkbox
+		// that governs whether it's offered.
+		const datesWrap = bar.createDiv({ cls: "section-cards-control" });
+
 		// Jump to date: only offered when headings are dates and the note actually has
 		// some (refresh keeps the visibility current). The native date picker does the
 		// asking; the button anchors it over an invisible input.
-		const jumpWrap = bar.createDiv({ cls: "section-cards-control section-cards-jump-date" });
+		const jumpWrap = datesWrap.createDiv({ cls: "section-cards-jump-date" });
 		this.jumpDateWrap = jumpWrap;
 		jumpWrap.toggleClass("is-hidden", !this.hasDateHeadings);
 		const jumpBtn = jumpWrap.createEl("button", { cls: "section-cards-icon-btn section-cards-jump-btn" });
@@ -2893,121 +2922,9 @@ export class SectionCardsView extends ItemView {
 			if (jumpInput.value) this.jumpToDate(jumpInput.value);
 		});
 
-		// The hierarchy columns toggle, leading the view controls: drill-down heading
-		// columns beside the cards, which keep whatever layout the dropdown says.
-		// Not available on the canvas.
-		const hierWrap = bar.createDiv({ cls: "section-cards-control" });
-		const hierBtn = hierWrap.createEl("button", {
-			cls: "section-cards-icon-btn section-cards-hier-btn",
-		});
-		setIcon(hierBtn, "list-tree");
-		const syncHierBtn = () => {
-			hierBtn.toggleClass("is-active", this.hierarchyActive());
-			hierBtn.toggleAttribute("disabled", this.layout === "custom");
-			hierBtn.setAttr(
-				"aria-label",
-				this.layout === "custom"
-					? "Hierarchy columns aren't available on the Custom Grid canvas"
-					: this.hierarchyOn
-						? "Hide the hierarchy columns (H)"
-						: "Show hierarchy columns: drill into the headings above the card level (H)",
-			);
-		};
-		syncHierBtn();
-		hierBtn.addEventListener("click", () => {
-			if (this.layout === "custom") return;
-			this.hierarchyOn = !this.hierarchyOn;
-			if (this.hierarchyOn) this.sectionsOn = false; // never both groupers at once
-			this.rememberView();
-			this.applyLayoutClass();
-			this.buildToolbar(); // both toggles reflect the state
-			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
-		});
-
-		// The section dividers toggle, beside the columns: a collapsible bar per heading
-		// above the card level, in whatever layout is active (not the canvas). The two
-		// grouping toggles are mutually exclusive — switching one on switches the other off.
-		const sectionsWrap = bar.createDiv({ cls: "section-cards-control" });
-		const sectionsBtn = sectionsWrap.createEl("button", {
-			cls: "section-cards-icon-btn section-cards-sections-btn",
-		});
-		setIcon(sectionsBtn, "separator-horizontal");
-		const syncSectionsBtn = () => {
-			sectionsBtn.toggleClass("is-active", this.sectionsActive());
-			sectionsBtn.toggleAttribute("disabled", this.layout === "custom");
-			sectionsBtn.setAttr(
-				"aria-label",
-				this.layout === "custom"
-					? "Section dividers aren't available on the Custom Grid canvas"
-					: this.sectionsOn
-						? "Hide the section dividers (S)"
-						: "Show section dividers: group the cards under the heading above the card level (S)",
-			);
-		};
-		syncSectionsBtn();
-		sectionsBtn.addEventListener("click", () => {
-			if (this.layout === "custom") return;
-			this.sectionsOn = !this.sectionsOn;
-			if (this.sectionsOn) this.hierarchyOn = false; // never both groupers at once
-			this.rememberView();
-			this.applyLayoutClass();
-			this.buildToolbar(); // both toggles reflect the state
-			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
-		});
-
-		// Tooltips sit on the wrapper as well as the control, so hovering the text
-		// label ("Heading", "Layout", …) shows them too, not just the dropdown.
-		const levelWrap = bar.createDiv({ cls: "section-cards-control" });
-		levelWrap.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
-		levelWrap.createSpan({ text: "Heading", cls: "section-cards-label" });
-		const levelSelect = levelWrap.createEl("select", { cls: "dropdown" });
-		levelSelect.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
-		this.levelSelect = levelSelect;
-		this.populateLevelOptions();
-		levelSelect.addEventListener("change", () => {
-			this.headingLevel = Number(levelSelect.value);
-			this.rememberView();
-			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
-		});
-
-		const layoutWrap = bar.createDiv({ cls: "section-cards-control" });
-		layoutWrap.setAttr("aria-label", "Card layout (L cycles)");
-		layoutWrap.createSpan({ text: "Layout", cls: "section-cards-label" });
-		const layoutSelect = layoutWrap.createEl("select", { cls: "dropdown" });
-		layoutSelect.setAttr("aria-label", "Card layout (L cycles)");
-		for (const [value, label, hint] of LAYOUT_OPTIONS) {
-			const option = layoutSelect.createEl("option", { text: label, value });
-			option.title = hint;
-		}
-		layoutSelect.value = this.layout;
-		layoutSelect.addEventListener("change", () => {
-			this.layout = layoutSelect.value as Layout;
-			this.rememberView();
-			this.applyLayoutClass();
-			syncHierBtn();
-			syncSectionsBtn();
-			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
-		});
-
-		const sortWrap = bar.createDiv({ cls: "section-cards-control" });
-		sortWrap.setAttr("aria-label", "Order the cards are shown in");
-		sortWrap.createSpan({ text: "Sort", cls: "section-cards-label" });
-		const sortSelect = sortWrap.createEl("select", { cls: "dropdown" });
-		sortSelect.setAttr("aria-label", "Order the cards are shown in");
-		sortSelect.createEl("option", { text: "A → Z", value: "asc" });
-		sortSelect.createEl("option", { text: "Z → A", value: "desc" });
-		sortSelect.createEl("option", { text: "Document order", value: "doc" });
-		sortSelect.value = this.sortOrder;
-		sortSelect.addEventListener("change", () => {
-			this.sortOrder = sortSelect.value as SortOrder;
-			this.rememberView();
-			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
-		});
-
 		// Per-note: do this note's headings name dates? Governs the today highlight, the
 		// jump-to-today scroll, and the calendar button. Until first clicked it mirrors
 		// what the note's headings look like (refresh keeps it current).
-		const datesWrap = bar.createDiv({ cls: "section-cards-control" });
 		const datesLabel = datesWrap.createEl("label", { cls: "section-cards-dates-label" });
 		datesLabel.setAttr(
 			"aria-label",
@@ -3028,6 +2945,98 @@ export class SectionCardsView extends ItemView {
 		this.datesToggle = datesToggle;
 		datesToggle.addEventListener("change", () => {
 			void this.plugin.setContainsDates(this.filePath, datesToggle.checked, this.viewSettings());
+		});
+
+		// The second stretch of space: with one on each side, the date controls sit
+		// centered between the left and right clusters.
+		bar.createDiv({ cls: "section-cards-spacer" });
+
+		// View mode: a three-way toggle for how the wall is grouped by the headings
+		// above the card level — one flat wall, drill-down hierarchy columns, or a
+		// collapsible divider bar per heading. The grouped modes keep whatever layout
+		// the dropdown says; neither is available on the Custom Grid canvas.
+		const modeWrap = bar.createDiv({ cls: "section-cards-control" });
+		modeWrap.createSpan({ text: "View mode", cls: "section-cards-label" });
+		const modeSeg = modeWrap.createDiv({ cls: "section-cards-segmented" });
+		const modeButtons: [HTMLButtonElement, () => boolean][] = [];
+		const syncModeButtons = () => {
+			const onCanvas = this.layout === "custom";
+			for (const [btn, isOn] of modeButtons) {
+				btn.toggleClass("is-active", isOn());
+				btn.toggleAttribute("disabled", onCanvas);
+				if (onCanvas) btn.setAttr("aria-label", "View modes aren't available on the Custom Grid canvas");
+			}
+		};
+		const addModeBtn = (label: string, hint: string, isOn: () => boolean, apply: () => void) => {
+			const btn = modeSeg.createEl("button", { text: label });
+			btn.setAttr("aria-label", hint);
+			modeButtons.push([btn, isOn]);
+			btn.addEventListener("click", () => {
+				if (this.layout === "custom" || isOn()) return;
+				apply();
+				this.rememberView();
+				this.applyLayoutClass();
+				this.buildToolbar(); // the toggle reflects the state
+				void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+			});
+		};
+		addModeBtn("Default", "One flat wall of cards, ungrouped", () => !this.hierarchyActive() && !this.sectionsActive(), () => {
+			this.hierarchyOn = false;
+			this.sectionsOn = false;
+		});
+		addModeBtn(
+			"Hierarchy",
+			"Hierarchy columns: drill into the headings above the card level (H)",
+			() => this.hierarchyActive(),
+			() => {
+				this.hierarchyOn = true;
+				this.sectionsOn = false; // never both groupers at once
+			},
+		);
+		addModeBtn(
+			"Dividers",
+			"Dividers: group the cards under the heading above the card level (D)",
+			() => this.sectionsActive(),
+			() => {
+				this.sectionsOn = true;
+				this.hierarchyOn = false; // never both groupers at once
+			},
+		);
+		syncModeButtons();
+
+		// Tooltips sit on the wrapper as well as the control, so hovering the text
+		// label ("Layout", "Sort", …) shows them too, not just the dropdown.
+		const layoutWrap = bar.createDiv({ cls: "section-cards-control" });
+		layoutWrap.setAttr("aria-label", "Card layout (L cycles)");
+		layoutWrap.createSpan({ text: "Layout", cls: "section-cards-label" });
+		const layoutSelect = layoutWrap.createEl("select", { cls: "dropdown" });
+		layoutSelect.setAttr("aria-label", "Card layout (L cycles)");
+		for (const [value, label, hint] of LAYOUT_OPTIONS) {
+			const option = layoutSelect.createEl("option", { text: label, value });
+			option.title = hint;
+		}
+		layoutSelect.value = this.layout;
+		layoutSelect.addEventListener("change", () => {
+			this.layout = layoutSelect.value as Layout;
+			this.rememberView();
+			this.applyLayoutClass();
+			syncModeButtons();
+			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+		});
+
+		const sortWrap = bar.createDiv({ cls: "section-cards-control" });
+		sortWrap.setAttr("aria-label", "Order the cards are shown in");
+		sortWrap.createSpan({ text: "Sort", cls: "section-cards-label" });
+		const sortSelect = sortWrap.createEl("select", { cls: "dropdown" });
+		sortSelect.setAttr("aria-label", "Order the cards are shown in");
+		sortSelect.createEl("option", { text: "A → Z", value: "asc" });
+		sortSelect.createEl("option", { text: "Z → A", value: "desc" });
+		sortSelect.createEl("option", { text: "Document order", value: "doc" });
+		sortSelect.value = this.sortOrder;
+		sortSelect.addEventListener("change", () => {
+			this.sortOrder = sortSelect.value as SortOrder;
+			this.rememberView();
+			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 		});
 
 		const newBtn = bar.createEl("button", { cls: "section-cards-new-btn mod-cta", text: "+ New card" });
@@ -3081,7 +3090,7 @@ export class SectionCardsView extends ItemView {
 		const formatted = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
 		const entry = this.cardEntries.find((e) => isTodayTitle(e.holder.section.title, iso, formatted));
 		if (!entry) {
-			new Notice(`No card for ${iso} in this note.`);
+			new CreateDateCardModal(this.app, formatted, () => this.createDateCard(iso)).open();
 			return;
 		}
 		const title = entry.holder.section.title || "(untitled)";
@@ -3100,6 +3109,22 @@ export class SectionCardsView extends ItemView {
 		entry.el.scrollIntoView({ block: "center", inline: "center" });
 		entry.el.addClass("is-linked");
 		window.setTimeout(() => entry.el.removeClass("is-linked"), 1600);
+	}
+
+	/** Jump-to-date landed on a date with no card: write one (template applied, default
+	 * placement), then jump again so the new card scrolls into view and flashes. */
+	private async createDateCard(iso: string): Promise<void> {
+		const file = this.getFile();
+		if (!file) {
+			new Notice(`Single File Section Cards: can't find "${this.filePath}".`);
+			return;
+		}
+		const title = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
+		const headingRaw = `${"#".repeat(this.headingLevel)} ${title}`;
+		const body = await this.plugin.loadTemplateBody(file.path, title);
+		await insertSection(this.app, file, headingRaw, this.plugin.settings.newCardPlacement, body ?? undefined);
+		await this.refresh();
+		this.jumpToDate(iso);
 	}
 
 	/** The new-card options menu: this note's template, and its own heading-name format. */
@@ -3350,13 +3375,13 @@ export class SectionCardsView extends ItemView {
 		const pinnedCount = pinnedKeys.size ? ordered.filter((s) => pinnedKeys.has(s.headingRaw)).length : 0;
 		// Sticky pins render in their own band between toolbar and grid. pinnedShown
 		// tracks only pins leading the grid itself — the divider and Grid Aligned's
-		// row math key off it, and neither applies to the band.
+		// row math key off it, and neither applies to the band. With hierarchy on,
+		// the band sits above the columns+cards row, so pins survive branch changes.
 		const stickyPinned =
 			this.plugin.settings.stickyPinned &&
 			pinnedCount > 0 &&
 			pinnedCount < ordered.length &&
-			this.layout !== "custom" &&
-			!this.hierarchyActive();
+			this.layout !== "custom";
 		this.pinnedShown = stickyPinned ? 0 : pinnedCount;
 
 		// Section dividers: after the pinned prefix, regroup the cards under their nearest
@@ -3638,6 +3663,15 @@ export class SectionCardsView extends ItemView {
 		header.addClass(titleClick === "maximize" ? "is-click-big" : "is-click-edit");
 		header.createDiv({ cls: "section-card-title", text: section.title || "(untitled)" });
 
+		// The pin sits in the title bar's right corner, always visible as a bare glyph:
+		// dim when unpinned, full-strength accent when pinned. (applyPinState below sets
+		// the icon and label; the other actions stay in the hover strip.)
+		const pinBtn = header.createEl("button", { cls: "section-card-pin" });
+		pinBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			void this.plugin.togglePin(file.path, holder.section.headingRaw, this.viewSettings());
+		});
+
 		// On the canvas, dragging the title bar repositions the card (buttons excluded).
 		header.addEventListener("pointerdown", (evt) => {
 			if (this.layout !== "custom" || !card.hasClass("is-placed")) return;
@@ -3734,12 +3768,6 @@ export class SectionCardsView extends ItemView {
 			void this.plugin.revealSection(file, holder.section.headingLine);
 		});
 
-		// Last, so a pinned card's always-visible pin sits at the header's right edge.
-		const pinBtn = actions.createEl("button", { cls: "section-card-pin" });
-		pinBtn.addEventListener("click", (evt) => {
-			evt.stopPropagation();
-			void this.plugin.togglePin(file.path, holder.section.headingRaw, this.viewSettings());
-		});
 		this.applyPinState(card, this.plugin.getPinned(file.path).includes(section.headingRaw));
 
 		// markdown-rendered lets Obsidian's own reading-view CSS style lists, tasks, tags, etc.
@@ -5119,6 +5147,41 @@ class ConfirmClearModal extends Modal {
 	}
 }
 
+/** Jump-to-date found no card for the picked date: offer to create one (Yes / No). */
+class CreateDateCardModal extends Modal {
+	private readonly title: string;
+	private readonly onCreate: () => void | Promise<void>;
+
+	constructor(app: App, title: string, onCreate: () => void | Promise<void>) {
+		super(app);
+		this.title = title;
+		this.onCreate = onCreate;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "No card for that date" });
+		contentEl.createEl("p", { text: `This note has no “${this.title}” card. Create it?` });
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("No").onClick(() => this.close()))
+			.addButton((b) => {
+				b.setButtonText("Yes")
+					.setCta()
+					.onClick(() => {
+						this.close();
+						void this.onCreate();
+					});
+				// Enter creates the card, Esc cancels.
+				b.buttonEl.focus();
+			});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
 class DuplicateCardModal extends Modal {
 	private readonly title: string;
 	private readonly onEdit: () => void | Promise<void>;
@@ -5446,6 +5509,30 @@ class SectionCardsSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						name: "Card text size",
+						desc: "Scale the text on cards — titles, bodies, and card editors — relative to your theme's sizes.",
+						control: {
+							type: "slider",
+							key: "fontScale",
+							min: 70,
+							max: 150,
+							step: 5,
+							displayFormat: (value: number) => `${value}%`,
+						},
+					},
+					{
+						name: "Divider text size",
+						desc: "Scale only the text on the divider bars (View mode → Dividers), independent of the card text size.",
+						control: {
+							type: "slider",
+							key: "dividerFontScale",
+							min: 70,
+							max: 200,
+							step: 5,
+							displayFormat: (value: number) => `${value}%`,
+						},
+					},
+					{
 						name: "Jump to today's card",
 						desc: "When a note opens in the cards view, scroll to the card whose heading is today's date. Needs the note's Dates checkbox (in the toolbar) to be on.",
 						control: { type: "toggle", key: "jumpToToday" },
@@ -5619,6 +5706,7 @@ class SectionCardsSettingTab extends PluginSettingTab {
 		}
 		await super.setControlValue(key, value);
 		if (key === "strikeNestedUnderDone") this.plugin.applyBodyClasses();
+		if (key === "fontScale" || key === "dividerFontScale") this.plugin.applyFontScale();
 		if (
 			key === "titleBarClick" ||
 			key === "stickyPinned" ||
@@ -5755,6 +5843,7 @@ export default class SectionCardsPlugin extends Plugin {
 		this.addSettingTab(new SectionCardsSettingTab(this.app, this));
 		this.applyBodyClasses();
 		this.applyPaletteCss();
+		this.applyFontScale();
 	}
 
 	onunload(): void {
@@ -5763,6 +5852,8 @@ export default class SectionCardsPlugin extends Plugin {
 			document.body.style.removeProperty(`--sfsc-color-${name}`);
 			document.body.style.removeProperty(`--sfsc-color-${name}-fg`);
 		}
+		document.body.style.removeProperty("--sfsc-font-scale");
+		document.body.style.removeProperty("--sfsc-divider-font-scale");
 	}
 
 	/** Global styling switches live as body classes so every cards view picks them up. */
@@ -5813,6 +5904,17 @@ export default class SectionCardsPlugin extends Plugin {
 			// Solid-color title bars flip their text black or white to stay readable.
 			document.body.style.setProperty(`--sfsc-color-${name}-fg`, contrastForeground(hex));
 		});
+	}
+
+	/** Card and divider text sizes multiply by these body-level variables, so the
+	 * sliders resize every open view — cards, editors, divider bars — without a refresh. */
+	applyFontScale(): void {
+		const toScale = (percent: number) => (Number.isFinite(percent) && percent > 0 ? percent / 100 : 1);
+		document.body.style.setProperty("--sfsc-font-scale", String(toScale(this.settings.fontScale)));
+		document.body.style.setProperty(
+			"--sfsc-divider-font-scale",
+			String(toScale(this.settings.dividerFontScale)),
+		);
 	}
 
 	/**

@@ -33,6 +33,8 @@ keeping an eye on, both parked in [[Project Notes]] for now.
 	- [x] receipts scanned ✅ 2026-08-03
 - [ ] confirm travel dates for the September trip #travel
 
+## July 2026
+
 ### 2026-07-31, Friday
 - [x] month-end checklist ✅ 2026-07-31
 - [x] archive last quarter's notes ✅ 2026-07-31
@@ -94,8 +96,6 @@ ten minutes; the projector reservation below is me learning from history.
 ### 2026-07-20, Monday
 - [x] catch up on email ✅ 2026-07-20
 - [x] set the week's three priorities ✅ 2026-07-20
-
-## July 2026
 
 ### 2026-07-17, Friday
 - [x] wrap up the reporting tool migration ✅ 2026-07-17
