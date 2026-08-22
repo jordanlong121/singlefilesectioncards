@@ -1581,9 +1581,12 @@ body.is-mobile .section-cards-hier-col {
 	z-index: 1;
 }
 
-/* Colored cards wash the strip in their own color, kept translucent. */
+/* Colored cards paint the strip at full strength, like the title bar: the buttons
+   inherit the header's contrast foreground (--sfsc-fg), which is computed against
+   the solid color — a translucent wash lightened in light mode until white icons
+   disappeared into it. */
 .section-card[data-sfsc-color]:not(.is-today) .section-card-actions {
-	background: rgba(var(--sfsc-c), 0.75);
+	background: rgb(var(--sfsc-c));
 }
 
 /* Half-height controls: the strip stays well under the title bar's height.
