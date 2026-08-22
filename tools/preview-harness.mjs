@@ -13,7 +13,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { parseCards, sortSections, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount } from "../test/.tmp/main.js";
+import { parseCards, sortSections, parseAncestorHeadings, hierarchyColumnItems, groupByAncestor, HIER_GAP_KEY, openTaskCount } from "../test/.tmp/main.js";
 
 const OUT_DIR = process.argv[2] ?? "harness-out";
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -105,16 +105,30 @@ const DECK_ICON = `<svg viewBox="0 0 100 100" class="svg-icon" width="16" height
 const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid" };
 const SORT_LABELS = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 
-function toolbarHtml(layout, hier = false) {
+const CAL_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-calendar-days"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`;
+const TEMPLATE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-layout-template"><rect width="18" height="7" x="3" y="3" rx="1"/><rect width="9" height="7" x="3" y="14" rx="1"/><rect width="5" height="7" x="16" y="14" rx="1"/></svg>`;
+
+/** Mirrors buildToolbar: Heading+Filter on the left, date controls mid-bar, then the
+ * View mode toggle, Layout/Sort, and the action buttons on the right.
+ * mode: "default" | "hier" | "sections" — which View mode segment is active. */
+function toolbarHtml(layout, mode = "default") {
+	const seg = (label, key) =>
+		`<button${mode === key ? ' class="is-active"' : ""}${layout === "custom" ? " disabled" : ""}>${label}</button>`;
 	return `<div class="section-cards-toolbar">
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
-	<div class="section-cards-spacer"><span class="section-cards-count">${sections.length} sections · H${LEVEL}</span></div>
-	<div class="section-cards-control section-cards-filter"><input type="text" class="section-cards-filter-input" placeholder="Filter…" spellcheck="false"><button class="section-cards-filter-clear"></button></div>
-	<div class="section-cards-control"><button class="section-cards-icon-btn section-cards-hier-btn${hier ? " is-active" : ""}"${layout === "custom" ? " disabled" : ""}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-list-tree"><path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/></svg></button></div>
 	<div class="section-cards-control"><span class="section-cards-label">Heading</span><select class="dropdown"><option>H${LEVEL}</option></select></div>
+	<div class="section-cards-control section-cards-filter"><input type="text" class="section-cards-filter-input" placeholder="Filter…" spellcheck="false"><button class="section-cards-filter-clear"></button></div>
+	<div class="section-cards-spacer"><span class="section-cards-count">${sections.length} sections · H${LEVEL}</span></div>
+	<div class="section-cards-control">
+		<div class="section-cards-jump-date"><button class="section-cards-icon-btn section-cards-jump-btn">${CAL_ICON}</button></div>
+		<label class="section-cards-dates-label"><input type="checkbox" class="section-cards-dates-toggle" checked><span class="section-cards-label">Dates</span></label>
+	</div>
+	<div class="section-cards-spacer"></div>
+	<div class="section-cards-control"><span class="section-cards-label">View mode</span><div class="section-cards-segmented">${seg("Default", "default")}${seg("Hierarchy", "hier")}${seg("Dividers", "sections")}</div></div>
 	<div class="section-cards-control"><span class="section-cards-label">Layout</span><select class="dropdown"><option>${LAYOUT_LABELS[layout]}</option></select></div>
 	<div class="section-cards-control"><span class="section-cards-label">Sort</span><select class="dropdown"><option>${SORT_LABELS[SORT]}</option></select></div>
 	<button class="section-cards-new-btn mod-cta">+ New card</button>
+	<button class="section-cards-icon-btn section-cards-template-btn">${TEMPLATE_ICON}</button>
 	<button class="section-cards-icon-btn">↻</button>
 </div>`;
 }
@@ -130,7 +144,10 @@ const PLACEMENTS = process.env.PLACEMENTS
 			{ x: 480, y: 288, w: 312, h: 240 },
 		];
 
-function gridHtml(layout, hier = false) {
+const CHEVRON_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-chevron-down"><path d="m6 9 6 6 6-6"/></svg>`;
+
+function gridHtml(layout, mode = "default") {
+	const hier = mode === "hier";
 	if (layout === "custom") {
 		const placedCards = sections.slice(0, PLACEMENTS.length).map((s, i) => cardHtml(s, { placed: PLACEMENTS[i] }));
 		const hidden = sections.slice(PLACEMENTS.length).map((s) => cardHtml(s));
@@ -206,6 +223,24 @@ ${sections
 <div class="section-cards-tray"></div>`;
 	}
 	const maxHeight = layout === "vertical" ? null : layout === "tight" ? 190 : 320;
+	if (mode === "sections") {
+		// Replays insertSectionBars: cards regroup under their nearest ancestor heading,
+		// each group led by a collapsible divider bar (chevron, title, rule, count).
+		const heads = parseAncestorHeadings(note.split(/\r?\n/), LEVEL);
+		const grouped = groupByAncestor(sections, heads);
+		const parts = grouped.map((g) => {
+			const bar =
+				g.key === ""
+					? ""
+					: `<div class="section-cards-section-bar"><span class="section-cards-section-chevron">${CHEVRON_ICON}</span><span class="section-cards-section-title">${esc(g.title)}</span><span class="section-cards-section-count">${g.sections.length}</span></div>`;
+			return bar + "\n" + g.sections.map((s) => cardHtml(s, { maxHeight })).join("\n");
+		});
+		return `<div class="section-cards-pinned"></div>
+<div class="section-cards-grid">
+${parts.join("\n")}
+</div>
+<div class="section-cards-tray"></div>`;
+	}
 	return `<div class="section-cards-pinned"></div>
 <div class="section-cards-grid">
 ${sections.map((s) => cardHtml(s, { maxHeight })).join("\n")}
@@ -269,7 +304,9 @@ const PACK_SCRIPT = `<script>
 	const grid = document.querySelector(".section-cards-grid");
 	if (layout === "vertical" || layout === "custom") return;
 	const style = getComputedStyle(grid);
-	const cards = [...grid.children].filter((c) => c.classList.contains("section-card") && !c.classList.contains("is-hier-hidden"));
+	const cards = [...grid.children].filter((c) =>
+		(c.classList.contains("section-card") || c.classList.contains("section-cards-section-bar")) &&
+		!c.classList.contains("is-hier-hidden") && !c.classList.contains("is-section-hidden"));
 	const columns = style.gridTemplateColumns.split(" ").filter((t) => t.trim()).length;
 	if (layout === "aligned") {
 		for (let i = columns; i < cards.length; i += columns) {
@@ -288,7 +325,7 @@ const PACK_SCRIPT = `<script>
 })();
 </script>`;
 
-function pageHtml(layout, { withMenu = false, hier = false } = {}) {
+function pageHtml(layout, { withMenu = false, mode = "default" } = {}) {
 	return `<!doctype html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="app.css">
@@ -321,9 +358,9 @@ html, body { height: 100%; margin: 0; }
 </div>
 <div class="workspace-tab-container">
 <div class="workspace-leaf mod-active"><div class="workspace-leaf-content" data-type="section-cards-view">
-<div class="view-content section-cards-view is-layout-${layout}${hier ? " is-hier-on" : ""}">
-${toolbarHtml(layout, hier)}
-${gridHtml(layout, hier)}
+<div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}">
+${toolbarHtml(layout, mode)}
+${gridHtml(layout, mode)}
 </div>
 </div></div></div></div></div></div></div></div>
 ${withMenu ? menuHtml() : ""}
@@ -338,8 +375,9 @@ if (!fs.existsSync(path.join(OUT_DIR, "theme.css"))) fs.writeFileSync(path.join(
 for (const layout of Object.keys(LAYOUT_LABELS)) {
 	fs.writeFileSync(path.join(OUT_DIR, `${layout}.html`), pageHtml(layout));
 }
-// The hierarchy toggle, staged on the Grid layout (HIER_LAYOUT overrides).
+// The two grouping view modes, staged on the Grid layout (HIER_LAYOUT overrides).
 const hierLayout = process.env.HIER_LAYOUT ?? "grid";
-fs.writeFileSync(path.join(OUT_DIR, "hierarchy.html"), pageHtml(hierLayout, { hier: true }));
+fs.writeFileSync(path.join(OUT_DIR, "hierarchy.html"), pageHtml(hierLayout, { mode: "hier" }));
+fs.writeFileSync(path.join(OUT_DIR, "dividers.html"), pageHtml(hierLayout, { mode: "sections" }));
 fs.writeFileSync(path.join(OUT_DIR, "context-menu.html"), pageHtml("grid", { withMenu: true }));
-console.log("wrote", Object.keys(LAYOUT_LABELS).length + 2, "pages to", OUT_DIR, "with", sections.length, "cards");
+console.log("wrote", Object.keys(LAYOUT_LABELS).length + 3, "pages to", OUT_DIR, "with", sections.length, "cards");

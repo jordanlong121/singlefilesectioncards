@@ -1,38 +1,31 @@
 # Single File Section Cards
 
 An [Obsidian](https://obsidian.md) plugin that shows the sections of **one** note as a wall of
-cards — one card per heading — and lets you edit any section in place, writing straight back to
-the source `.md` file. With the freeform **Custom Grid** canvas, it doubles as a home for ad hoc
-dashboards, sticky notes, task management, and brainstorming — all stored as plain markdown in a
-single note.
+cards — one card per heading — and lets you edit any section in place. With the freeform **Custom Grid** canvas, it doubles as a home for ad hoc
+dashboards, sticky notes, task management, and brainstorming.
 
 While this is a standalone plugin that works on any note, it pairs nicely with
-[Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes).
-That plugin keeps all your daily notes in a single file, one `### YYYY-MM-DD` heading per
-day. This plugin turns those headings into a card wall you can scan, sort, and tick off.
+[Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes) as well as
+[Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks).
 
 **[Install it from the Obsidian community plugin directory →](https://community.obsidian.md/plugins/single-file-section-cards)**
 · [Release notes](https://github.com/jordanlong121/singlefilesectioncards/releases)
 
 ## What it does
 
-- **One card per heading.** Pick which level becomes a card (H1–H6); deeper headings stay nested
-  inside their parent card. Multiple layouts, sort orders, and per-card colors.
+- **One card per heading.** Pick which level becomes a card (H1–H6);  Multiple layouts, sort orders, and per-card colors.
 - **Work directly on the cards.** Click a card to edit its markdown, tick task checkboxes (with
-  optional `✅` done dates), quick-add a line with the `+` button, create a new card pre-filled
-  with today's date, or delete one. Pinned cards stay at the top — on screen by default.
-- **Drag and drop.** Reorder cards, or drag a task or paragraph onto another card (sub-items come
-  along) — or right-click a line for a menu: move, mark done, or delete.
+  optional `✅` done dates), quick-add text or delete it. Pinned cards stay at the top.
+- **Drag and drop.** Reorder cards, or drag a task or paragraph onto another card. 
 - **Plays with the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin.**
   Ticking a checkbox uses its toggle (recurring tasks recur), and the right-click menu gains its
   create/edit dialogs.
-- **Templates and dates.** New cards can start from a template note (`{{title}}`, `{{date}}`,
-  `{{time}}`); when headings are dates, a calendar button jumps to any date's card.
+- **Templates and dates.** New cards can start from a template note.
 - **Navigate as cards.** Wikilinks open the linked note's card wall, ↗ opens the section in a
-  normal editor, and a card can be maximized over the others.
+  normal editor.
 - **Keyboard shortcuts.** With a cards view focused and no editor open: `1`–`6` switch the
-  heading level, `L` cycles layouts, `H` shows/hides the hierarchy columns, `S` shows/hides the
-  section dividers, `N` creates a new card, and `Ctrl/⌘+F` jumps to the filter box.
+  heading level, `L` cycles layouts, `H` shows/hides the hierarchy columns, `D` shows/hides the
+  dividers, `N` creates a new card, and `Ctrl/⌘+F` jumps to the filter box.
 - **Writes are surgical.** Only the touched section's lines change, and every write re-locates
   its section by content first, so a stale card refuses rather than touching the wrong lines.
 
@@ -40,18 +33,15 @@ day. This plugin turns those headings into a card wall you can scan, sort, and t
 
 ### Vertical
 
-Full-height cards side by side. The row scrolls sideways, and the mouse wheel pans it from anywhere
-in the view — over the cards or over the toolbar. A card whose content overflows keeps the wheel
-until it reaches its end.
+Full-height cards side by side. 
 
 ![Vertical](screenshots/vertical.png)
 
 ### Custom Grid
 
 A freeform canvas. Drag sections from the tray on the right onto the dot grid, then place, move,
-and resize them however you like — cards snap to the grid and never overlap; the ✕ (or a drag back
-onto the tray) returns one to the list. Zoom runs 40–160%, middle-click drag pans, and placements
-are remembered per note in the plugin's data — never in your notes.
+and resize them however you like — cards snap to the grid; the ✕ (or a drag back
+onto the tray) returns one to the list. Layout is remembered per note in the plugin's data — never in your notes.
 
 ![Custom Grid](screenshots/custom.png)
 
@@ -70,8 +60,7 @@ A uniform grid — every row starts at the same height, with a rule between rows
 
 ### Tight
 
-The same masonry packing, denser: narrower columns, smaller gaps and type. Roughly half the scroll
-height of Grid on the same note.
+The same masonry packing, denser: narrower columns, smaller gaps and type. 
 
 ![Tight](screenshots/tight.png)
 
@@ -81,54 +70,43 @@ One card per row, full pane width.
 
 ![Horizontal](screenshots/horizontal.png)
 
-### Hierarchy columns
+### Hierarchy & Dividers
 
-A toolbar toggle (the tree button), not a layout: drill-down columns appear on the left — one per
-heading level above the card level — and the cards pane shows the selected branch in whichever
-layout is active (every layout except the Custom Grid canvas). At H3, click an H1 to list its H2s,
-click an H2 to see its cards. Each row shows a card count plus a square unfinished-task badge
-(toggleable in settings); jump-to-date and new-card creation drill to the right branch on their own.
+The toolbar's **View mode** toggle groups cards by the headings above the card level, in any
+layout except the Custom Grid canvas. **Hierarchy** adds drill-down columns on the left — click
+a heading to see its branch, with card and open-task counts per row. **Dividers** keeps one
+wall, split by a collapsible bar per ancestor heading; the count at the bar's right end shows
+the group's size.
 
 ![Hierarchy](screenshots/hierarchy.png)
 
-### Section dividers
-
-Also a toolbar toggle (the divider button, next to the tree): horizontal bars split the card wall
-into groups, one bar per heading above the card level — an H1 bar over H2 cards, and so on, with
-the nearest ancestor dividing when levels are skipped. Click a bar to collapse or expand its group;
-the count on the bar shows what's folded away. Works with every layout except the Custom Grid
-canvas, and is mutually exclusive with the hierarchy columns (both group by the same headings, so
-switching one on switches the other off).
+![Dividers](screenshots/dividers.png)
 
 ## Brainstorming with cards
 
 A single note makes a whole brainstorm: one `###` heading per theme, and the wall becomes your
-sticky notes (`sample-vault/Brainstorm.md` is this example). Dump ideas as cards in Grid —
-quick-add drops thoughts onto a card without opening an editor, and the filter pulls up "the
-card with the satellite thing" instantly:
+sticky notes (`sample-vault/Brainstorm.md` is this example). 
 
 ![Brainstorming in Grid](screenshots/brainstorm-grid.png)
 
 Then switch to Custom Grid and arrange: cluster related themes, size cards by importance, and
-leave the "later" cards in the list on the right. Drag tasks between cards as ideas graduate
-from *Wild ideas* to *Feature ideas* — everything stays plain markdown in the one note:
+leave the "later" cards in the list on the right. Drag tasks between cards.
 
 ![Brainstorming on the Custom Grid canvas](screenshots/brainstorm-custom.png)
 
 ## The right-click menu
 
-Right-click a task or paragraph on a card (long-press on mobile) for a menu that works that
-line without dragging or opening the editor:
+Right-click a task or paragraph on a card (long-press on mobile) for a menu.
 
 ![The right-click menu on a task, with the Tasks plugin installed](screenshots/context-menu.png)
 
 - **Move line to previous / next card** — sends the block to the neighbouring card in the
-  current sort order, exactly like dragging it there; a task brings its indented sub-items
-  along.
+  current sort order
 - **Mark done / Mark undone** — ticks or unticks the task where it sits.
-- **Delete line** — removes the block (and a task's sub-items) from the section.
+- **Delete line** — removes the block (and sub-items) from the section.
 
-The two **(Tasks)…** entries appear when the Tasks plugin is installed — see below.
+The two **(Tasks)…** entries appear when the
+[Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin is installed — see below.
 
 ## Working with the Tasks plugin
 
@@ -156,26 +134,18 @@ tasks" setting.
 
 Every card's title bar has a pin button (click again to unpin). Pinning pulls the card into a
 pinned section at the top of the wall regardless of sort order, remembered per note across
-layouts, views, and restarts. With **Keep pinned cards on screen** (on by default), that section
-sticks below the toolbar while the rest scrolls — beside the row in Vertical; not applied on the
-Custom Grid canvas. Pins are keyed to the heading line, so renaming a section unpins it.
+layouts, views, and restarts.
 
 ## Card colors
 
 Every card's title bar has a palette button offering nine colors, which tint the card's border and
-title bar in every layout. Colors are remembered per note in the plugin's data — never in your
-notes — and are keyed to the heading line, so renaming a section clears its color. The nine slots
-are configurable under **Settings → Card colors**: change any color or label, or swap in a preset
-palette (Catppuccin Mocha, Nord, Solarized, Gruvbox, Dracula, Pastel); cards keep their slot.
+title bar in every layout. Colors are remembered per note in the plugin's data.
 
 ## New-card options, per note
 
 The toolbar button beside **+ New card** holds the open note's new-card options: a template
 note, and the note's own heading-name format.
 
-**Heading name.** "Set heading name for this note…" gives the note its own moment date format
-for pre-filling new cards (and for recognising date headings), overriding the global "Default
-heading name" setting. Leave the prompt empty to go back to the default.
 
 ## Templates
 
@@ -236,8 +206,9 @@ and your choice is remembered for that note.
 ## Jump to a date
 
 When a note's **Dates** checkbox is on and the note actually has date headings, a calendar
-button appears beside the filter box. Pick a date and the view scrolls to that date's card and
-flashes it — the same nudge a wikilink arrival gets.
+button appears beside the Dates checkbox. Pick a date and the view scrolls to that date's card and
+flashes it — the same nudge a wikilink arrival gets. If no card exists for the picked date, a
+prompt offers to create it (template applied, default placement).
 
 ## Usage
 
@@ -267,7 +238,7 @@ flashes it — the same nudge a wikilink arrival gets.
 | Clicking a card's title bar | Makes the card big (default), or edits the raw markdown |
 | Autosave open card editors | Write an open editor's content to the note every few minutes, and when the view closes, so an edit left open isn't lost (on by default) |
 | Autosave interval | Minutes between autosaves while a card editor is open (default 5) |
-| Toggle tasks with the Tasks plugin | Route checkbox ticks through the Tasks plugin when it's installed (recurrence, its done dates) |
+| Toggle tasks with the Tasks plugin | Route checkbox ticks through the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin when it's installed (recurrence, its done dates) |
 | Completion date on tasks | Append `✅ YYYY-MM-DD` when a task is ticked |
 | Cross out nested items | Whether ticking a task also strikes through the items nested beneath it |
 | Card height | Maximum card height before the body scrolls |
@@ -287,11 +258,7 @@ To track releases straight from this repository — useful for trying fixes befo
 directory — add `jordanlong121/singlefilesectioncards` as a beta plugin in
 [BRAT](https://github.com/TfTHacker/obsidian42-brat).
 
-### Manually
 
-1. Download `main.js`, `manifest.json` and `styles.css` from the latest release (or build them, below).
-2. Put them in `<vault>/.obsidian/plugins/single-file-section-cards/`.
-3. Reload Obsidian, then enable **Single File Section Cards** in Settings → Community plugins.
 
 ## Sample vault
 
@@ -320,6 +287,10 @@ I don't know, that's why I wrote it.
 
 **Do you need the [Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes) plugin for this to work?**
 No, but you should use it because it's cool.
+
+**Do you need the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin?**
+No — checkboxes, done dates, and the right-click menu all work without it. If it's installed,
+ticking goes through Tasks (so recurring tasks recur) and the menu gains its create/edit dialogs.
 
 ## License
 
