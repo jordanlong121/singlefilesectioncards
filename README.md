@@ -25,7 +25,8 @@ While this is a standalone plugin that works on any note, it pairs nicely with
   normal editor.
 - **Keyboard shortcuts.** With a cards view focused and no editor open: `1`–`6` switch the
   heading level, `L` cycles layouts, `H` shows/hides the hierarchy columns, `D` shows/hides the
-  dividers, `N` creates a new card, and `Ctrl/⌘+F` jumps to the filter box.
+  dividers, `,`/`.` step through the hierarchy columns' headings or jump between divider
+  sections, `N` creates a new card, and `Ctrl/⌘+F` jumps to the filter box.
 - **Writes are surgical.** Only the touched section's lines change, and every write re-locates
   its section by content first, so a stale card refuses rather than touching the wrong lines.
 
@@ -76,7 +77,8 @@ The toolbar's **View mode** toggle groups cards by the headings above the card l
 layout except the Custom Grid canvas. **Hierarchy** adds drill-down columns on the left — click
 a heading to see its branch, with card and open-task counts per row. **Dividers** keeps one
 wall, split by a collapsible bar per ancestor heading; the count at the bar's right end shows
-the group's size.
+the group's size. In either mode, `,` and `.` step to the previous/next heading — switching the
+selected column row in Hierarchy, scrolling the previous/next bar to the top in Dividers.
 
 ![Hierarchy](screenshots/hierarchy.png)
 

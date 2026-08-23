@@ -2137,6 +2137,22 @@ export class SectionCardsView extends ItemView {
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 			return false;
 		});
+		// , and .: with the hierarchy columns showing, step the deepest column's
+		// selection; with the dividers showing, jump to the previous/next bar.
+		const stepGrouping = (evt: KeyboardEvent, delta: number): boolean => {
+			if (!this.plainShortcutOk(evt)) return true;
+			if (this.hierarchyActive()) {
+				this.stepHierSelection(delta);
+				return false;
+			}
+			if (this.sectionsActive()) {
+				this.stepSectionDivider(delta);
+				return false;
+			}
+			return true;
+		};
+		this.scope.register([], ",", (evt) => stepGrouping(evt, -1));
+		this.scope.register([], ".", (evt) => stepGrouping(evt, 1));
 		// N: create a new card, same as the "+ New card" button.
 		this.scope.register([], "N", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
@@ -2782,6 +2798,60 @@ export class SectionCardsView extends ItemView {
 				this.layoutMasonry();
 			});
 		}
+	}
+
+	/** , and . keys: step the deepest hierarchy column's selection to the previous or
+	 * next heading, wrapping at the ends. Walks the columns the way rebuildHierarchy
+	 * does (skipped gap-only columns and all), so it steps the column the user sees. */
+	private stepHierSelection(delta: number): void {
+		const cardLines = this.cardEntries.map((e) => e.holder.section.headingLine);
+		let start = 0;
+		let end = this.hierLineCount;
+		let deepest: { idx: number; items: HierarchyItem[]; selected: number } | null = null;
+		for (let level = 1; level < this.headingLevel; level++) {
+			const idx = level - 1;
+			const items = hierarchyColumnItems(this.hierHeadings, level, start, end, cardLines);
+			if (!items.length) break;
+			if (items.length === 1 && items[0].key === HIER_GAP_KEY) continue;
+			const selected = Math.max(0, items.findIndex((it) => it.key === this.hierSelection[idx]));
+			deepest = { idx, items, selected };
+			start = items[selected].start;
+			end = items[selected].end;
+		}
+		if (!deepest || deepest.items.length < 2) return;
+		const next = (deepest.selected + delta + deepest.items.length) % deepest.items.length;
+		this.hierSelection[deepest.idx] = deepest.items[next].key;
+		this.rebuildHierarchy();
+		this.layoutMasonry();
+	}
+
+	/** , and . keys: scroll the previous/next divider bar to the top of the view —
+	 * just below the sticky toolbar and pinned band (the left edge in the sideways
+	 * Vertical layout). "Current" is the last bar at or above that landing line, so
+	 * repeated presses walk the bars one by one. */
+	private stepSectionDivider(delta: number): void {
+		const bars = this.sectionBars.map((b) => b.el).filter((el) => !el.hasClass("is-hidden"));
+		if (!bars.length) return;
+		const sideways = this.layout === "vertical";
+		let reference: number;
+		if (sideways) {
+			reference = this.gridEl.getBoundingClientRect().left;
+		} else {
+			const toolbar = this.toolbarEl?.getBoundingClientRect().bottom ?? this.contentEl.getBoundingClientRect().top;
+			const band = this.pinnedEl?.hasChildNodes() ? this.pinnedEl.getBoundingClientRect().bottom : 0;
+			reference = Math.max(toolbar, band);
+		}
+		const pos = (el: HTMLElement) => {
+			const r = el.getBoundingClientRect();
+			return sideways ? r.left : r.top;
+		};
+		let current = -1;
+		for (let i = 0; i < bars.length; i++) if (pos(bars[i]) <= reference + 8) current = i;
+		const target = Math.max(0, Math.min(bars.length - 1, current + delta));
+		if (target === current) return;
+		const offset = pos(bars[target]) - reference;
+		if (sideways) this.gridEl.scrollLeft += offset;
+		else this.contentEl.scrollTop += offset;
 	}
 
 	/** Hierarchy: select the ancestor path containing this line, so its card is visible. */
@@ -5427,12 +5497,17 @@ class SectionCardsSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	/** Scopes the tab for CSS: the rows render tighter than Obsidian's default spacing. */
+	display(): void {
+		this.containerEl.addClass("sfsc-settings");
+		super.display();
+	}
+
 	/** Declarative settings (Obsidian 1.13+), so every setting is findable in settings search. */
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		return [
 			{
 				name: "Default note",
-				desc: "Note opened by the ribbon icon and command.",
 				control: {
 					type: "file",
 					key: "filePath",
@@ -5442,7 +5517,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			},
 			{
 				name: "Reopen remembered notes as cards",
-				desc: "A note you've viewed as cards before opens in the cards view instead of the editor. A card's ↗ button still reaches the editor.",
 				control: { type: "toggle", key: "autoOpenCards" },
 			},
 			{
@@ -5451,7 +5525,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				items: [
 					{
 						name: "Heading level",
-						desc: "Which heading rank becomes a card.",
 						control: {
 							type: "dropdown",
 							key: "headingLevel",
@@ -5460,7 +5533,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 					},
 					{
 						name: "Only list heading levels the note contains",
-						desc: "The toolbar's Heading dropdown offers just the levels found in the open note, updating after edits. Turn off to always list H1–H6.",
 						control: { type: "toggle", key: "dynamicLevelOptions" },
 					},
 					{
@@ -5481,7 +5553,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				items: [
 					{
 						name: "Default layout",
-						desc: "Grid and Tight are masonry columns; Horizontal is full-width rows; Vertical is full-height cards that scroll sideways.",
 						control: {
 							type: "dropdown",
 							key: "layout",
@@ -5550,7 +5621,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				items: [
 					{
 						name: "Palette preset",
-						desc: "Replace all nine colors and labels with a ready-made palette. Cards keep their slot, so a card colored with the first swatch wears each palette's first color.",
 						render: (setting: Setting) => this.renderPresetRow(setting),
 					},
 					...CARD_COLORS.map(
@@ -5567,7 +5637,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				items: [
 					{
 						name: "Clicking a card's title bar",
-						desc: "The card body always opens the editor; this is just the title bar.",
 						control: {
 							type: "dropdown",
 							key: "titleBarClick",
@@ -5576,7 +5645,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 					},
 					{
 						name: "Card editor",
-						desc: "Live preview renders formatting as you type; source mode shows the markdown with syntax highlighting. Both use Obsidian's editor and fall back to the plain text box if it is unavailable.",
 						control: {
 							type: "dropdown",
 							key: "editorMode",
@@ -5623,7 +5691,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 					},
 					{
 						name: "Show open-task counts in Hierarchy columns",
-						desc: "Each row in the Hierarchy layout's drill-down columns gets a square badge counting the unfinished tasks beneath it, next to the section count.",
 						control: { type: "toggle", key: "hierTaskCounts" },
 					},
 				],
@@ -5639,7 +5706,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 					},
 					{
 						name: "Default placement",
-						desc: "Logical order follows the direction the file's sections already run.",
 						control: {
 							type: "dropdown",
 							key: "newCardPlacement",

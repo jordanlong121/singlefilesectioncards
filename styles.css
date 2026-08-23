@@ -2057,6 +2057,12 @@ body.is-phone .section-cards-label {
    padding makes them a tall wall of whitespace, so tighten it. The settings tab
    wraps items in .setting-group, whose own `.setting-group .setting-item` rule
    out-ranks a bare class — hence the compound selector. */
+/* Tighter rows in this plugin's settings tab than Obsidian's default spacing. */
+.sfsc-settings .setting-item {
+	padding-top: 0.4em;
+	padding-bottom: 0.4em;
+}
+
 .setting-group .setting-item.sfsc-color-row,
 .setting-item.sfsc-color-row {
 	padding-top: 3px;
