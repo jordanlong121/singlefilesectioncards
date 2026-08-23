@@ -13,28 +13,28 @@ While this is a standalone plugin that works on any note, it pairs nicely with
 
 ## What it does
 
-- **One card per heading.** Pick which level becomes a card (H1–H6);  Multiple layouts, sort orders, and per-card colors.
+- **One card per heading.** Pick which level becomes a card (H1–H6). Multiple layouts, sort
+  orders, and per-card colors.
 - **Work directly on the cards.** Click a card to edit its markdown, tick task checkboxes (with
   optional `✅` done dates), quick-add text or delete it. Pinned cards stay at the top.
-- **Drag and drop.** Reorder cards, or drag a task or paragraph onto another card. 
+- **Drag and drop.** Reorder cards, or drag a task or paragraph onto another card.
 - **Plays with the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin.**
   Ticking a checkbox uses its toggle (recurring tasks recur), and the right-click menu gains its
   create/edit dialogs.
 - **Templates and dates.** New cards can start from a template note.
 - **Navigate as cards.** Wikilinks open the linked note's card wall, ↗ opens the section in a
   normal editor.
-- **Keyboard shortcuts.** With a cards view focused and no editor open: `1`–`6` switch the
-  heading level, `L` cycles layouts, `H` shows/hides the hierarchy columns, `D` shows/hides the
-  dividers, `,`/`.` step through the hierarchy columns' headings or jump between divider
-  sections, `N` creates a new card, and `Ctrl/⌘+F` jumps to the filter box.
-- **Writes are surgical.** Only the touched section's lines change, and every write re-locates
-  its section by content first, so a stale card refuses rather than touching the wrong lines.
+- **Keyboard shortcuts.** `1`–`6` heading level, `L` layouts, `H`/`D` hierarchy/dividers,
+  `,`/`.` previous/next heading, `N` new card, `Ctrl/⌘+F` filter — the toolbar's `?` button
+  lists them all.
+- **Writes are surgical.** Only the touched section's lines change, re-located by content
+  first, so a stale card refuses rather than touching the wrong lines.
 
 ## Layouts
 
 ### Vertical
 
-Full-height cards side by side. 
+Full-height cards side by side.
 
 ![Vertical](screenshots/vertical.png)
 
@@ -61,7 +61,7 @@ A uniform grid — every row starts at the same height, with a rule between rows
 
 ### Tight
 
-The same masonry packing, denser: narrower columns, smaller gaps and type. 
+The same masonry packing, denser: narrower columns, smaller gaps and type.
 
 ![Tight](screenshots/tight.png)
 
@@ -87,7 +87,7 @@ selected column row in Hierarchy, scrolling the previous/next bar to the top in 
 ## Brainstorming with cards
 
 A single note makes a whole brainstorm: one `###` heading per theme, and the wall becomes your
-sticky notes (`sample-vault/Brainstorm.md` is this example). 
+sticky notes (`sample-vault/Brainstorm.md` is this example).
 
 ![Brainstorming in Grid](screenshots/brainstorm-grid.png)
 
@@ -104,33 +104,26 @@ Right-click a task or paragraph on a card (long-press on mobile) for a menu.
 
 - **Move line to previous / next card** — sends the block to the neighbouring card in the
   current sort order
-- **Mark done / Mark undone** — ticks or unticks the task where it sits.
-- **Delete line** — removes the block (and sub-items) from the section.
-
-The two **(Tasks)…** entries appear when the
-[Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin is installed — see below.
+- **Move line to today** — on a dated note, sends the block to today's card, creating it first
+  if the note doesn't have one yet
+- **Mark done / Mark undone** — ticks or unticks the task where it sits
+- **Delete line** — removes the block (and sub-items) from the section
 
 ## Working with the Tasks plugin
 
-When the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin is installed
-and enabled, the cards view hands task handling over to it — there's nothing to configure, the
-integration switches on by itself:
+When [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) is installed and enabled,
+the integration switches on by itself:
 
-- **Ticking a checkbox goes through Tasks.** Any checkbox ticked on a card (or via **Mark
-  done**) is toggled with Tasks' own toggle, so its semantics apply: a recurring task spawns
-  its next occurrence, and done dates follow your Tasks settings. This is the "Toggle tasks
-  with the Tasks plugin" setting — on by default; turn it off to keep this plugin's simpler
-  built-in toggle.
-- **Edit task (Tasks)…** — on a task line, the right-click menu can open the task in Tasks'
-  edit dialog for due dates, recurrence, and priority. (Tasks only edits at an editor cursor,
-  so this jumps to the line in a normal editor and opens the dialog there.)
-- **New task below (Tasks)…** — opens Tasks' create dialog and inserts the finished task line
-  right below the clicked block. Right-clicking a card's empty space offers **New task
-  (Tasks)…**, which appends the new task to the bottom of that section instead.
+- **Ticking a checkbox goes through Tasks**, so recurring tasks spawn their next occurrence and
+  done dates follow your Tasks settings. (The "Toggle tasks with the Tasks plugin" setting, on
+  by default.)
+- **Edit task (Tasks)…** — the right-click menu opens a task in Tasks' edit dialog (via a
+  normal editor, since Tasks edits at a cursor).
+- **New task (below) (Tasks)…** — Tasks' create dialog, inserting the finished line below the
+  clicked block, or at the section's end from a card's empty space.
 
-Without Tasks installed, the menu simply omits those entries and checkboxes are toggled by this
-plugin itself — with the optional `✅ YYYY-MM-DD` completion date from the "Completion date on
-tasks" setting.
+Without Tasks, the menu omits those entries and this plugin's own toggle applies — with the
+optional `✅ YYYY-MM-DD` done date.
 
 ## Pinned cards
 
@@ -148,23 +141,13 @@ title bar in every layout. Colors are remembered per note in the plugin's data.
 The toolbar button beside **+ New card** holds the open note's new-card options: a template
 note, and the note's own heading-name format.
 
-
 ## Templates
 
 A template pre-fills the body of every new card, so a daily-notes file can start each day with
-the same skeleton instead of an empty section.
-
-**Set it up.** Open the note in the cards view, click the new-card options button beside
-**+ New card**, and "Choose template note…" — any markdown note in the vault works. The choice
-is one template per note, stored in the plugin's data (never in your notes), so your daily
-notes can use a daily skeleton while a project note uses a different one, or none. "Remove
-template" goes back to empty cards, and the button wears the accent color while a template
-is set.
-
-**What happens on + New card.** The template note's contents are read at that moment, its
-placeholders are filled in, and the result becomes the new section's body — inserted at your
-"Default placement" position with the new card opened for editing. If the template note has
-been deleted or renamed since you set it, you get a notice and an empty card instead.
+the same skeleton. Pick one via the new-card options button ("Choose template note…") — one
+template per note, stored in the plugin's data, never in your notes; the button wears the
+accent color while one is set. On **+ New card** the template is read, its placeholders filled
+in, and the new card opens for editing.
 
 **Placeholders.**
 
@@ -175,10 +158,8 @@ been deleted or renamed since you set it, you get a notice and an empty card ins
 | `{{time}}` / `{{time:FORMAT}}` | The current time |
 
 `FORMAT` is a [moment format string](https://momentjs.com/docs/#/displaying/format/), as in
-Obsidian's core Templates. Note that `{{date}}` follows the card, not the clock: it reads the
-date out of the new card's heading (an ISO date anywhere in it, or the note's heading-name
-format), so back-filling a card for last Tuesday writes last Tuesday's date. Only when the
-heading names no date does it fall back to today.
+Obsidian's core Templates. `{{date}}` follows the card, not the clock: back-filling a card for
+last Tuesday writes last Tuesday's date.
 
 **Example.** With this template note:
 
@@ -200,16 +181,13 @@ creating the card `2026-08-20, Thursday` produces:
 ## Dates, per note
 
 The toolbar's **Dates** checkbox says whether the open note's headings name dates. It governs
-the today-card highlight, the jump-to-today scroll, and the calendar button — per note, not
-globally. Until you click it, it decides from the note itself: on when any heading at the
-current level contains an ISO date or matches the "Default heading name" format. Click it once
-and your choice is remembered for that note.
+the today-card highlight, the jump-to-today scroll, and the calendar button — per note. Until
+clicked, it decides from the note itself; click it once and your choice is remembered.
 
 ## Jump to a date
 
-When a note's **Dates** checkbox is on and the note actually has date headings, a calendar
-button appears beside the Dates checkbox. Pick a date and the view scrolls to that date's card and
-flashes it — the same nudge a wikilink arrival gets. If no card exists for the picked date, a
+With **Dates** on and date headings present, a calendar button appears beside the checkbox.
+Pick a date and the view scrolls to that card and flashes it; if no card exists for the date, a
 prompt offers to create it (template applied, default placement).
 
 ## Usage
@@ -249,32 +227,19 @@ prompt offers to create it (template applied, default placement).
 
 ### From the community plugin directory (recommended)
 
-The plugin is listed in the
-[Obsidian community plugin directory](https://community.obsidian.md/plugins/single-file-section-cards):
-in Obsidian, open **Settings → Community plugins → Browse**, search for **Single File Section
-Cards**, install, and enable. Updates arrive through Obsidian's normal plugin updater.
+In Obsidian, open **Settings → Community plugins → Browse**, search for **Single File Section
+Cards**, install, and enable. Updates arrive through the normal plugin updater.
 
 ### With BRAT (pre-release versions)
 
-To track releases straight from this repository — useful for trying fixes before they reach the
-directory — add `jordanlong121/singlefilesectioncards` as a beta plugin in
-[BRAT](https://github.com/TfTHacker/obsidian42-brat).
-
-
+To track releases straight from this repository, add `jordanlong121/singlefilesectioncards` as
+a beta plugin in [BRAT](https://github.com/TfTHacker/obsidian42-brat).
 
 ## Sample vault
 
-`sample-vault/` is a small flat vault you can open in Obsidian to try the plugin:
-
-- `Daily Notes 2026.md` — a single-file daily notes file in the format Single File Daily Notes
-  produces (`## MMMM YYYY` months, `### YYYY-MM-DD, dddd` days), with generic schedule entries
-- `Project Notes.md`, `Meeting Minutes.md`, `Field Log.md`, `Handbook.md`, `Reading List.md` —
-  filler notes at different heading depths, for trying the H1–H6 selector
-- `Daily Template.md`, `Meeting Template.md` — template notes to try the new-card options menu:
-  point `Daily Notes 2026.md` at the first and `Meeting Minutes.md` at the second, then hit
-  **+ New card** and watch the `{{date}}`, `{{time}}` and `{{title}}` placeholders fill in
-
-The screenshots above were rendered from that vault with the default Obsidian theme.
+`sample-vault/` is a small vault to try the plugin (the screenshots above were rendered from
+it): `Daily Notes 2026.md` in the Single File Daily Notes format, filler notes at different
+heading depths for the H1–H6 selector, and two template notes for the new-card options menu.
 
 ## FAQ
 

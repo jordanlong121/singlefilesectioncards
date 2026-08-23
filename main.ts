@@ -1781,7 +1781,6 @@ export class SectionCardsView extends ItemView {
 
 	private toolbarEl!: HTMLElement;
 	private gridEl!: HTMLElement;
-	private countEl!: HTMLElement;
 	/** One entry per card in DOM order: element, its render scope, and its section. */
 	private cardEntries: CardEntry[] = [];
 	/** Bumped per render; in-flight async work from an older render aborts on mismatch. */
@@ -2375,12 +2374,11 @@ export class SectionCardsView extends ItemView {
 	/**
 	 * Hide cards that don't contain the filter text (case-insensitive, title + body);
 	 * an empty box shows everything. Hidden cards keep their DOM and rendered markdown,
-	 * so clearing the filter is instant. The count shows "shown of total" while active.
+	 * so clearing the filter is instant.
 	 */
 	private applyFilter(): void {
 		if (!this.cardEntries.length) return;
 		const q = this.filterQuery.trim().toLowerCase();
-		let shown = 0;
 		for (const entry of this.cardEntries) {
 			const section = entry.holder.section;
 			// Title + raw, lowercased once per section (the title is display-only on
@@ -2390,16 +2388,8 @@ export class SectionCardsView extends ItemView {
 				text = (section.title + "\n" + section.raw).toLowerCase();
 				this.searchTextCache.set(section, text);
 			}
-			const hit = !q || text.includes(q);
-			entry.el.toggleClass("is-filtered-out", !hit);
-			if (hit) shown++;
+			entry.el.toggleClass("is-filtered-out", !(!q || text.includes(q)));
 		}
-		const total = this.cardEntries.length;
-		this.countEl?.setText(
-			q
-				? `${shown} of ${total} · H${this.headingLevel}`
-				: `${total} ${total === 1 ? "section" : "sections"} · H${this.headingLevel}`,
-		);
 		// The sticky pinned band collapses when the filter hides everything in it.
 		// (Stamped here rather than with a CSS :has(), which lints as a perf hazard.)
 		if (this.pinnedEl) {
@@ -2957,8 +2947,7 @@ export class SectionCardsView extends ItemView {
 			filterInput.focus();
 		});
 
-		const spacer = bar.createDiv({ cls: "section-cards-spacer" });
-		this.countEl = spacer.createSpan({ cls: "section-cards-count" });
+		bar.createDiv({ cls: "section-cards-spacer" });
 
 		// The date controls sit mid-bar, between the note cluster on the left and the
 		// view controls on the right: jump-to-date and the per-note Dates checkbox
@@ -3000,13 +2989,13 @@ export class SectionCardsView extends ItemView {
 			"aria-label",
 			"This note's headings contain dates — highlight today's card and offer jump-to-date",
 		);
+		// The text is a .section-cards-label span so phones drop it like the other labels
+		// (the checkbox itself stays); the checkbox sits to the label's right.
+		datesLabel.createSpan({ cls: "section-cards-label", text: "Dates" });
 		const datesToggle = datesLabel.createEl("input", {
 			cls: "section-cards-dates-toggle",
 			attr: { type: "checkbox" },
 		});
-		// The text is a .section-cards-label span so phones drop it like the other labels
-		// (the checkbox itself stays).
-		datesLabel.createSpan({ cls: "section-cards-label", text: "Dates" });
 		datesToggle.setAttr(
 			"aria-label",
 			"This note's headings contain dates — highlight today's card and offer jump-to-date",
@@ -3122,6 +3111,10 @@ export class SectionCardsView extends ItemView {
 		const refreshBtn = bar.createEl("button", { cls: "section-cards-icon-btn", text: "↻" });
 		refreshBtn.setAttr("aria-label", "Reload from file");
 		refreshBtn.addEventListener("click", () => void this.refresh());
+
+		const helpBtn = bar.createEl("button", { cls: "section-cards-help-btn", text: "?" });
+		helpBtn.setAttr("aria-label", "Keyboard shortcuts");
+		helpBtn.addEventListener("click", () => new ShortcutsModal(this.app).open());
 	}
 
 	/**
@@ -3389,7 +3382,6 @@ export class SectionCardsView extends ItemView {
 		this.activeEditor = null;
 
 		if (!file) {
-			this.countEl?.setText("");
 			this.containsDates = false;
 			this.hasDateHeadings = false;
 			this.jumpDateWrap?.toggleClass("is-hidden", true);
@@ -3477,10 +3469,6 @@ export class SectionCardsView extends ItemView {
 			// Ancestor-less cards leading the wall read as a preamble — no divider.
 			if (this.sectionGroups[0]?.key === "") this.sectionGroups.shift();
 		}
-
-		this.countEl?.setText(
-			`${ordered.length} ${ordered.length === 1 ? "section" : "sections"} · H${this.headingLevel}`,
-		);
 
 		if (!ordered.length) {
 			this.clearAllCards();
@@ -4647,7 +4635,37 @@ export class SectionCardsView extends ItemView {
 					.onClick(() => void this.completeBlockDrag(file, { section, blockIndex, blockText }, next, 0)),
 			);
 		}
-		if (prev || next) menu.addSeparator();
+		// Dated notes: send the block to today's card — the natural "do this today
+		// instead" move. Lands at the end, like a drop on the card. A missing today card
+		// (weekends in a workday note) is created first, template and placement applied.
+		const today = this.todayKeys();
+		const todaySection =
+			(today &&
+				this.cardEntries.find((e) => isTodayTitle(e.holder.section.title, today.iso, today.formatted))
+					?.holder.section) ||
+			null;
+		const showToday = !!today && todaySection?.headingRaw !== section.headingRaw;
+		if (today && showToday) {
+			const title = todaySection?.title || today.formatted;
+			menu.addItem((item) =>
+				item
+					.setTitle(`Move line to today (${title.length > 28 ? `${title.slice(0, 27)}…` : title})`)
+					.setIcon("calendar-check")
+					.onClick(async () => {
+						let target = todaySection;
+						if (!target) {
+							await this.createDateCard(today.iso);
+							target =
+								this.cardEntries.find((e) =>
+									isTodayTitle(e.holder.section.title, today.iso, today.formatted),
+								)?.holder.section ?? null;
+						}
+						if (!target) return;
+						await this.completeBlockDrag(file, { section, blockIndex, blockText }, target, null);
+					}),
+			);
+		}
+		if (prev || next || showToday) menu.addSeparator();
 
 		// Only the block's own checkbox counts — a plain item with task children isn't a task.
 		const isTask = TASK_RE.test(blockText.split("\n")[0]);
@@ -5217,6 +5235,38 @@ class ConfirmClearModal extends Modal {
 	}
 }
 
+/** The toolbar's ? button: every keyboard shortcut in one place. */
+class ShortcutsModal extends Modal {
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Keyboard shortcuts" });
+		const rows: [string, string][] = [
+			["1–6", "Show that heading level as cards"],
+			["L", "Cycle the layouts"],
+			["H", "Show or hide the hierarchy columns"],
+			["D", "Show or hide the dividers"],
+			[", / .", "Previous / next heading in the Hierarchy and Dividers view modes"],
+			["N", "New card"],
+			[`${MOD_LABEL}+F`, "Jump to the filter box"],
+			["Esc", "Clear the filter, or close a maximized card"],
+			[`${MOD_LABEL}+Enter`, "Save the card being edited"],
+		];
+		const grid = contentEl.createDiv({ cls: "sfsc-shortcuts" });
+		for (const [key, desc] of rows) {
+			grid.createEl("kbd", { cls: "sfsc-shortcuts-key", text: key });
+			grid.createDiv({ cls: "sfsc-shortcuts-desc", text: desc });
+		}
+		contentEl.createEl("p", {
+			cls: "sfsc-shortcuts-note",
+			text: "The plain keys work while a cards view is focused and no card editor is open.",
+		});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
 /** Jump-to-date found no card for the picked date: offer to create one (Yes / No). */
 class CreateDateCardModal extends Modal {
 	private readonly title: string;
@@ -5497,12 +5547,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	/** Scopes the tab for CSS: the rows render tighter than Obsidian's default spacing. */
-	display(): void {
-		this.containerEl.addClass("sfsc-settings");
-		super.display();
-	}
-
 	/** Declarative settings (Obsidian 1.13+), so every setting is findable in settings search. */
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		return [
@@ -5720,6 +5764,9 @@ class SectionCardsSettingTab extends PluginSettingTab {
 	/** The preset dropdown is an action, not a stored value: picking one rewrites the
 	 * whole palette, then the tab re-renders so the nine rows show the new colors. */
 	private renderPresetRow(setting: Setting): void {
+		// A render callback is the tab being built (the declarative API bypasses
+		// display()), so tag the tab for the tighter-row CSS here.
+		this.containerEl.addClass("sfsc-settings");
 		setting.addDropdown((dropdown) => {
 			dropdown.addOption("", "Choose a preset…");
 			for (const preset of PALETTE_PRESETS) dropdown.addOption(preset.name, preset.name);

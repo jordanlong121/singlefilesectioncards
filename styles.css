@@ -93,11 +93,29 @@
 	min-width: 0;
 }
 
-/* Every toolbar label ("Heading", "View mode", "Dates", the count, …) shares one
-   size, a notch under the theme's smallest UI text. */
-.section-cards-count {
-	color: var(--text-muted);
+/* The toolbar's help button: a small round circle, quieter than the other buttons. */
+.section-cards-help-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border-radius: 50%;
+	border: 1px solid var(--background-modifier-border);
+	background-color: transparent;
+	box-shadow: none;
 	font-size: calc(var(--font-ui-smaller, 12px) * 0.85);
+	font-weight: 600;
+	line-height: 1;
+	color: var(--text-muted);
+}
+
+.section-cards-help-btn:hover {
+	color: var(--text-normal);
+	border-color: var(--interactive-accent);
+	background-color: transparent;
+	box-shadow: none;
 }
 
 .section-cards-control {
@@ -2057,6 +2075,38 @@ body.is-phone .section-cards-label {
    padding makes them a tall wall of whitespace, so tighten it. The settings tab
    wraps items in .setting-group, whose own `.setting-group .setting-item` rule
    out-ranks a bare class — hence the compound selector. */
+/* ---------- keyboard shortcuts modal (the toolbar's ? button) ---------- */
+.sfsc-shortcuts {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: 6px 16px;
+	align-items: baseline;
+	margin-top: 8px;
+}
+
+.sfsc-shortcuts-key {
+	justify-self: start;
+	padding: 1px 7px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	background-color: var(--background-secondary);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-normal);
+	white-space: nowrap;
+}
+
+.sfsc-shortcuts-desc {
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+}
+
+.sfsc-shortcuts-note {
+	margin-top: 14px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
 /* Tighter rows in this plugin's settings tab than Obsidian's default spacing. */
 .sfsc-settings .setting-item {
 	padding-top: 0.4em;

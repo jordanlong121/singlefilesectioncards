@@ -118,10 +118,10 @@ function toolbarHtml(layout, mode = "default") {
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
 	<div class="section-cards-control"><span class="section-cards-label">Heading</span><select class="dropdown"><option>H${LEVEL}</option></select></div>
 	<div class="section-cards-control section-cards-filter"><input type="text" class="section-cards-filter-input" placeholder="Filter…" spellcheck="false"><button class="section-cards-filter-clear"></button></div>
-	<div class="section-cards-spacer"><span class="section-cards-count">${sections.length} sections · H${LEVEL}</span></div>
+	<div class="section-cards-spacer"></div>
 	<div class="section-cards-control">
 		<div class="section-cards-jump-date"><button class="section-cards-icon-btn section-cards-jump-btn">${CAL_ICON}</button></div>
-		<label class="section-cards-dates-label"><input type="checkbox" class="section-cards-dates-toggle" checked><span class="section-cards-label">Dates</span></label>
+		<label class="section-cards-dates-label"><span class="section-cards-label">Dates</span><input type="checkbox" class="section-cards-dates-toggle" checked></label>
 	</div>
 	<div class="section-cards-spacer"></div>
 	<div class="section-cards-control"><span class="section-cards-label">View mode</span><div class="section-cards-segmented">${seg("Default", "default")}${seg("Hierarchy", "hier")}${seg("Dividers", "sections")}</div></div>
@@ -130,6 +130,7 @@ function toolbarHtml(layout, mode = "default") {
 	<button class="section-cards-new-btn mod-cta">+ New card</button>
 	<button class="section-cards-icon-btn section-cards-template-btn">${TEMPLATE_ICON}</button>
 	<button class="section-cards-icon-btn">↻</button>
+	<button class="section-cards-help-btn">?</button>
 </div>`;
 }
 
