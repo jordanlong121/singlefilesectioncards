@@ -2896,7 +2896,7 @@ export class SectionCardsView extends ItemView {
 		// card sits on the left with the note name; the view options keep the right.
 		const levelWrap = bar.createDiv({ cls: "section-cards-control" });
 		levelWrap.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
-		levelWrap.createSpan({ text: "Heading", cls: "section-cards-label" });
+		levelWrap.createSpan({ text: "Card level", cls: "section-cards-label" });
 		const levelSelect = levelWrap.createEl("select", { cls: "dropdown" });
 		levelSelect.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
 		this.levelSelect = levelSelect;
