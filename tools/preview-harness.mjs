@@ -116,7 +116,7 @@ function toolbarHtml(layout, mode = "default") {
 		`<button${mode === key ? ' class="is-active"' : ""}${layout === "custom" ? " disabled" : ""}>${label}</button>`;
 	return `<div class="section-cards-toolbar">
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
-	<div class="section-cards-control"><span class="section-cards-label">Heading</span><select class="dropdown"><option>H${LEVEL}</option></select></div>
+	<div class="section-cards-control"><span class="section-cards-label">Card level</span><select class="dropdown"><option>H${LEVEL}</option></select></div>
 	<div class="section-cards-control section-cards-filter"><input type="text" class="section-cards-filter-input" placeholder="Filter…" spellcheck="false"><button class="section-cards-filter-clear"></button></div>
 	<div class="section-cards-spacer"></div>
 	<div class="section-cards-control">
