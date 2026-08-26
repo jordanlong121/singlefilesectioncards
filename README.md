@@ -25,7 +25,7 @@ While this is a standalone plugin that works on any note, it pairs nicely with
 - **Navigate as cards.** Wikilinks open the linked note's card wall, ↗ opens the section in a
   normal editor.
 - **Keyboard shortcuts.** `1`–`6` heading level, `L` layouts, `H`/`D` hierarchy/dividers,
-  `,`/`.` previous/next heading, `N` new card, `Ctrl/⌘+F` filter — the toolbar's `?` button
+  `,`/`.` previous/next heading, `N` new card, `S` starred lines only, `Ctrl/⌘+F` filter — the toolbar's `?` button
   lists them all.
 - **Writes are surgical.** Only the touched section's lines change, re-located by content
   first, so a stale card refuses rather than touching the wrong lines.
@@ -107,6 +107,8 @@ Right-click a task or paragraph on a card (long-press on mobile) for a menu.
 - **Move line to today** — on a dated note, sends the block to today's card, creating it first
   if the note doesn't have one yet
 - **Mark done / Mark undone** — ticks or unticks the task where it sits
+- **Add star / Remove star** — marks the line with the star emoji, for the toolbar's
+  starred-only view (see [Filter and starred lines](#filter-and-starred-lines))
 - **Delete line** — removes the block (and sub-items) from the section
 
 ## Working with the Tasks plugin
@@ -130,6 +132,19 @@ optional `✅ YYYY-MM-DD` done date.
 Every card's title bar has a pin button (click again to unpin). Pinning pulls the card into a
 pinned section at the top of the wall regardless of sort order, remembered per note across
 layouts, views, and restarts.
+
+## Filter and starred lines
+
+The toolbar's filter box (`Ctrl/⌘+F`) narrows the wall to cards containing the typed text —
+title or body, case-insensitive; `Esc` clears it.
+
+For a longer-lived kind of highlighting, right-click any task or paragraph and pick **Add
+star**: the star emoji (configurable in settings) is written at the start of the line — plain
+text in your note, so it survives edits, drags, sync, and shows in the normal editor too.
+Once a note has a starred line, a star button appears beside the filter box (key `S`): toggle
+it to see only the starred lines, on only the cards that hold one. Cards where the starred-only
+view hid something end in a faint `…`, and both filters combine. **Remove star** on the same
+menu takes the mark back off.
 
 ## Card colors
 
@@ -221,6 +236,7 @@ prompt offers to create it (template applied, default placement).
 | Toggle tasks with the Tasks plugin | Route checkbox ticks through the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin when it's installed (recurrence, its done dates) |
 | Completion date on tasks | Append `✅ YYYY-MM-DD` when a task is ticked |
 | Cross out nested items | Whether ticking a task also strikes through the items nested beneath it |
+| Star emoji | The emoji "Add star" writes at the start of a line, matched by the starred-only view (default ⭐) |
 | Card height | Maximum card height before the body scrolls |
 
 ## Install

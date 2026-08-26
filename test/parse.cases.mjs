@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -298,44 +298,44 @@ t("sample vault: checkbox N maps to task line N for every card", () => {
 const DEFAULTS = { layout: "grid", headingLevel: 3, sortOrder: "asc" };
 
 t("a note with no saved view falls back to the defaults (grid)", () => {
-  assert.deepEqual(resolveViewSettings(undefined, {}, DEFAULTS), { ...DEFAULTS, hierarchy: false, sections: false });
+  assert.deepEqual(resolveViewSettings(undefined, {}, DEFAULTS), { ...DEFAULTS, hierarchy: false, sections: false, starredOnly: false });
 });
 
 t("a note's saved view wins over restored tab state and defaults", () => {
-  const saved = { layout: "vertical", headingLevel: 2, sortOrder: "desc", hierarchy: true, sections: false };
-  const state = { layout: "tight", headingLevel: 4, sortOrder: "asc", hierarchy: false, sections: true };
+  const saved = { layout: "vertical", headingLevel: 2, sortOrder: "desc", hierarchy: true, sections: false, starredOnly: true };
+  const state = { layout: "tight", headingLevel: 4, sortOrder: "asc", hierarchy: false, sections: true, starredOnly: false };
   assert.deepEqual(resolveViewSettings(saved, state, DEFAULTS), saved);
 });
 
 t("restored tab state is used when the note has no saved view", () => {
-  const state = { layout: "aligned", headingLevel: 2, sortOrder: "desc", hierarchy: false, sections: true };
+  const state = { layout: "aligned", headingLevel: 2, sortOrder: "desc", hierarchy: false, sections: true, starredOnly: true };
   assert.deepEqual(resolveViewSettings(undefined, state, DEFAULTS), state);
 });
 
 t("partial saved views fall through field by field", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "horizontal" }, { sortOrder: "desc" }, DEFAULTS),
-    { layout: "horizontal", headingLevel: 3, sortOrder: "desc", hierarchy: false, sections: false },
+    { layout: "horizontal", headingLevel: 3, sortOrder: "desc", hierarchy: false, sections: false, starredOnly: false },
   );
 });
 
 t("a stale 'hierarchy' layout becomes grid with the columns toggled on", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "hierarchy" }, {}, DEFAULTS),
-    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false },
+    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false },
   );
 });
 
 t("a stale 'sections' layout becomes grid with the dividers toggled on", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "sections" }, {}, DEFAULTS),
-    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: false, sections: true },
+    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: false, sections: true, starredOnly: false },
   );
 });
 
 t("hierarchy and section dividers are never both on — the columns win", () => {
   const both = resolveViewSettings({ layout: "grid", hierarchy: true, sections: true }, {}, DEFAULTS);
-  assert.deepEqual(both, { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false });
+  assert.deepEqual(both, { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false });
 });
 
 // ---------- wheel panning ----------
@@ -1236,6 +1236,49 @@ t("groupByAncestor: groups follow their first card's order; no ancestor means ke
   const pre = unfiledSection(HIER_NOTE, "Unfiled");
   const withPre = groupByAncestor([pre, ...parseSections(HIER_NOTE, 3)], heads);
   assert.equal(withPre[0].key, "", "the preamble card has no ancestor");
+});
+
+
+t("toggleStarInLine adds and removes the emoji on paragraphs, list items, and tasks", () => {
+  assert.equal(toggleStarInLine("plain paragraph", "\u2b50"), "\u2b50 plain paragraph");
+  assert.equal(toggleStarInLine("\u2b50 plain paragraph", "\u2b50"), "plain paragraph");
+  assert.equal(toggleStarInLine("- item text", "\u2b50"), "- \u2b50 item text");
+  assert.equal(toggleStarInLine("- \u2b50 item text", "\u2b50"), "- item text");
+  assert.equal(toggleStarInLine("- [ ] task text", "\u2b50"), "- [ ] \u2b50 task text");
+  assert.equal(toggleStarInLine("- [x] done \u2705 2026-01-01", "\u2b50"), "- [x] \u2b50 done \u2705 2026-01-01");
+  assert.equal(toggleStarInLine("1. [/] in progress", "\u2b50"), "1. [/] \u2b50 in progress");
+  assert.equal(toggleStarInLine("2) numbered", "\u2b50"), "2) \u2b50 numbered");
+});
+
+t("toggleStarInLine round-trips with a multi-codepoint emoji", () => {
+  const emoji = "\u2b50\ufe0f";
+  const starred = toggleStarInLine("- [ ] task", emoji);
+  assert.equal(starred, "- [ ] \u2b50\ufe0f task");
+  assert.equal(toggleStarInLine(starred, emoji), "- [ ] task");
+});
+
+t("blockStarred sees the emoji only after the marker/checkbox, not mid-line", () => {
+  assert.ok(blockStarred("\u2b50 paragraph", "\u2b50"));
+  assert.ok(blockStarred("- [ ] \u2b50 task", "\u2b50"));
+  assert.ok(!blockStarred("- [ ] rate it \u2b50", "\u2b50"));
+  assert.ok(!blockStarred("- [ ] task", "\u2b50"));
+  assert.ok(!blockStarred("anything", ""), "a blank emoji never matches");
+});
+
+t("sectionHasStar checks movable blocks only, ignoring fences and blockquotes", () => {
+  assert.ok(sectionHasStar(L("intro\n\n- \u2b50 starred item"), "\u2b50"));
+  assert.ok(!sectionHasStar(L("intro\n\n- plain item"), "\u2b50"));
+  assert.ok(!sectionHasStar(L("```\n\u2b50 in a fence\n```\n\n> \u2b50 in a quote"), "\u2b50"));
+});
+
+
+t("starInfo: hidden only when starred-only would actually hide something", () => {
+  assert.deepEqual(starInfo(L("\u2b50 only starred line"), "\u2b50"), { has: true, hidden: false });
+  assert.deepEqual(starInfo(L("- \u2b50 starred\n- \u2b50 also starred"), "\u2b50"), { has: true, hidden: false });
+  assert.deepEqual(starInfo(L("- \u2b50 starred\n- plain sibling"), "\u2b50"), { has: true, hidden: true });
+  assert.deepEqual(starInfo(L("\u2b50 starred\n\n> a quote hides too"), "\u2b50"), { has: true, hidden: true });
+  assert.deepEqual(starInfo(L("no stars here"), "\u2b50"), { has: false, hidden: true });
+  assert.deepEqual(starInfo(L(""), "\u2b50"), { has: false, hidden: false }, "an empty body hides nothing");
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

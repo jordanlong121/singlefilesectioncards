@@ -127,6 +127,9 @@ interface SectionCardsSettings {
 	tasksToggle: boolean;
 	/** Whether ticking a task also strikes through the items nested beneath it. */
 	strikeNestedUnderDone: boolean;
+	/** Emoji written at the start of a line by right-click → "Add star"; the starred-only
+	 * toggle and the block tagging match against it. Stored in the note as literal text. */
+	starEmoji: string;
 	titleBarClick: TitleBarClick;
 	/** Card editor flavour: Obsidian's live-preview editor, or the plain textarea. */
 	editorMode: EditorMode;
@@ -169,6 +172,8 @@ export interface ViewSettings {
 	hierarchy?: boolean;
 	/** Section dividers toggled on: a collapsible bar per heading above the card level. */
 	sections?: boolean;
+	/** Starred-only toggled on: only starred lines (and the cards holding them) show. */
+	starredOnly?: boolean;
 }
 
 /**
@@ -306,6 +311,18 @@ export function contrastForeground(hex: string): string {
 }
 
 /**
+ * The light-theme counterpart: dark text like the theme's own bars, unless the color
+ * is genuinely dark. Colored bars sit on a light page there, so the bias reverses —
+ * the threshold sits near the point where black and white text read equally well.
+ */
+export function contrastForegroundLight(hex: string): string {
+	const triplet = hexToTriplet(hex);
+	if (!triplet) return "#000000";
+	const [r, g, b] = triplet.split(", ").map(Number);
+	return (r * 299 + g * 587 + b * 114) / 1000 >= 110 ? "#000000" : "#ffffff";
+}
+
+/**
  * The palette as configured: saved entries over the slot defaults, always nine slots.
  * Blank labels and unparseable colors fall back per field, so old or hand-edited data
  * can't blank out a slot.
@@ -338,6 +355,7 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	taskDoneDate: true,
 	tasksToggle: true,
 	strikeNestedUnderDone: true,
+	starEmoji: "⭐",
 	titleBarClick: "maximize",
 	editorMode: "live",
 	autosaveEnabled: true,
@@ -927,6 +945,49 @@ export function movableBlocks(body: string[]): BodyBlock[] {
 	return sectionBlocks(body).filter((b) => b.kind !== "other");
 }
 
+/** A block's leading decoration: list marker plus optional task checkbox (any status
+ * character, so Tasks-style `[/]`/`[-]` lines star the same way). Paragraphs match "". */
+const BLOCK_PREFIX_RE = /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[^\]]\]\s+)?/;
+
+/** Whether a block's first line carries the star: the emoji directly after any list
+ * marker/checkbox (or at the line start for a paragraph). The emoji IS the stored state. */
+export function blockStarred(firstLine: string, emoji: string): boolean {
+	if (!emoji) return false;
+	const m = firstLine.match(BLOCK_PREFIX_RE);
+	return firstLine.slice(m ? m[0].length : 0).startsWith(emoji);
+}
+
+/** Toggle the star on a block's first line, keeping any list marker/checkbox intact. */
+export function toggleStarInLine(line: string, emoji: string): string {
+	const m = line.match(BLOCK_PREFIX_RE);
+	const prefix = m ? m[0] : "";
+	const rest = line.slice(prefix.length);
+	return rest.startsWith(emoji)
+		? prefix + rest.slice(emoji.length).replace(/^[ \t]+/, "")
+		: `${prefix}${emoji} ${rest}`;
+}
+
+/** What the starred-only view knows about a section body: whether it has a starred block
+ * at all, and whether hiding everything else would actually hide something — the card
+ * shows a trailing ellipsis only in that case. Stars inside code fences or blockquotes
+ * don't count as starred (those blocks aren't movable), but the blocks themselves count
+ * as hidden content, since the view hides them too. */
+export function starInfo(body: string[], emoji: string): { has: boolean; hidden: boolean } {
+	let has = false;
+	let hidden = false;
+	for (const b of sectionBlocks(body)) {
+		if (b.kind !== "other" && blockStarred(body[b.start], emoji)) has = true;
+		else hidden = true;
+	}
+	return { has, hidden };
+}
+
+/** Whether any of a section body's movable blocks is starred — the card-level test the
+ * starred-only filter uses (stars inside code fences or blockquotes don't count). */
+export function sectionHasStar(body: string[], emoji: string): boolean {
+	return starInfo(body, emoji).has;
+}
+
 /**
  * A card body is a mid-note excerpt, so a leading "---" is a rule, not frontmatter —
  * but MarkdownRenderer treats anything at the very start of its input as document
@@ -1081,6 +1142,41 @@ async function moveBlockInFile(
 		}
 		const result = moveBlockBetween(lines, from, blockIndex, to, beforeBlockIndex);
 		return result ? result.join(eol) : data;
+	});
+
+	return ok;
+}
+
+/** Star or unstar a block at write time, re-locating the section and verifying the
+ * block's text the same way delete and move do. */
+async function toggleStarInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	from: Section,
+	blockIndex: number,
+	expectedBlockText: string,
+	emoji: string,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, from);
+		if (!target) {
+			ok = false;
+			return data;
+		}
+		const bodyStart = bodyStartLine(target);
+		const body = lines.slice(bodyStart, target.endLine);
+		const block = movableBlocks(body)[blockIndex];
+		if (!block || body.slice(block.start, block.end).join("\n") !== expectedBlockText) {
+			ok = false; // the block moved or changed since the menu opened — refuse
+			return data;
+		}
+		lines[bodyStart + block.start] = toggleStarInLine(lines[bodyStart + block.start], emoji);
+		return lines.join(eol);
 	});
 
 	return ok;
@@ -1468,6 +1564,7 @@ export function resolveViewSettings(
 		sortOrder: saved?.sortOrder ?? fromState.sortOrder ?? defaults.sortOrder,
 		hierarchy: saved?.hierarchy ?? fromState.hierarchy ?? defaults.hierarchy ?? false,
 		sections: saved?.sections ?? fromState.sections ?? defaults.sections ?? false,
+		starredOnly: saved?.starredOnly ?? fromState.starredOnly ?? defaults.starredOnly ?? false,
 	};
 	// Hierarchy briefly shipped as a layout; stored views from then become grid + columns.
 	if ((resolved.layout as string) === "hierarchy") {
@@ -1765,6 +1862,7 @@ interface CardsViewState {
 	layout?: Layout;
 	hierarchy?: boolean;
 	sections?: boolean;
+	starredOnly?: boolean;
 }
 
 export class SectionCardsView extends ItemView {
@@ -1778,6 +1876,8 @@ export class SectionCardsView extends ItemView {
 	hierarchyOn = false;
 	/** Section dividers toggled on (toolbar button); mutually exclusive with the columns. */
 	sectionsOn = false;
+	/** Starred-only toggled on (toolbar star): only starred lines and their cards show. */
+	starredOnly = false;
 
 	private toolbarEl!: HTMLElement;
 	private gridEl!: HTMLElement;
@@ -1796,6 +1896,10 @@ export class SectionCardsView extends ItemView {
 	private hasDateHeadings = false;
 	/** The jump-to-date toolbar control, so refresh can show/hide it without a rebuild. */
 	private jumpDateWrap: HTMLElement | null = null;
+	/** The starred-only toolbar toggle, so refresh can hide it in notes with no stars. */
+	private starBtn: HTMLElement | null = null;
+	/** Whether the last render found a starred line, so the star toggle is offered. */
+	private hasStars = false;
 	/** The per-note "Dates" checkbox, kept current by refresh. */
 	private datesToggle: HTMLInputElement | null = null;
 	/** The open editor's card and its finish function, so clicks elsewhere can commit it. */
@@ -1914,6 +2018,10 @@ export class SectionCardsView extends ItemView {
 	/** Lowercased searchable text per section, so filter keystrokes don't re-lowercase
 	 * every card's full body on each character typed. Invalidates like the above. */
 	private searchTextCache = new WeakMap<Section, string>();
+	/** A section's star facts (any starred block? would starred-only hide anything?),
+	 * cached per parse — keyed by the emoji too, so changing it in settings can't
+	 * serve stale answers. */
+	private starCache = new WeakMap<Section, { emoji: string; has: boolean; hidden: boolean }>();
 	/** Heading levels the current note actually contains; the Heading dropdown offers
 	 * only these (plus the current level). All six until the first scan. */
 	private availableLevels: number[] = [1, 2, 3, 4, 5, 6];
@@ -1954,6 +2062,7 @@ export class SectionCardsView extends ItemView {
 			layout: this.layout,
 			hierarchy: this.hierarchyOn,
 			sections: this.sectionsOn,
+			starredOnly: this.starredOnly,
 		};
 	}
 
@@ -1967,6 +2076,7 @@ export class SectionCardsView extends ItemView {
 			sortOrder: state?.sortOrder,
 			hierarchy: state?.hierarchy,
 			sections: state?.sections,
+			starredOnly: state?.starredOnly,
 		});
 		await this.syncView();
 	}
@@ -1988,6 +2098,7 @@ export class SectionCardsView extends ItemView {
 		this.sortOrder = resolved.sortOrder;
 		this.hierarchyOn = resolved.hierarchy ?? false;
 		this.sectionsOn = resolved.sections ?? false;
+		this.starredOnly = resolved.starredOnly ?? false;
 	}
 
 	/** The current view as one ViewSettings value — the shape everything persists. */
@@ -1998,6 +2109,7 @@ export class SectionCardsView extends ItemView {
 			sortOrder: this.sortOrder,
 			hierarchy: this.hierarchyOn,
 			sections: this.sectionsOn,
+			starredOnly: this.starredOnly,
 		};
 	}
 
@@ -2156,6 +2268,17 @@ export class SectionCardsView extends ItemView {
 		this.scope.register([], "N", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
 			this.promptNewCard();
+			return false;
+		});
+		// S: show only starred lines / show everything, same as the toolbar star.
+		this.scope.register([], "S", (evt) => {
+			if (!this.plainShortcutOk(evt)) return true;
+			if (!this.hasStars) return true; // no stars in the note — the toggle is hidden
+			this.starredOnly = !this.starredOnly;
+			this.rememberView();
+			this.buildToolbar(); // the star button reflects the state
+			this.applyFilter();
+			this.app.workspace.requestSaveLayout();
 			return false;
 		});
 		// Ctrl/⌘+F: jump to the filter box (from anywhere in the view, fields included).
@@ -2377,8 +2500,11 @@ export class SectionCardsView extends ItemView {
 	 * so clearing the filter is instant.
 	 */
 	private applyFilter(): void {
+		// Starred-only also hides the non-starred lines inside the surviving cards (CSS).
+		this.contentEl.toggleClass("is-starred-only", this.starredOnly);
 		if (!this.cardEntries.length) return;
 		const q = this.filterQuery.trim().toLowerCase();
+		const emoji = this.plugin.starEmoji();
 		for (const entry of this.cardEntries) {
 			const section = entry.holder.section;
 			// Title + raw, lowercased once per section (the title is display-only on
@@ -2388,7 +2514,20 @@ export class SectionCardsView extends ItemView {
 				text = (section.title + "\n" + section.raw).toLowerCase();
 				this.searchTextCache.set(section, text);
 			}
-			entry.el.toggleClass("is-filtered-out", !(!q || text.includes(q)));
+			let starOk = true;
+			if (this.starredOnly) {
+				let star = this.starCache.get(section);
+				if (star === undefined || star.emoji !== emoji) {
+					star = { emoji, ...starInfo(section.body.split("\n"), emoji) };
+					this.starCache.set(section, star);
+				}
+				starOk = star.has;
+				// A trailing "…" on cards where starred-only actually hid something.
+				entry.el.toggleClass("sc-starred-more", star.has && star.hidden);
+			} else {
+				entry.el.removeClass("sc-starred-more");
+			}
+			entry.el.toggleClass("is-filtered-out", !((!q || text.includes(q)) && starOk));
 		}
 		// The sticky pinned band collapses when the filter hides everything in it.
 		// (Stamped here rather than with a CSS :has(), which lints as a perf hazard.)
@@ -2434,9 +2573,17 @@ export class SectionCardsView extends ItemView {
 				box.removeAttribute("disabled");
 				box.removeAttribute("readonly");
 			}
-			for (const el of this.eligibleBlockEls(bodyEl)) {
-				el.draggable = true;
-				el.addClass("sc-block");
+			const body = entry.holder.section.body.split("\n");
+			const blocks = movableBlocks(body);
+			const emoji = this.plugin.starEmoji();
+			const els = this.eligibleBlockEls(bodyEl);
+			for (let i = 0; i < els.length; i++) {
+				els[i].draggable = true;
+				els[i].addClass("sc-block");
+				// Tag starred blocks so the starred-only CSS can single them out. The DOM
+				// and parsed blocks correspond 1:1; on a rare mismatch nothing gets tagged.
+				const block = els.length === blocks.length ? blocks[i] : undefined;
+				els[i].toggleClass("is-starred", !!block && blockStarred(body[block.start], emoji));
 			}
 			// Keep offscreen image decode off the phone's main thread and memory.
 			if (Platform.isMobile) {
@@ -2947,6 +3094,30 @@ export class SectionCardsView extends ItemView {
 			filterInput.focus();
 		});
 
+		// Starred-only: show just the starred lines, and only the cards that hold one.
+		// Hidden while the note has no starred lines (refresh keeps that current).
+		const starBtn = bar.createEl("button", { cls: "section-cards-icon-btn section-cards-star-btn" });
+		this.starBtn = starBtn;
+		starBtn.toggleClass("is-hidden", !this.hasStars);
+		setIcon(starBtn, "star");
+		const syncStarBtn = () => {
+			starBtn.toggleClass("is-active", this.starredOnly);
+			starBtn.setAttr(
+				"aria-label",
+				this.starredOnly
+					? "Show all lines again (S)"
+					: `Show only starred lines — ${this.plugin.starEmoji()} (S)`,
+			);
+		};
+		syncStarBtn();
+		starBtn.addEventListener("click", () => {
+			this.starredOnly = !this.starredOnly;
+			this.rememberView();
+			syncStarBtn();
+			this.applyFilter();
+			this.app.workspace.requestSaveLayout();
+		});
+
 		bar.createDiv({ cls: "section-cards-spacer" });
 
 		// The date controls sit mid-bar, between the note cluster on the left and the
@@ -3385,6 +3556,8 @@ export class SectionCardsView extends ItemView {
 			this.containsDates = false;
 			this.hasDateHeadings = false;
 			this.jumpDateWrap?.toggleClass("is-hidden", true);
+			this.hasStars = false;
+			this.starBtn?.toggleClass("is-hidden", true);
 			this.clearAllCards();
 			this.clearHierarchy();
 			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
@@ -3429,6 +3602,18 @@ export class SectionCardsView extends ItemView {
 		this.hasDateHeadings = this.containsDates && noteHasDates;
 		this.jumpDateWrap?.toggleClass("is-hidden", !this.hasDateHeadings);
 		if (this.datesToggle) this.datesToggle.checked = this.containsDates;
+
+		// The starred-only toggle is only offered while the note has a starred line.
+		// When the last star goes, the mode turns itself off so nothing stays hidden
+		// behind a control that is no longer on screen.
+		const starEmoji = this.plugin.starEmoji();
+		this.hasStars = sections.some((s) => sectionHasStar(s.body.split("\n"), starEmoji));
+		if (!this.hasStars && this.starredOnly) {
+			this.starredOnly = false;
+			this.rememberView();
+		}
+		this.starBtn?.toggleClass("is-hidden", !this.hasStars);
+		this.starBtn?.toggleClass("is-active", this.starredOnly);
 
 		const pinnedList = this.plugin.getPinned(file.path);
 		const pinnedKeys = new Set(pinnedList);
@@ -3610,8 +3795,12 @@ export class SectionCardsView extends ItemView {
 		if (gen !== this.renderGeneration) return;
 
 		this.prepareBodies(immediate);
-		// Re-apply an active filter to the fresh entries before anything is measured.
-		if (this.filterQuery.trim()) this.applyFilter();
+		// Re-apply an active filter to the fresh entries before anything is measured —
+		// starred-only counts, and so does clearing its leftover class after it turned
+		// itself off above.
+		if (this.filterQuery.trim() || this.starredOnly || this.contentEl.hasClass("is-starred-only")) {
+			this.applyFilter();
+		}
 		this.layoutMasonry();
 		this.insertRowRules();
 
@@ -3767,6 +3956,18 @@ export class SectionCardsView extends ItemView {
 		// The action buttons live in an overlay anchored to the header's right edge, so
 		// the title keeps the full width until a hover reveals them over it.
 		const actions = header.createDiv({ cls: "section-card-actions" });
+		// A clicked strip button keeps focus, and the strip's :focus-within reveal then
+		// holds it open — over the body's first line, opaquely on colored cards — until
+		// something else is clicked. Acting closes the strip: drop the button's focus.
+		// Capture phase, because the buttons' own handlers stop propagation (keyboard
+		// users tab back in to reopen).
+		actions.addEventListener(
+			"click",
+			(evt) => {
+				(evt.target as HTMLElement | null)?.closest("button")?.blur();
+			},
+			{ capture: true },
+		);
 
 		const quickAddBtn = actions.createEl("button", { cls: "section-card-quickadd" });
 		setIcon(quickAddBtn, "plus");
@@ -4699,6 +4900,31 @@ export class SectionCardsView extends ItemView {
 			);
 		}
 
+		// Star/unstar the block: the configured emoji is written into (or stripped from)
+		// the line itself, so the mark survives edits, drags, and sync.
+		const emoji = this.plugin.starEmoji();
+		const starred = blockStarred(blockText.split("\n")[0], emoji);
+		menu.addItem((item) =>
+			item
+				.setTitle(starred ? "Remove star" : `Add star (${emoji})`)
+				.setIcon(starred ? "star-off" : "star")
+				.onClick(async () => {
+					const ok = await toggleStarInFile(
+						this.app,
+						file,
+						this.headingLevel,
+						section,
+						blockIndex,
+						blockText,
+						emoji,
+					);
+					if (!ok) {
+						new Notice("Single File Section Cards: couldn't find that line — the file changed on disk.");
+					}
+					await this.refresh();
+				}),
+		);
+
 		menu.addItem((item) =>
 			item
 				.setTitle("Delete line")
@@ -5246,6 +5472,7 @@ class ShortcutsModal extends Modal {
 			["H", "Show or hide the hierarchy columns"],
 			["D", "Show or hide the dividers"],
 			[", / .", "Previous / next heading in the Hierarchy and Dividers view modes"],
+			["S", "Show only starred lines / show everything"],
 			["N", "New card"],
 			[`${MOD_LABEL}+F`, "Jump to the filter box"],
 			["Esc", "Clear the filter, or close a maximized card"],
@@ -5741,6 +5968,17 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			},
 			{
 				type: "group",
+				heading: "Starred lines",
+				items: [
+					{
+						name: "Star emoji",
+						desc: "Right-click a line on a card → Add star writes this at its start; the toolbar's star button then shows only starred lines. Stored in the note as plain text, so changing it here doesn't re-mark lines starred with the old emoji.",
+						control: { type: "text", key: "starEmoji", placeholder: "⭐" },
+					},
+				],
+			},
+			{
+				type: "group",
 				heading: "New cards",
 				items: [
 					{
@@ -5884,7 +6122,8 @@ export default class SectionCardsPlugin extends Plugin {
 		const onFileChange = debounce(
 			(file: TFile) => {
 				for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
-					const view = leaf.view as SectionCardsView;
+					const view = leaf.view;
+					if (!(view instanceof SectionCardsView)) continue; // deferred placeholder
 					if (view.filePath === file.path && !view.isEditing() && !view.isMaximized()) void view.refresh();
 				}
 			},
@@ -5907,8 +6146,8 @@ export default class SectionCardsPlugin extends Plugin {
 				this.settings.perFile[file.path] = saved;
 				void this.saveSettings();
 				for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
-					const view = leaf.view as SectionCardsView;
-					if (view.filePath === oldPath) view.filePath = file.path;
+					const view = leaf.view;
+					if (view instanceof SectionCardsView && view.filePath === oldPath) view.filePath = file.path;
 				}
 			}),
 		);
@@ -5964,6 +6203,7 @@ export default class SectionCardsPlugin extends Plugin {
 		for (const [name] of CARD_COLORS) {
 			document.body.style.removeProperty(`--sfsc-color-${name}`);
 			document.body.style.removeProperty(`--sfsc-color-${name}-fg`);
+			document.body.style.removeProperty(`--sfsc-color-${name}-fg-light`);
 		}
 		document.body.style.removeProperty("--sfsc-font-scale");
 		document.body.style.removeProperty("--sfsc-divider-font-scale");
@@ -6014,8 +6254,11 @@ export default class SectionCardsPlugin extends Plugin {
 			const triplet = hexToTriplet(hex);
 			if (!triplet) return;
 			document.body.style.setProperty(`--sfsc-color-${name}`, triplet);
-			// Solid-color title bars flip their text black or white to stay readable.
+			// Solid-color title bars flip their text black or white to stay readable —
+			// computed per theme (dark themes bias to white, light themes to dark); the
+			// CSS picks whichever matches the active theme.
 			document.body.style.setProperty(`--sfsc-color-${name}-fg`, contrastForeground(hex));
+			document.body.style.setProperty(`--sfsc-color-${name}-fg-light`, contrastForegroundLight(hex));
 		});
 	}
 
@@ -6095,7 +6338,9 @@ export default class SectionCardsPlugin extends Plugin {
 			current.layout === view.layout &&
 			current.headingLevel === view.headingLevel &&
 			current.sortOrder === view.sortOrder &&
-			(current.hierarchy ?? false) === (view.hierarchy ?? false)
+			(current.hierarchy ?? false) === (view.hierarchy ?? false) &&
+			(current.sections ?? false) === (view.sections ?? false) &&
+			(current.starredOnly ?? false) === (view.starredOnly ?? false)
 		) {
 			return;
 		}
@@ -6237,8 +6482,13 @@ export default class SectionCardsPlugin extends Plugin {
 
 	/** Re-render every open cards view, e.g. after a setting changes what they draw. */
 	refreshAllViews(): void {
+		// A background tab can hold a deferred placeholder, not the real view (Obsidian
+		// 1.7+). Calling into it throws — which used to abort this loop before the
+		// remaining views (the active one included) got their refresh, so a pin click
+		// looked dead until something else rebuilt the view. A deferred tab needs no
+		// refresh anyway: it renders fresh from settings when it loads.
 		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
-			void (leaf.view as SectionCardsView).refresh();
+			if (leaf.view instanceof SectionCardsView) void leaf.view.refresh();
 		}
 	}
 
@@ -6258,6 +6508,11 @@ export default class SectionCardsPlugin extends Plugin {
 			editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch: 0 } }, true);
 			editor.focus();
 		}
+	}
+
+	/** The configured star emoji, falling back to the default when the setting is blank. */
+	starEmoji(): string {
+		return this.settings.starEmoji?.trim() || DEFAULT_SETTINGS.starEmoji;
 	}
 
 	async loadSettings(): Promise<void> {
