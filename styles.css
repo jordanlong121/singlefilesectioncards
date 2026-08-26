@@ -331,6 +331,12 @@
 	padding-top: 8px;
 }
 
+/* Quick Add's live-preview editor: the card embed's chrome, sized like the old box. */
+.section-cards-quickadd-modal .section-cards-quickadd-editor {
+	min-height: 90px;
+	max-height: 40vh;
+}
+
 /* ---------- grid ---------- */
 
 /* Masonry: many short implicit rows, and main.ts gives each card a
@@ -831,19 +837,28 @@ body.is-mobile .section-cards-hier-col {
 	white-space: nowrap;
 }
 
+/* The card-count badge: a hollow circle, first of the row's three badge shapes
+   (circle of cards, square of tasks, star of starred lines — same box, aligned). */
 .section-cards-hier-count {
 	flex: 0 0 auto;
-	padding: 0 5px;
-	border-radius: 7px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: calc(var(--font-ui-smaller) + 5px);
+	height: calc(var(--font-ui-smaller) + 5px);
+	padding: 0 3px;
+	border-radius: 999px;
+	border: 1px solid rgba(var(--mono-rgb-100), 0.35);
+	background: none;
 	font-size: calc(var(--font-ui-smaller) - 2px);
-	line-height: 1.7;
+	font-weight: 600;
+	line-height: 1;
 	color: var(--text-muted);
-	background-color: rgba(var(--mono-rgb-100), 0.08);
 }
 
 .section-cards-hier-item.is-selected .section-cards-hier-count {
 	color: var(--text-on-accent, #fff);
-	background-color: rgba(var(--mono-rgb-0), 0.22);
+	border-color: currentColor;
 }
 
 /* The square badge beside the count: unfinished tasks under this row. Rendered only
@@ -870,6 +885,52 @@ body.is-mobile .section-cards-hier-col {
 .section-cards-hier-item.is-selected .section-cards-hier-tasks {
 	color: var(--text-on-accent, #fff);
 	border-color: currentColor;
+}
+
+/* The starred-lines badge: a small hollow star (a masked pseudo-element — a border
+   can't take this shape) with the count sitting to its right. Star-yellow where the
+   theme provides the color. The 1.3 SVG stroke renders ~0.7px at the 13px size. */
+.section-cards-hier-stars {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 2px;
+	min-width: 24px;
+	height: calc(var(--font-ui-smaller) + 7px);
+	padding: 0;
+	border: none;
+	background: none;
+	font-size: calc(var(--font-ui-smaller) - 2px);
+	font-weight: 600;
+	line-height: 1;
+	color: var(--text-normal);
+}
+
+.section-cards-hier-stars::before {
+	content: "";
+	flex: 0 0 auto;
+	width: 13px;
+	height: 13px;
+	background-color: rgba(var(--color-yellow-rgb, 212, 170, 20), 0.9);
+	-webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpolygon points='12,1.6 15.2,8.4 22.6,9.3 17.1,14.4 18.6,21.8 12,18.1 5.4,21.8 6.9,14.4 1.4,9.3 8.8,8.4' fill='none' stroke='%23000' stroke-width='1.3'/%3E%3C/svg%3E")
+		center / contain no-repeat;
+	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpolygon points='12,1.6 15.2,8.4 22.6,9.3 17.1,14.4 18.6,21.8 12,18.1 5.4,21.8 6.9,14.4 1.4,9.3 8.8,8.4' fill='none' stroke='%23000' stroke-width='1.3'/%3E%3C/svg%3E")
+		center / contain no-repeat;
+}
+
+.section-cards-hier-item.is-selected .section-cards-hier-stars {
+	color: var(--text-on-accent, #fff);
+}
+
+.section-cards-hier-item.is-selected .section-cards-hier-stars::before {
+	background-color: currentColor;
+}
+
+/* Zero-count slots keep their space so the badge shapes align into columns. */
+.section-cards-hier-tasks.is-empty,
+.section-cards-hier-stars.is-empty {
+	visibility: hidden;
 }
 
 /* A card off the selected branch occupies no grid cell, exactly like a filtered-out
@@ -1664,12 +1725,17 @@ body.theme-light .sfsc-swatch {
 	z-index: 1;
 }
 
-/* Colored cards paint the strip at full strength, like the title bar: the buttons
-   inherit the header's contrast foreground (--sfsc-fg), which is computed against
-   the solid color — a translucent wash lightened in light mode until white icons
-   disappeared into it. */
+/* Colored cards tint the strip. Light themes keep it at full strength, like the
+   title bar — a translucent wash lightened there until the icons disappeared into
+   it. Dark themes wash it semi-transparent instead, so the strip reads as a strip
+   rather than a second title bar and the line beneath shows through; the white
+   contrast foreground still carries against the wash over a dark body. */
 .section-card[data-sfsc-color] .section-card-actions {
 	background: rgb(var(--sfsc-c));
+}
+
+body.theme-dark .section-card[data-sfsc-color] .section-card-actions {
+	background: rgba(var(--sfsc-c), 0.55);
 }
 
 /* Half-height controls: the strip stays well under the title bar's height.

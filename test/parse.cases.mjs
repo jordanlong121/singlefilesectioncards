@@ -1273,12 +1273,12 @@ t("sectionHasStar checks movable blocks only, ignoring fences and blockquotes", 
 
 
 t("starInfo: hidden only when starred-only would actually hide something", () => {
-  assert.deepEqual(starInfo(L("\u2b50 only starred line"), "\u2b50"), { has: true, hidden: false });
-  assert.deepEqual(starInfo(L("- \u2b50 starred\n- \u2b50 also starred"), "\u2b50"), { has: true, hidden: false });
-  assert.deepEqual(starInfo(L("- \u2b50 starred\n- plain sibling"), "\u2b50"), { has: true, hidden: true });
-  assert.deepEqual(starInfo(L("\u2b50 starred\n\n> a quote hides too"), "\u2b50"), { has: true, hidden: true });
-  assert.deepEqual(starInfo(L("no stars here"), "\u2b50"), { has: false, hidden: true });
-  assert.deepEqual(starInfo(L(""), "\u2b50"), { has: false, hidden: false }, "an empty body hides nothing");
+  assert.deepEqual(starInfo(L("\u2b50 only starred line"), "\u2b50"), { has: true, hidden: false, count: 1 });
+  assert.deepEqual(starInfo(L("- \u2b50 starred\n- \u2b50 also starred"), "\u2b50"), { has: true, hidden: false, count: 2 });
+  assert.deepEqual(starInfo(L("- \u2b50 starred\n- plain sibling"), "\u2b50"), { has: true, hidden: true, count: 1 });
+  assert.deepEqual(starInfo(L("\u2b50 starred\n\n> a quote hides too"), "\u2b50"), { has: true, hidden: true, count: 1 });
+  assert.deepEqual(starInfo(L("no stars here"), "\u2b50"), { has: false, hidden: true, count: 0 });
+  assert.deepEqual(starInfo(L(""), "\u2b50"), { has: false, hidden: false, count: 0 }, "an empty body hides nothing");
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
