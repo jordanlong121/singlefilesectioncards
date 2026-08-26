@@ -1748,6 +1748,11 @@ body.theme-dark .section-card[data-sfsc-color] .section-card-actions {
 	width: 26px;
 	height: 26px;
 	padding: 0;
+	/* Repeated from the per-button rules at button:not(.clickable-icon)'s own
+	   specificity: the theme's button chrome (white in light mode) outranks a bare
+	   class and painted the strip's buttons as blank white squares. */
+	background: transparent;
+	box-shadow: none;
 }
 
 .section-card-actions button svg {
