@@ -171,6 +171,46 @@
 	height: 14px;
 }
 
+/* ---------- starred lines ---------- */
+
+/* No starred lines in the note — the toggle has nothing to show, so it hides. */
+.section-cards-star-btn.is-hidden {
+	display: none;
+}
+
+/* The toolbar's starred-only toggle: accent-filled while it's on. */
+.section-cards-star-btn.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent, #fff);
+}
+
+.section-cards-star-btn svg {
+	width: 14px;
+	height: 14px;
+}
+
+/* Starred-only view: inside each surviving card, only the starred lines show.
+   Top-level blocks that aren't starred hide, except list containers — their
+   starred items live one level down, so the container stays and the non-starred
+   top-level items hide instead (children of a starred item stay with it). */
+.section-cards-view.is-starred-only .section-card:not(.is-editing) .section-card-body > *:not(.is-starred):not(ul):not(ol) {
+	display: none;
+}
+
+.section-cards-view.is-starred-only .section-card:not(.is-editing) .section-card-body > :is(ul, ol) > li:not(.is-starred) {
+	display: none;
+}
+
+/* Cards where starred-only actually hid something end in a faint ellipsis, so the
+   missing text is visible as missing. Stamped by applyFilter, not derived in CSS. */
+.section-cards-view.is-starred-only .section-card.sc-starred-more:not(.is-editing) .section-card-body::after {
+	content: "…";
+	display: block;
+	color: var(--text-faint);
+	line-height: 1;
+	padding-top: 2px;
+}
+
 /* The per-note "Dates" checkbox and its label act as one control. */
 .section-cards-dates-label {
 	display: flex;
@@ -901,85 +941,110 @@ body.is-mobile .section-cards-hier-col {
    data-sfsc-color carries the chosen swatch name; each name maps to one RGB triplet
    so a single set of alpha rules covers every color in both themes. The plugin sets
    --sfsc-color-<name> on the body from the configured palette (Settings → Card colors);
-   the value here is only the fallback before it loads. Today's own highlight outranks
-   a color on today's card (hence the :not(.is-today) guards). */
+   the value here is only the fallback before it loads. A picked color applies on
+   today's card too — the color takes the title bar and border, while today's
+   highlight ring (the box-shadow above) stays as the today marker. */
 
 .section-card[data-sfsc-color="red"],
 .section-cards-tray-tile[data-sfsc-color="red"],
 .sfsc-swatch-red {
 	--sfsc-c: var(--sfsc-color-red, 224, 82, 82);
-	--sfsc-fg: var(--sfsc-color-red-fg, #fff);
+	--sfsc-fg-dark: var(--sfsc-color-red-fg, #fff);
+	--sfsc-fg-light: var(--sfsc-color-red-fg-light, #000);
 }
 
 .section-card[data-sfsc-color="orange"],
 .section-cards-tray-tile[data-sfsc-color="orange"],
 .sfsc-swatch-orange {
 	--sfsc-c: var(--sfsc-color-orange, 235, 140, 52);
-	--sfsc-fg: var(--sfsc-color-orange-fg, #fff);
+	--sfsc-fg-dark: var(--sfsc-color-orange-fg, #fff);
+	--sfsc-fg-light: var(--sfsc-color-orange-fg-light, #000);
 }
 
 .section-card[data-sfsc-color="yellow"],
 .section-cards-tray-tile[data-sfsc-color="yellow"],
 .sfsc-swatch-yellow {
 	--sfsc-c: var(--sfsc-color-yellow, 212, 170, 20);
-	--sfsc-fg: var(--sfsc-color-yellow-fg, #fff);
+	--sfsc-fg-dark: var(--sfsc-color-yellow-fg, #fff);
+	--sfsc-fg-light: var(--sfsc-color-yellow-fg-light, #000);
 }
 
 .section-card[data-sfsc-color="green"],
 .section-cards-tray-tile[data-sfsc-color="green"],
 .sfsc-swatch-green {
 	--sfsc-c: var(--sfsc-color-green, 76, 168, 90);
-	--sfsc-fg: var(--sfsc-color-green-fg, #fff);
+	--sfsc-fg-dark: var(--sfsc-color-green-fg, #fff);
+	--sfsc-fg-light: var(--sfsc-color-green-fg-light, #000);
 }
 
 .section-card[data-sfsc-color="cyan"],
 .section-cards-tray-tile[data-sfsc-color="cyan"],
 .sfsc-swatch-cyan {
 	--sfsc-c: var(--sfsc-color-cyan, 44, 160, 198);
-	--sfsc-fg: var(--sfsc-color-cyan-fg, #fff);
+	--sfsc-fg-dark: var(--sfsc-color-cyan-fg, #fff);
+	--sfsc-fg-light: var(--sfsc-color-cyan-fg-light, #000);
 }
 
 .section-card[data-sfsc-color="blue"],
 .section-cards-tray-tile[data-sfsc-color="blue"],
 .sfsc-swatch-blue {
 	--sfsc-c: var(--sfsc-color-blue, 76, 130, 235);
-	--sfsc-fg: var(--sfsc-color-blue-fg, #fff);
+	--sfsc-fg-dark: var(--sfsc-color-blue-fg, #fff);
+	--sfsc-fg-light: var(--sfsc-color-blue-fg-light, #000);
 }
 
 .section-card[data-sfsc-color="purple"],
 .section-cards-tray-tile[data-sfsc-color="purple"],
 .sfsc-swatch-purple {
 	--sfsc-c: var(--sfsc-color-purple, 155, 110, 230);
-	--sfsc-fg: var(--sfsc-color-purple-fg, #fff);
+	--sfsc-fg-dark: var(--sfsc-color-purple-fg, #fff);
+	--sfsc-fg-light: var(--sfsc-color-purple-fg-light, #000);
 }
 
 .section-card[data-sfsc-color="pink"],
 .section-cards-tray-tile[data-sfsc-color="pink"],
 .sfsc-swatch-pink {
 	--sfsc-c: var(--sfsc-color-pink, 226, 110, 170);
-	--sfsc-fg: var(--sfsc-color-pink-fg, #fff);
+	--sfsc-fg-dark: var(--sfsc-color-pink-fg, #fff);
+	--sfsc-fg-light: var(--sfsc-color-pink-fg-light, #000);
 }
 
 .section-card[data-sfsc-color="gray"],
 .section-cards-tray-tile[data-sfsc-color="gray"],
 .sfsc-swatch-gray {
 	--sfsc-c: var(--sfsc-color-gray, 132, 140, 148);
-	--sfsc-fg: var(--sfsc-color-gray-fg, #fff);
+	--sfsc-fg-dark: var(--sfsc-color-gray-fg, #fff);
+	--sfsc-fg-light: var(--sfsc-color-gray-fg-light, #000);
 }
 
-.section-card[data-sfsc-color]:not(.is-today) {
+/* The contrast foreground follows the theme: white-biased against a dark page,
+   dark-biased against a light one — so colored title bars carry dark text in light
+   mode, like the theme's own bars, unless the color itself is genuinely dark. */
+.section-card[data-sfsc-color],
+.section-cards-tray-tile[data-sfsc-color],
+.sfsc-swatch {
+	--sfsc-fg: var(--sfsc-fg-dark);
+}
+
+body.theme-light .section-card[data-sfsc-color],
+body.theme-light .section-cards-tray-tile[data-sfsc-color],
+body.theme-light .sfsc-swatch {
+	--sfsc-fg: var(--sfsc-fg-light);
+}
+
+.section-card[data-sfsc-color] {
 	border-color: rgba(var(--sfsc-c), 0.55);
 }
 
 /* A colored card's title bar wears the palette color at full strength, with the
    title and buttons flipped to black or white (--sfsc-fg) for contrast. */
-.section-card[data-sfsc-color]:not(.is-today) .section-card-header {
+.section-card[data-sfsc-color] .section-card-header {
 	background: rgb(var(--sfsc-c));
 	border-bottom-color: rgb(var(--sfsc-c));
 }
 
-.section-card[data-sfsc-color]:not(.is-today) .section-card-title,
-.section-card[data-sfsc-color]:not(.is-today) .section-card-header button {
+.section-card[data-sfsc-color] .section-card-title,
+.section-card[data-sfsc-color] .section-card-header button {
 	color: var(--sfsc-fg);
 }
 
@@ -1603,7 +1668,7 @@ body.is-mobile .section-cards-hier-col {
    inherit the header's contrast foreground (--sfsc-fg), which is computed against
    the solid color — a translucent wash lightened in light mode until white icons
    disappeared into it. */
-.section-card[data-sfsc-color]:not(.is-today) .section-card-actions {
+.section-card[data-sfsc-color] .section-card-actions {
 	background: rgb(var(--sfsc-c));
 }
 
