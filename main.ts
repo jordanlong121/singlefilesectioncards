@@ -972,14 +972,14 @@ export function toggleStarInLine(line: string, emoji: string): string {
  * shows a trailing ellipsis only in that case. Stars inside code fences or blockquotes
  * don't count as starred (those blocks aren't movable), but the blocks themselves count
  * as hidden content, since the view hides them too. */
-export function starInfo(body: string[], emoji: string): { has: boolean; hidden: boolean } {
-	let has = false;
+export function starInfo(body: string[], emoji: string): { has: boolean; hidden: boolean; count: number } {
+	let count = 0;
 	let hidden = false;
 	for (const b of sectionBlocks(body)) {
-		if (b.kind !== "other" && blockStarred(body[b.start], emoji)) has = true;
+		if (b.kind !== "other" && blockStarred(body[b.start], emoji)) count++;
 		else hidden = true;
 	}
-	return { has, hidden };
+	return { has: count > 0, hidden, count };
 }
 
 /** Whether any of a section body's movable blocks is starred — the card-level test the
@@ -2018,10 +2018,20 @@ export class SectionCardsView extends ItemView {
 	/** Lowercased searchable text per section, so filter keystrokes don't re-lowercase
 	 * every card's full body on each character typed. Invalidates like the above. */
 	private searchTextCache = new WeakMap<Section, string>();
-	/** A section's star facts (any starred block? would starred-only hide anything?),
+	/** A section's star facts (starred-block count, would starred-only hide anything?),
 	 * cached per parse — keyed by the emoji too, so changing it in settings can't
 	 * serve stale answers. */
-	private starCache = new WeakMap<Section, { emoji: string; has: boolean; hidden: boolean }>();
+	private starCache = new WeakMap<Section, { emoji: string; has: boolean; hidden: boolean; count: number }>();
+
+	/** The cached star facts for a section, computed once per parse (and per emoji). */
+	private starFacts(section: Section, emoji: string): { has: boolean; hidden: boolean; count: number } {
+		let star = this.starCache.get(section);
+		if (star === undefined || star.emoji !== emoji) {
+			star = { emoji, ...starInfo(section.body.split("\n"), emoji) };
+			this.starCache.set(section, star);
+		}
+		return star;
+	}
 	/** Heading levels the current note actually contains; the Heading dropdown offers
 	 * only these (plus the current level). All six until the first scan. */
 	private availableLevels: number[] = [1, 2, 3, 4, 5, 6];
@@ -2516,11 +2526,7 @@ export class SectionCardsView extends ItemView {
 			}
 			let starOk = true;
 			if (this.starredOnly) {
-				let star = this.starCache.get(section);
-				if (star === undefined || star.emoji !== emoji) {
-					star = { emoji, ...starInfo(section.body.split("\n"), emoji) };
-					this.starCache.set(section, star);
-				}
+				const star = this.starFacts(section, emoji);
 				starOk = star.has;
 				// A trailing "…" on cards where starred-only actually hid something.
 				entry.el.toggleClass("sc-starred-more", star.has && star.hidden);
@@ -2840,6 +2846,10 @@ export class SectionCardsView extends ItemView {
 	private rebuildHierarchy(): void {
 		this.hierEl.empty();
 		const showTasks = this.plugin.settings.hierTaskCounts;
+		// Star tallies only exist while the note has starred lines at all, mirroring
+		// the toolbar's star toggle: no stars, no badge column.
+		const showStars = this.hasStars;
+		const emoji = this.plugin.starEmoji();
 		const cards = this.cardEntries.map((e) => {
 			const section = e.holder.section;
 			let open = 0;
@@ -2848,7 +2858,8 @@ export class SectionCardsView extends ItemView {
 				open = cached ?? openTaskCount(section.body);
 				if (cached === undefined) this.taskCountCache.set(section, open);
 			}
-			return { line: section.headingLine, open };
+			const stars = showStars ? this.starFacts(section, emoji).count : 0;
+			return { line: section.headingLine, open, stars };
 		});
 		const cardLines = cards.map((c) => c.line);
 		let start = 0;
@@ -2887,13 +2898,13 @@ export class SectionCardsView extends ItemView {
 		items: HierarchyItem[],
 		selected: HierarchyItem,
 		idx: number,
-		cards: { line: number; open: number }[],
+		cards: { line: number; open: number; stars: number }[],
 	): void {
 		const col = this.hierEl.createDiv({ cls: "section-cards-hier-col" });
 		col.createDiv({ cls: "section-cards-hier-col-label", text: `H${level}` });
 		// One bucketing pass instead of a per-item scan over every card: the items'
 		// ranges are disjoint and sorted by start, so each card binary-searches its row.
-		const tallies = items.map(() => ({ count: 0, open: 0 }));
+		const tallies = items.map(() => ({ count: 0, open: 0, stars: 0 }));
 		for (const c of cards) {
 			let lo = 0;
 			let hi = items.length - 1;
@@ -2904,10 +2915,16 @@ export class SectionCardsView extends ItemView {
 				else {
 					tallies[mid].count++;
 					tallies[mid].open += c.open;
+					tallies[mid].stars += c.stars;
 					break;
 				}
 			}
 		}
+		// The badges right of the label — a circle of cards, a square of open tasks, a
+		// star of starred lines, in that order — align into columns: once any row in
+		// the column needs a badge, every row reserves its slot (invisible at zero).
+		const anyTasks = this.plugin.settings.hierTaskCounts && tallies.some((t) => t.open > 0);
+		const anyStars = tallies.some((t) => t.stars > 0);
 		for (let i = 0; i < items.length; i++) {
 			const item = items[i];
 			const btn = col.createEl("button", { cls: "section-cards-hier-item" });
@@ -2916,15 +2933,23 @@ export class SectionCardsView extends ItemView {
 			btn.createSpan({ cls: "section-cards-hier-item-label", text: item.label });
 			const count = tallies[i].count;
 			btn.createSpan({ cls: "section-cards-hier-count", text: String(count) });
-			// The square open-task badge; a row with nothing left to do goes without.
 			const open = this.plugin.settings.hierTaskCounts ? tallies[i].open : 0;
-			if (open > 0) btn.createSpan({ cls: "section-cards-hier-tasks", text: String(open) });
+			if (anyTasks) {
+				const box = btn.createSpan({ cls: "section-cards-hier-tasks", text: open > 0 ? String(open) : "" });
+				box.toggleClass("is-empty", open === 0);
+			}
+			const stars = tallies[i].stars;
+			if (anyStars) {
+				const star = btn.createSpan({ cls: "section-cards-hier-stars", text: stars > 0 ? String(stars) : "" });
+				star.toggleClass("is-empty", stars === 0);
+			}
+			const starLabel = stars > 0 ? `, ${stars} starred ${stars === 1 ? "line" : "lines"}` : "";
 			const openLabel = open > 0 ? `, ${open} unfinished ${open === 1 ? "task" : "tasks"}` : "";
 			btn.setAttr(
 				"aria-label",
 				item.key === HIER_GAP_KEY
-					? `Sections here with no H${level} heading (${count}${openLabel})`
-					: `${item.label} (${count} ${count === 1 ? "section" : "sections"}${openLabel})`,
+					? `Sections here with no H${level} heading (${count}${starLabel}${openLabel})`
+					: `${item.label} (${count} ${count === 1 ? "section" : "sections"}${starLabel}${openLabel})`,
 			);
 			btn.addEventListener("click", () => {
 				if (this.hierSelection[idx] === item.key) return;
@@ -3975,7 +4000,7 @@ export class SectionCardsView extends ItemView {
 		quickAddBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
 			const target = holder.section;
-			new QuickAddModal(this.app, target.title || "(untitled)", async (text, where) => {
+			new QuickAddModal(this.plugin, target.title || "(untitled)", async (text, where) => {
 				const ok = await quickAddToSection(this.app, file, this.headingLevel, target, text, where);
 				if (!ok) {
 					new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
@@ -5717,12 +5742,19 @@ class HeadingFormatModal extends Modal {
 }
 
 class QuickAddModal extends Modal {
+	private readonly plugin: SectionCardsPlugin;
 	private readonly title: string;
 	private readonly onSubmit: (text: string, where: QuickAddPlacement) => void | Promise<void>;
-	private box!: HTMLTextAreaElement;
+	private editor: EmbeddedEditor | null = null;
+	private box: HTMLTextAreaElement | null = null;
 
-	constructor(app: App, title: string, onSubmit: (text: string, where: QuickAddPlacement) => void | Promise<void>) {
-		super(app);
+	constructor(
+		plugin: SectionCardsPlugin,
+		title: string,
+		onSubmit: (text: string, where: QuickAddPlacement) => void | Promise<void>,
+	) {
+		super(plugin.app);
+		this.plugin = plugin;
 		this.title = title;
 		this.onSubmit = onSubmit;
 	}
@@ -5732,27 +5764,46 @@ class QuickAddModal extends Modal {
 		contentEl.addClass("section-cards-quickadd-modal");
 		contentEl.createEl("h3", { text: `Quick add to “${this.title}”` });
 
-		this.box = contentEl.createEl("textarea", { cls: "section-cards-quickadd-input" });
-		this.box.setAttr("placeholder", "- [ ] A task, a note, any markdown…");
-		this.box.rows = 4;
-		// Enter makes a new line; Ctrl/⌘+Enter submits with the default placement.
-		this.box.addEventListener("keydown", (e) => {
-			if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-				e.preventDefault();
-				this.submit("bottom");
-			}
-		});
+		// The same editor flavour cards edit with: the live-preview embed (or source),
+		// falling back to the plain textarea when the setting says so or the internal
+		// editor is unavailable. Ctrl/⌘+Enter submits with the default placement either
+		// way; in the embed, Escape closes the modal like it cancels a card editor.
+		const mode = this.plugin.settings.editorMode;
+		if (mode !== "plain") {
+			const host = contentEl.createDiv({ cls: "section-card-editor-embed section-cards-quickadd-editor" });
+			this.editor = createEmbeddedEditor(this.plugin.app, host, {
+				value: "",
+				mode: mode === "source" ? "source" : "live",
+				onSave: () => this.submit("bottom"),
+				onCancel: () => this.close(),
+				onChange: () => {},
+			});
+			if (!this.editor) host.remove();
+		}
+		if (!this.editor) {
+			this.box = contentEl.createEl("textarea", { cls: "section-cards-quickadd-input" });
+			this.box.setAttr("placeholder", "- [ ] A task, a note, any markdown…");
+			this.box.rows = 4;
+			// Enter makes a new line; Ctrl/⌘+Enter submits with the default placement.
+			this.box.addEventListener("keydown", (e) => {
+				if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+					e.preventDefault();
+					this.submit("bottom");
+				}
+			});
+		}
 
 		new Setting(contentEl)
 			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
 			.addButton((b) => b.setButtonText("Add to top").onClick(() => this.submit("top")))
 			.addButton((b) => b.setButtonText("Add to bottom").setCta().onClick(() => this.submit("bottom")));
 
-		this.box.focus();
+		if (this.editor) this.editor.focusEnd();
+		else this.box?.focus();
 	}
 
 	private submit(where: QuickAddPlacement): void {
-		const text = this.box.value.replace(/\s+$/, "");
+		const text = (this.editor ? this.editor.value : (this.box?.value ?? "")).replace(/\s+$/, "");
 		if (!text.trim()) {
 			new Notice("Type something to add.");
 			return;
@@ -5762,6 +5813,8 @@ class QuickAddModal extends Modal {
 	}
 
 	onClose(): void {
+		this.editor?.destroy();
+		this.editor = null;
 		this.contentEl.empty();
 	}
 }
@@ -6063,7 +6116,8 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			key === "stickyPinned" ||
 			key === "unfiledEnabled" ||
 			key === "hierTaskCounts" ||
-			key === "dynamicLevelOptions"
+			key === "dynamicLevelOptions" ||
+			key === "starEmoji"
 		) {
 			this.plugin.refreshAllViews();
 		}
