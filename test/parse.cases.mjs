@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -644,6 +644,30 @@ t("background adjust layers: black under 100, white over, empty at 100", () => {
   assert.equal(backgroundLightLayer(150), "rgba(255, 255, 255, 0.5)");
   assert.equal(backgroundDesatLayer(100), "");
   assert.equal(backgroundDesatLayer(25), "rgba(128, 128, 128, 0.75)");
+});
+
+t("gradientStops spaces 2 and 3 colors evenly across 0..1", () => {
+  assert.deepEqual(gradientStops(["#a", "#b"]), [{ color: "#a", at: 0 }, { color: "#b", at: 1 }]);
+  assert.deepEqual(gradientStops(["#a", "#b", "#c"]),
+    [{ color: "#a", at: 0 }, { color: "#b", at: 0.5 }, { color: "#c", at: 1 }]);
+});
+
+t("gradientCss builds the preview's linear and radial backgrounds", () => {
+  assert.equal(gradientCss("linear", 135, ["#264653", "#2a9d8f"]),
+    "linear-gradient(135deg, #264653 0%, #2a9d8f 100%)");
+  assert.equal(gradientCss("radial", 0, ["#111111", "#222222", "#333333"]),
+    "radial-gradient(circle, #111111 0%, #222222 50%, #333333 100%)");
+});
+
+t("gradientEndpoints matches CSS: 0° runs bottom-to-top, 90° left-to-right, through center", () => {
+  const up = gradientEndpoints(0, 1920, 1080);
+  assert.deepEqual([up.x0, up.y0, up.x1, up.y1].map(Math.round), [960, 1080, 960, 0]);
+  const right = gradientEndpoints(90, 1920, 1080);
+  assert.deepEqual([right.x0, right.y0, right.x1, right.y1].map(Math.round), [0, 540, 1920, 540]);
+  // Any angle: endpoints stay symmetric about the canvas center.
+  const d = gradientEndpoints(135, 1920, 1080);
+  assert.equal(Math.round((d.x0 + d.x1) / 2), 960);
+  assert.equal(Math.round((d.y0 + d.y1) / 2), 540);
 });
 
 t("sample vault: every (from, to) move preserves all sections and hits the right slot", () => {
