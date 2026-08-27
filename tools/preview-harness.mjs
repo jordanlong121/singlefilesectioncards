@@ -25,6 +25,8 @@ const TODAY = process.env.TODAY ?? "2026-08-06";
 
 const note = fs.readFileSync(notePath, "utf8");
 const sections = sortSections(parseCards(note.split(/\r?\n/), LEVEL, null), SORT);
+/** Whether the note's headings name days — drives the toolbar's dates controls. */
+const NOTE_HAS_DATES = sections.some((s) => /\d{4}-\d{2}-\d{2}/.test(s.title));
 
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const inline = (s) =>
@@ -108,6 +110,7 @@ const SORT_LABELS = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 const CAL_SORT_LABELS = { asc: "Ascending", desc: "Descending", doc: "Ascending" };
 
 const CAL_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-calendar-days"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`;
+const MENU_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-menu"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>`;
 const TEMPLATE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-layout-template"><rect width="18" height="7" x="3" y="3" rx="1"/><rect width="9" height="7" x="3" y="14" rx="1"/><rect width="5" height="7" x="16" y="14" rx="1"/></svg>`;
 
 /** Mirrors buildToolbar: Heading+Filter on the left, date controls mid-bar, then the
@@ -120,19 +123,20 @@ function toolbarHtml(layout, mode = "default") {
 	// class in styles.css, the Card level and View mode controls.
 	const datesHidden = layout === "calendar" ? " is-hidden" : "";
 	return `<div class="section-cards-toolbar">
+	<button class="section-cards-icon-btn section-cards-menu-btn">${MENU_ICON}</button>
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
 	<div class="section-cards-control section-cards-level-control"><span class="section-cards-label">Card level</span><select class="dropdown"><option>H${LEVEL}</option></select></div>
 	<div class="section-cards-control section-cards-filter"><input type="text" class="section-cards-filter-input" placeholder="Filter…" spellcheck="false"><button class="section-cards-filter-clear"></button></div>
 	<div class="section-cards-spacer"></div>
 	<div class="section-cards-control">
-		<div class="section-cards-jump-date"><button class="section-cards-icon-btn section-cards-jump-btn">${CAL_ICON}</button></div>
-		<label class="section-cards-dates-label${datesHidden}"><span class="section-cards-label">Dates</span><input type="checkbox" class="section-cards-dates-toggle" checked></label>
+		<div class="section-cards-jump-date${NOTE_HAS_DATES ? "" : " is-hidden"}"><button class="section-cards-icon-btn section-cards-jump-btn">${CAL_ICON}</button></div>
+		<label class="section-cards-dates-label${datesHidden}"><span class="section-cards-label">Dates</span><input type="checkbox" class="section-cards-dates-toggle"${NOTE_HAS_DATES ? " checked" : ""}></label>
 	</div>
 	<div class="section-cards-spacer"></div>
+	<button class="section-cards-new-btn mod-cta">+ New card</button>
 	<div class="section-cards-control section-cards-mode-control"><span class="section-cards-label">View mode</span><div class="section-cards-segmented">${seg("Default", "default")}${seg("Hierarchy", "hier")}${seg("Dividers", "sections")}</div></div>
 	<div class="section-cards-control section-cards-sort-control"><span class="section-cards-label">Sort</span><select class="dropdown"><option>${(layout === "calendar" ? CAL_SORT_LABELS : SORT_LABELS)[SORT]}</option></select></div>
 	<div class="section-cards-control"><span class="section-cards-label">Layout</span><select class="dropdown"><option>${LAYOUT_LABELS[layout]}</option></select></div>
-	<button class="section-cards-new-btn mod-cta">+ New card</button>
 	<button class="section-cards-icon-btn section-cards-template-btn">${TEMPLATE_ICON}</button>
 	<button class="section-cards-icon-btn">↻</button>
 	<button class="section-cards-help-btn">?</button>
@@ -161,6 +165,9 @@ function calendarHtml() {
 		if (iso && !byIso.has(iso)) byIso.set(iso, s);
 	}
 	const isos = [...byIso.keys()].sort();
+	// A note with no dated headings can't stage a calendar; an empty grid keeps the
+	// page valid when another note is rendered via NOTE=.
+	if (!isos.length) return `<div class="section-cards-pinned"></div>\n<div class="section-cards-grid"></div>\n<div class="section-cards-tray"></div>`;
 	const [y0, m0] = isos[0].split("-").map(Number);
 	const [y1, m1] = isos[isos.length - 1].split("-").map(Number);
 	const months = [];
@@ -380,7 +387,51 @@ const PACK_SCRIPT = `<script>
 })();
 </script>`;
 
-function pageHtml(layout, { withMenu = false, mode = "default" } = {}) {
+/** Generic abstract backgrounds for the screenshots: a diagonal base gradient with
+ * two soft radial glows, one SVG file per palette, written into the out dir. */
+const BG_PALETTES = {
+	"bg-aurora": { base: ["#0f2027", "#203a43", "#2c5364"], glowA: "#66e0c2", glowB: "#7f7fd5" },
+	"bg-sunset": { base: ["#2d1b3d", "#7a2f4f", "#c96a4a"], glowA: "#ffb36b", glowB: "#e05f9a" },
+	"bg-forest": { base: ["#10241b", "#1e3d2f", "#2f5d43"], glowA: "#7fd8a4", glowB: "#cfe97f" },
+	"bg-ocean": { base: ["#071f33", "#0d3b5e", "#14597f"], glowA: "#47b5ff", glowB: "#8ef4e0" },
+	"bg-dunes": { base: ["#2a2016", "#4d3a24", "#7a5a33"], glowA: "#e8c07d", glowB: "#ff9f68" },
+	"bg-plum": { base: ["#241b2f", "#45305c", "#6d4a86"], glowA: "#c69df2", glowB: "#f29dc4" },
+	"bg-meadow": { base: ["#17261a", "#35502c", "#5c7a3a"], glowA: "#b9e769", glowB: "#7dd8c0" },
+};
+
+function backgroundSvg({ base, glowA, glowB }) {
+	return `<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+<defs>
+<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${base[0]}"/><stop offset=".5" stop-color="${base[1]}"/><stop offset="1" stop-color="${base[2]}"/></linearGradient>
+<radialGradient id="a" cx=".22" cy=".25" r=".65"><stop offset="0" stop-color="${glowA}" stop-opacity=".5"/><stop offset="1" stop-color="${glowA}" stop-opacity="0"/></radialGradient>
+<radialGradient id="b" cx=".8" cy=".78" r=".7"><stop offset="0" stop-color="${glowB}" stop-opacity=".45"/><stop offset="1" stop-color="${glowB}" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="1920" height="1080" fill="url(#g)"/>
+<rect width="1920" height="1080" fill="url(#a)"/>
+<rect width="1920" height="1080" fill="url(#b)"/>
+</svg>`;
+}
+
+/** Which background each page wears; BG=<name> overrides all pages for a run, BG=none clears. */
+const PAGE_BACKGROUNDS = {
+	grid: "bg-sunset",
+	aligned: "bg-forest",
+	tight: "bg-ocean",
+	horizontal: "bg-dunes",
+	vertical: "bg-aurora",
+	custom: "bg-plum",
+	calendar: "bg-meadow",
+	hierarchy: "bg-aurora",
+	dividers: "bg-dunes",
+	"context-menu": null,
+};
+
+function pageBackground(page) {
+	if (process.env.BG === "none") return null;
+	return process.env.BG ?? PAGE_BACKGROUNDS[page] ?? null;
+}
+
+function pageHtml(layout, { withMenu = false, mode = "default", background = null } = {}) {
 	return `<!doctype html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="app.css">
@@ -413,7 +464,7 @@ html, body { height: 100%; margin: 0; }
 </div>
 <div class="workspace-tab-container">
 <div class="workspace-leaf mod-active"><div class="workspace-leaf-content" data-type="section-cards-view">
-<div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}">
+<div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}${background ? " has-sfsc-bg" : ""}"${background ? ` style="--sfsc-bg-image: url('${background}.svg')"` : ""}>
 ${toolbarHtml(layout, mode)}
 ${gridHtml(layout, mode)}
 </div>
@@ -427,12 +478,24 @@ ${withMenu ? MENU_SCRIPT : ""}
 fs.mkdirSync(OUT_DIR, { recursive: true });
 fs.copyFileSync(path.join(here, "..", "styles.css"), path.join(OUT_DIR, "styles.css"));
 if (!fs.existsSync(path.join(OUT_DIR, "theme.css"))) fs.writeFileSync(path.join(OUT_DIR, "theme.css"), "");
+for (const [name, palette] of Object.entries(BG_PALETTES)) {
+	fs.writeFileSync(path.join(OUT_DIR, `${name}.svg`), backgroundSvg(palette));
+}
 for (const layout of Object.keys(LAYOUT_LABELS)) {
-	fs.writeFileSync(path.join(OUT_DIR, `${layout}.html`), pageHtml(layout));
+	fs.writeFileSync(path.join(OUT_DIR, `${layout}.html`), pageHtml(layout, { background: pageBackground(layout) }));
 }
 // The two grouping view modes, staged on the Grid layout (HIER_LAYOUT overrides).
 const hierLayout = process.env.HIER_LAYOUT ?? "grid";
-fs.writeFileSync(path.join(OUT_DIR, "hierarchy.html"), pageHtml(hierLayout, { mode: "hier" }));
-fs.writeFileSync(path.join(OUT_DIR, "dividers.html"), pageHtml(hierLayout, { mode: "sections" }));
-fs.writeFileSync(path.join(OUT_DIR, "context-menu.html"), pageHtml("grid", { withMenu: true }));
+fs.writeFileSync(
+	path.join(OUT_DIR, "hierarchy.html"),
+	pageHtml(hierLayout, { mode: "hier", background: pageBackground("hierarchy") }),
+);
+fs.writeFileSync(
+	path.join(OUT_DIR, "dividers.html"),
+	pageHtml(hierLayout, { mode: "sections", background: pageBackground("dividers") }),
+);
+fs.writeFileSync(
+	path.join(OUT_DIR, "context-menu.html"),
+	pageHtml("grid", { withMenu: true, background: pageBackground("context-menu") }),
+);
 console.log("wrote", Object.keys(LAYOUT_LABELS).length + 3, "pages to", OUT_DIR, "with", sections.length, "cards");
