@@ -183,11 +183,18 @@ body.sfsc-flat-cards .section-cards-view {
    the page color, so it's a black veil on dark themes and white on light. Its
    strength is the per-note transparency slider (menu → Background: transparency). */
 .workspace-leaf-content .view-content.section-cards-view.has-sfsc-bg {
+	/* Layers, top to bottom: the theme-colored veil (transparency slider), a
+	   black/white wash (brightness), a gray drained into the image with the
+	   `saturation` blend mode (saturation), then the image itself. The plugin
+	   writes the two layer colors per note; transparent means "untouched". */
 	background-image: linear-gradient(
 			rgba(var(--mono-rgb-0), var(--sfsc-bg-veil, var(--sfsc-bg-veil-default, 0.45))),
 			rgba(var(--mono-rgb-0), var(--sfsc-bg-veil, var(--sfsc-bg-veil-default, 0.45)))
 		),
+		linear-gradient(var(--sfsc-bg-light, transparent), var(--sfsc-bg-light, transparent)),
+		linear-gradient(var(--sfsc-bg-desat, transparent), var(--sfsc-bg-desat, transparent)),
 		var(--sfsc-bg-image);
+	background-blend-mode: normal, normal, saturation, normal;
 	background-size: cover;
 	background-position: center;
 }
@@ -2331,6 +2338,30 @@ body.is-mobile .section-card-body {
 .section-card-body ol {
 	padding-inline-start: 1.4em;
 	margin: 0.2em 0;
+}
+
+/* Cards spend less width on list indentation than the editor, and the markers
+   left-align with the card's paragraph text: each marker kind hangs a known
+   distance into the item's start margin (app.css: bullets float -0.8em, task
+   checkboxes -1.5 × their size, number ::markers sit right against the text),
+   so the item indents by exactly that hang. Top-level lists lose the 1.4em
+   padding; nested ones keep it as the per-level step. The Calendar keeps its
+   own flush, markers-inside rule. */
+.section-cards-view:not(.is-layout-calendar) .section-card-body > ul,
+.section-cards-view:not(.is-layout-calendar) .section-card-body > ol {
+	padding-inline-start: 0;
+}
+
+.section-cards-view:not(.is-layout-calendar) .section-card-body ul > li {
+	margin-inline-start: 0.8em;
+}
+
+.section-cards-view:not(.is-layout-calendar) .section-card-body ol > li {
+	margin-inline-start: 2ch;
+}
+
+.section-cards-view:not(.is-layout-calendar) .section-card-body ul > li.task-list-item {
+	margin-inline-start: calc(var(--checkbox-size, 1em) * 1.5);
 }
 
 .section-card-body li {

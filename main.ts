@@ -173,6 +173,10 @@ export interface PerFileView extends ViewSettings {
 	backgroundImage?: string;
 	/** How faded the background image is, 0 (fully visible) to 100 (invisible). */
 	backgroundDim?: number;
+	/** Background image brightness in percent, 0–200; unset = 100 (untouched). */
+	backgroundBrightness?: number;
+	/** Background image saturation in percent, 0–100; unset = 100 (untouched). */
+	backgroundSaturation?: number;
 	/** This note's heading-name format for new cards, overriding the global default. */
 	newCardFormat?: string;
 }
@@ -2424,6 +2428,15 @@ export class SectionCardsView extends ItemView {
 
 	/** The Calendar option is offered while any heading level names dates (and the
 	 * active layout always stays selectable). Shared by the dropdown and the L cycle. */
+	/** Switch layouts — the dropdown, the L cycle, and the wall's right-click menu. */
+	private setLayout(next: Layout): void {
+		this.layout = next;
+		this.rememberView();
+		this.applyLayoutClass();
+		this.buildToolbar(); // the layout dropdown, sort options, and toggles follow along
+		void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+	}
+
 	private calendarSelectable(): boolean {
 		return this.hasAnyDates || this.layout === "calendar";
 	}
@@ -2505,6 +2518,20 @@ export class SectionCardsView extends ItemView {
 					.onClick(() => this.promptNewCard()),
 			);
 			menu.addSeparator();
+			// The layout picker, mirroring the toolbar dropdown — the current one is
+			// checked, and Calendar greys out in notes with no date headings.
+			for (const [value, label] of LAYOUT_OPTIONS) {
+				menu.addItem((item) =>
+					item
+						.setTitle(label)
+						.setChecked(this.layout === value)
+						.setDisabled(value === "calendar" && this.layout !== "calendar" && !this.calendarSelectable())
+						.onClick(() => {
+							if (this.layout !== value) this.setLayout(value);
+						}),
+				);
+			}
+			menu.addSeparator();
 			this.addBackgroundItems(menu, this.viewSettings());
 			menu.showAtMouseEvent(evt);
 		};
@@ -2575,11 +2602,7 @@ export class SectionCardsView extends ItemView {
 			if (next === "calendar" && !this.calendarSelectable()) {
 				next = values[(values.indexOf(next) + 1) % values.length];
 			}
-			this.layout = next;
-			this.rememberView();
-			this.applyLayoutClass();
-			this.buildToolbar(); // the layout dropdown and hierarchy toggle follow along
-			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+			this.setLayout(next);
 			return false;
 		});
 		// H: show/hide the hierarchy columns (not available on the Custom Grid canvas).
@@ -3833,13 +3856,7 @@ export class SectionCardsView extends ItemView {
 			if (value === "calendar") option.disabled = !this.calendarSelectable();
 		}
 		layoutSelect.value = this.layout;
-		layoutSelect.addEventListener("change", () => {
-			this.layout = layoutSelect.value as Layout;
-			this.rememberView();
-			this.applyLayoutClass();
-			this.buildToolbar(); // the sort options differ on the Calendar
-			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
-		});
+		layoutSelect.addEventListener("change", () => this.setLayout(layoutSelect.value as Layout));
 
 		const templateBtn = bar.createEl("button", { cls: "section-cards-icon-btn section-cards-template-btn" });
 		this.templateBtn = templateBtn;
@@ -4034,31 +4051,67 @@ export class SectionCardsView extends ItemView {
 				}),
 		);
 		if (this.plugin.getBackgroundImage(this.filePath)) {
-			// The transparency slider lives right in the menu: it previews live while
+			// The adjustment sliders live right in the menu: each previews live while
 			// dragging and saves on release. Events stop at the row so the menu stays
-			// open while it's being used.
-			menu.addItem((item) => {
-				item.setIcon("sun-dim");
-				item.setTitle(
-					createFragment((frag) => {
-						const wrap = frag.createDiv({ cls: "sfsc-menu-slider" });
-						wrap.createSpan({ text: "Transparency" });
-						const slider = wrap.createEl("input", {
-							attr: { type: "range", min: "0", max: "100", step: "5", "aria-label": "Background transparency" },
-						});
-						slider.value = String(this.plugin.getBackgroundDim(this.filePath));
-						for (const type of ["click", "mousedown", "pointerdown", "touchstart"]) {
-							wrap.addEventListener(type, (e) => e.stopPropagation());
-						}
-						slider.addEventListener("input", () => {
-							this.contentEl.setCssProps({ "--sfsc-bg-veil": String(Number(slider.value) / 100) });
-						});
-						slider.addEventListener("change", () => {
-							void this.plugin.setBackgroundDim(this.filePath, Number(slider.value), base);
-						});
-					}),
-				);
-			});
+			// open while they're being used.
+			const sliderItem = (
+				label: string,
+				icon: string,
+				max: number,
+				value: number,
+				preview: (value: number) => void,
+				save: (value: number) => void,
+			) => {
+				menu.addItem((item) => {
+					item.setIcon(icon);
+					item.setTitle(
+						createFragment((frag) => {
+							const wrap = frag.createDiv({ cls: "sfsc-menu-slider" });
+							wrap.createSpan({ text: label });
+							const slider = wrap.createEl("input", {
+								attr: {
+									type: "range",
+									min: "0",
+									max: String(max),
+									step: "5",
+									"aria-label": `Background ${label.toLowerCase()}`,
+								},
+							});
+							slider.value = String(value);
+							for (const type of ["click", "mousedown", "pointerdown", "touchstart"]) {
+								wrap.addEventListener(type, (e) => e.stopPropagation());
+							}
+							slider.addEventListener("input", () => preview(Number(slider.value)));
+							slider.addEventListener("change", () => save(Number(slider.value)));
+						}),
+					);
+				});
+			};
+			const adjust = this.plugin.getBackgroundAdjust(this.filePath);
+			sliderItem(
+				"Transparency",
+				"sun-dim",
+				100,
+				this.plugin.getBackgroundDim(this.filePath),
+				(value) => this.contentEl.setCssProps({ "--sfsc-bg-veil": String(value / 100) }),
+				(value) => void this.plugin.setBackgroundDim(this.filePath, value, base),
+			);
+			sliderItem(
+				"Brightness",
+				"sun",
+				200,
+				adjust.brightness,
+				(value) => this.contentEl.setCssProps({ "--sfsc-bg-light": backgroundLightLayer(value) }),
+				(value) => void this.plugin.setBackgroundAdjust(this.filePath, { brightness: value }, base),
+			);
+			sliderItem(
+				"Saturation",
+				"droplet",
+				100,
+				adjust.saturation,
+				(value) => this.contentEl.setCssProps({ "--sfsc-bg-desat": backgroundDesatLayer(value) }),
+				(value) => void this.plugin.setBackgroundAdjust(this.filePath, { saturation: value }, base),
+			);
 			menu.addItem((item) =>
 				item
 					.setTitle("Remove background")
@@ -4113,13 +4166,21 @@ export class SectionCardsView extends ItemView {
 			// The veil is only written inline when this note set its own strength;
 			// otherwise styles.css's default (Style Settings can override it) applies.
 			const dim = this.plugin.getBackgroundDimOverride(this.filePath);
+			const adjust = this.plugin.getBackgroundAdjust(this.filePath);
 			this.contentEl.setCssProps({
 				"--sfsc-bg-image": `url("${this.app.vault.getResourcePath(file)}")`,
 				"--sfsc-bg-veil": dim === null ? "" : String(dim / 100),
+				"--sfsc-bg-light": backgroundLightLayer(adjust.brightness),
+				"--sfsc-bg-desat": backgroundDesatLayer(adjust.saturation),
 			});
 			this.contentEl.addClass("has-sfsc-bg");
 		} else {
-			this.contentEl.setCssProps({ "--sfsc-bg-image": "", "--sfsc-bg-veil": "" });
+			this.contentEl.setCssProps({
+				"--sfsc-bg-image": "",
+				"--sfsc-bg-veil": "",
+				"--sfsc-bg-light": "",
+				"--sfsc-bg-desat": "",
+			});
 			this.contentEl.removeClass("has-sfsc-bg");
 		}
 	}
@@ -6254,6 +6315,25 @@ const BACKGROUND_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avi
 /** The veil strength a background image starts with (styles.css falls back to it too). */
 const BACKGROUND_DIM_DEFAULT = 45;
 
+/**
+ * The brightness layer's color for a percentage: below 100 an increasingly solid
+ * black overlay dims the image, above 100 a white one lifts it. 100 = "" so the
+ * stylesheet's transparent fallback applies. (CSS can't filter one background
+ * layer, so brightness and saturation are approximated with blended layers.)
+ */
+export function backgroundLightLayer(brightness: number): string {
+	if (brightness === 100) return "";
+	return brightness < 100
+		? `rgba(0, 0, 0, ${(100 - brightness) / 100})`
+		: `rgba(255, 255, 255, ${(brightness - 100) / 100})`;
+}
+
+/** The desaturation layer's color: a gray blended with `saturation` mode drains the
+ * image's color by its alpha. 100 = "" so the transparent fallback applies. */
+export function backgroundDesatLayer(saturation: number): string {
+	return saturation >= 100 ? "" : `rgba(128, 128, 128, ${(100 - saturation) / 100})`;
+}
+
 /** The three places a background image can come from, offered as one dialog. */
 class SelectBackgroundModal extends Modal {
 	private readonly sources: { fromVault: () => void; fromLocal: () => void; fromInternet: () => void };
@@ -7680,6 +7760,33 @@ export default class SectionCardsPlugin extends Plugin {
 		const current = this.settings.perFile[path] ?? { ...base };
 		if (value === BACKGROUND_DIM_DEFAULT) delete current.backgroundDim;
 		else current.backgroundDim = value;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+		this.refreshAllViews();
+	}
+
+	/** Background image brightness and saturation, in percent (100 = untouched). */
+	getBackgroundAdjust(path: string): { brightness: number; saturation: number } {
+		const entry = this.settings.perFile?.[path];
+		return { brightness: entry?.backgroundBrightness ?? 100, saturation: entry?.backgroundSaturation ?? 100 };
+	}
+
+	async setBackgroundAdjust(
+		path: string,
+		patch: { brightness?: number; saturation?: number },
+		base: ViewSettings,
+	): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (patch.brightness !== undefined) {
+			if (patch.brightness === 100) delete current.backgroundBrightness;
+			else current.backgroundBrightness = patch.brightness;
+		}
+		if (patch.saturation !== undefined) {
+			if (patch.saturation === 100) delete current.backgroundSaturation;
+			else current.backgroundSaturation = patch.saturation;
+		}
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
 		this.refreshAllViews();
