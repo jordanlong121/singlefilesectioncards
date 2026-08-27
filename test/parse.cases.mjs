@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -789,6 +789,17 @@ t("parseSections honors a properties block behind leading blank lines", () => {
   assert.equal(secs[0].title, "real");
 });
 
+t("bodyForRender: a plain line under a list item becomes its own paragraph", () => {
+  // Lazy continuation: without the inserted blank, the renderer folds the line
+  // into the task item — hover, drag, and justification all treat it wrongly.
+  assert.equal(bodyForRender("- [ ] task\nplain line"), "- [ ] task\n\nplain line");
+  assert.equal(bodyForRender("- a\n\tnested child\nplain"), "- a\n\tnested child\n\nplain");
+  // Already separated, or not a paragraph: untouched.
+  assert.equal(bodyForRender("- [ ] task\n\nplain"), "- [ ] task\n\nplain");
+  assert.equal(bodyForRender("- a\n#### sub"), "- a\n#### sub");
+  assert.equal(bodyForRender("```\n- a\ntext\n```"), "```\n- a\ntext\n```"); // fences stay byte-exact
+});
+
 t("bodyForRender: a blank line stops a leading '---' being swallowed as frontmatter", () => {
   assert.equal(bodyForRender("---\na: b\n---\ntext"), "\n---\na: b\n---\ntext");
   assert.equal(bodyForRender("plain text"), "plain text");
@@ -1026,6 +1037,45 @@ t("insertIntoSection keeps multi-line text and strips trailing whitespace", () =
 t("insertIntoSection round-trips: the other section is untouched", () => {
   const secs = parseSections(QUICK_DOC, 3);
   const out = insertIntoSection(QUICK_DOC, secs[0], "x", "bottom");
+  const after = parseSections(out, 3);
+  assert.equal(after[1].raw, secs[1].raw);
+});
+
+// ---------- paste (insertAfterBlock) ----------
+
+const PASTE_DOC = L(`### 2026-08-02
+- [ ] first
+para one
+
+- [ ] last
+
+### 2026-08-01
+old`);
+
+t("insertAfterBlock puts a list item directly under the clicked block, no padding", () => {
+  const secs = parseSections(PASTE_DOC, 3);
+  const out = insertAfterBlock(PASTE_DOC, secs[0], 0, "- [ ] pasted");
+  assert.deepEqual(out.slice(0, 4), ["### 2026-08-02", "- [ ] first", "- [ ] pasted", "para one"]);
+});
+
+t("insertAfterBlock pads a pasted paragraph with blank lines on both sides", () => {
+  const secs = parseSections(PASTE_DOC, 3);
+  // Pasted between "- [ ] first" and "para one" — without padding the paragraph
+  // would merge into "para one" below (and read as part of the list above).
+  const out = insertAfterBlock(PASTE_DOC, secs[0], 0, "pasted para");
+  assert.deepEqual(out.slice(0, 5), ["### 2026-08-02", "- [ ] first", "", "pasted para", ""]);
+});
+
+t("insertAfterBlock keeps multi-line pastes together and returns null for a bad index", () => {
+  const secs = parseSections(PASTE_DOC, 3);
+  const out = insertAfterBlock(PASTE_DOC, secs[0], 2, "- [ ] a\n\t- [ ] child\n");
+  assert.deepEqual(out.slice(4, 7), ["- [ ] last", "- [ ] a", "\t- [ ] child"]);
+  assert.equal(insertAfterBlock(PASTE_DOC, secs[0], 9, "x"), null);
+});
+
+t("insertAfterBlock leaves the other section untouched", () => {
+  const secs = parseSections(PASTE_DOC, 3);
+  const out = insertAfterBlock(PASTE_DOC, secs[0], 1, "pasted");
   const after = parseSections(out, 3);
   assert.equal(after[1].raw, secs[1].raw);
 });
