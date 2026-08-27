@@ -23,6 +23,8 @@ While this is a standalone plugin that works on any note, it pairs nicely with
   Ticking a checkbox uses its toggle (recurring tasks recur), and the right-click menu gains its
   create/edit dialogs.
 - **Templates and dates.** New cards can start from a template note.
+- **Make it yours.** Apply custom card colors and background images (remembered per note),
+  and tune the look with the [Style Settings](https://github.com/mgmeyers/obsidian-style-settings) plugin.
 - **Navigate as cards.** Wikilinks open the linked note's card wall, ↗ opens the section in a
   normal editor.
 - **Keyboard shortcuts.** `1`–`6` heading level, `L` layouts, `H`/`D` hierarchy/dividers,
