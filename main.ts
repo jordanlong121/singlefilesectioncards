@@ -1181,7 +1181,19 @@ export function sectionHasStar(body: string[], emoji: string): boolean {
  * way the reading view shows those lines in the full note.
  */
 export function bodyForRender(body: string): string {
-	return body.startsWith("---") ? "\n" + body : body;
+	// A plain line straight under a list item is a markdown "lazy continuation":
+	// the renderer would fold it into the item, while this plugin's own blocks —
+	// and so the drag/hover mapping — treat it as its own paragraph. A blank line
+	// makes the renderer agree, so the text renders as a normal paragraph.
+	const lines = body.split("\n");
+	const blocks = sectionBlocks(lines);
+	for (let i = blocks.length - 1; i > 0; i--) {
+		if (blocks[i].kind === "paragraph" && blocks[i - 1].kind === "item" && blocks[i - 1].end === blocks[i].start) {
+			lines.splice(blocks[i].start, 0, "");
+		}
+	}
+	const out = lines.join("\n");
+	return out.startsWith("---") ? "\n" + out : out;
 }
 
 /**
@@ -2005,8 +2017,58 @@ async function quickAddToSection(
 	return ok;
 }
 
-/** Insert a line right after a given movable block, verifying the block's text first. */
-async function insertLineAfterBlock(
+/**
+ * Insert text right after a movable block. Paragraph content gets blank-line separation
+ * from non-blank neighbours — the same padding a block move applies — so a pasted
+ * paragraph doesn't merge into the block above or the paragraph below.
+ */
+export function insertAfterBlock(lines: string[], section: Section, blockIndex: number, text: string): string[] | null {
+	const bodyStart = bodyStartLine(section);
+	const body = lines.slice(bodyStart, section.endLine);
+	const block = movableBlocks(body)[blockIndex];
+	if (!block) return null;
+	const ins = text.replace(/\s+$/, "").split(/\r?\n/);
+	const kinds = sectionBlocks(ins);
+	const at = bodyStart + block.end;
+	const out = lines.slice();
+	if (kinds[0]?.kind === "paragraph" && at > 0 && out[at - 1].trim() !== "") ins.unshift("");
+	if (kinds[kinds.length - 1]?.kind === "paragraph" && at < out.length && out[at].trim() !== "") ins.push("");
+	out.splice(at, 0, ...ins);
+	return out;
+}
+
+/** Paste at a section's end: like Quick Add's bottom insert, but a pasted paragraph
+ * gets a blank line above it so it doesn't merge into the last line of the body. */
+async function pasteAtSectionEnd(
+	app: App,
+	file: TFile,
+	level: number,
+	original: Section,
+	text: string,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, original);
+		if (!target) {
+			ok = false;
+			return data;
+		}
+		const ins = text.replace(/\s+$/, "").split(/\r?\n/);
+		const at = target.endLine;
+		if (sectionBlocks(ins)[0]?.kind === "paragraph" && at > 0 && lines[at - 1].trim() !== "") ins.unshift("");
+		const out = lines.slice();
+		out.splice(at, 0, ...ins);
+		return out.join(eol);
+	});
+
+	return ok;
+}
+
+/** Insert text right after a given movable block, verifying the block's text first. */
+async function insertAfterBlockInFile(
 	app: App,
 	file: TFile,
 	level: number,
@@ -2031,8 +2093,8 @@ async function insertLineAfterBlock(
 			ok = false;
 			return data;
 		}
-		lines.splice(bodyStartLine(target) + block.end, 0, text);
-		return lines.join(eol);
+		const result = insertAfterBlock(lines, target, blockIndex, text);
+		return result ? result.join(eol) : data;
 	});
 
 	return ok;
@@ -5046,17 +5108,43 @@ export class SectionCardsView extends ItemView {
 			if (target?.closest("a")) return; // links keep their native menu
 			const el = target?.closest<HTMLElement>(".sc-block");
 			if (!el || !bodyEl.contains(el)) {
-				// Off any block, the menu can still offer the Tasks create dialog.
-				const api = this.plugin.tasksApi();
-				if (!api) return;
+				// Off any block, the menu can still offer the Tasks create dialog and paste.
 				evt.preventDefault();
 				evt.stopPropagation();
 				const menu = new Menu();
+				const api = this.plugin.tasksApi();
+				if (api) {
+					menu.addItem((item) =>
+						item
+							.setTitle("New task (Tasks)…")
+							.setIcon("list-plus")
+							.onClick(() => void this.newTaskWithTasks(api, file, holder.section, null, null)),
+					);
+				}
 				menu.addItem((item) =>
 					item
-						.setTitle("New task (Tasks)…")
-						.setIcon("list-plus")
-						.onClick(() => void this.newTaskWithTasks(api, file, holder.section, null, null)),
+						.setTitle("Paste at end")
+						.setIcon("clipboard-paste")
+						.onClick(async () => {
+							let text = "";
+							try {
+								text = (await navigator.clipboard.readText()).replace(/\s+$/, "");
+							} catch {
+								new Notice("Couldn't access the clipboard.");
+								return;
+							}
+							if (!text) {
+								new Notice("The clipboard is empty.");
+								return;
+							}
+							const ok = await pasteAtSectionEnd(this.app, file, this.headingLevel, holder.section, text);
+							if (!ok) {
+								new Notice(
+									"Single File Section Cards: couldn't find that section — the file changed on disk.",
+								);
+							}
+							await this.refresh();
+						}),
 				);
 				menu.showAtMouseEvent(evt);
 				return;
@@ -5899,6 +5987,79 @@ export class SectionCardsView extends ItemView {
 			);
 		}
 
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle("Copy line")
+				.setIcon("copy")
+				.onClick(async () => {
+					try {
+						await navigator.clipboard.writeText(blockText);
+						new Notice("Line copied.");
+					} catch {
+						new Notice("Couldn't access the clipboard.");
+					}
+				}),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Cut line")
+				.setIcon("scissors")
+				.onClick(async () => {
+					try {
+						await navigator.clipboard.writeText(blockText);
+					} catch {
+						// The line must be on the clipboard before it can be deleted.
+						new Notice("Couldn't access the clipboard.");
+						return;
+					}
+					const ok = await deleteBlockInFile(
+						this.app,
+						file,
+						this.headingLevel,
+						section,
+						blockIndex,
+						blockText,
+					);
+					if (!ok) {
+						new Notice("Single File Section Cards: couldn't find that line — the file changed on disk.");
+					}
+					await this.refresh();
+				}),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Paste below")
+				.setIcon("clipboard-paste")
+				.onClick(async () => {
+					let text = "";
+					try {
+						text = (await navigator.clipboard.readText()).replace(/\s+$/, "");
+					} catch {
+						new Notice("Couldn't access the clipboard.");
+						return;
+					}
+					if (!text) {
+						new Notice("The clipboard is empty.");
+						return;
+					}
+					const ok = await insertAfterBlockInFile(
+						this.app,
+						file,
+						this.headingLevel,
+						section,
+						blockIndex,
+						blockText,
+						text,
+					);
+					if (!ok) {
+						new Notice("Single File Section Cards: couldn't find that line — the file changed on disk.");
+					}
+					await this.refresh();
+				}),
+		);
+		menu.addSeparator();
+
 		// Star/unstar the block: the configured emoji is written into (or stripped from)
 		// the line itself, so the mark survives edits, drags, and sync.
 		const emoji = this.plugin.starEmoji();
@@ -5963,7 +6124,7 @@ export class SectionCardsView extends ItemView {
 		const ok =
 			blockIndex === null || blockText === null
 				? await quickAddToSection(this.app, file, this.headingLevel, section, line, "bottom")
-				: await insertLineAfterBlock(this.app, file, this.headingLevel, section, blockIndex, blockText, line);
+				: await insertAfterBlockInFile(this.app, file, this.headingLevel, section, blockIndex, blockText, line);
 		if (!ok) {
 			new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
 		}
