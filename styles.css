@@ -2688,3 +2688,14 @@ body.is-phone .section-cards-label {
 	padding-bottom: 3px;
 	border-top: none;
 }
+
+/* Custom gradient dialog: the live preview swatch, painted via a CSS variable the
+ * dialog updates on every control change. Same 16:9 shape the saved PNG gets. */
+.sfsc-gradient-preview {
+	width: 100%;
+	aspect-ratio: 16 / 9;
+	border-radius: var(--radius-m, 8px);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--sfsc-gradient, var(--background-secondary));
+	margin-bottom: var(--size-4-3, 12px);
+}

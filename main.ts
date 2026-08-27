@@ -2580,19 +2580,7 @@ export class SectionCardsView extends ItemView {
 					.onClick(() => this.promptNewCard()),
 			);
 			menu.addSeparator();
-			// The layout picker, mirroring the toolbar dropdown — the current one is
-			// checked, and Calendar greys out in notes with no date headings.
-			for (const [value, label] of LAYOUT_OPTIONS) {
-				menu.addItem((item) =>
-					item
-						.setTitle(label)
-						.setChecked(this.layout === value)
-						.setDisabled(value === "calendar" && this.layout !== "calendar" && !this.calendarSelectable())
-						.onClick(() => {
-							if (this.layout !== value) this.setLayout(value);
-						}),
-				);
-			}
+			this.addLayoutItems(menu);
 			menu.addSeparator();
 			this.addBackgroundItems(menu, this.viewSettings());
 			menu.showAtMouseEvent(evt);
@@ -4058,6 +4046,9 @@ export class SectionCardsView extends ItemView {
 		);
 
 		menu.addSeparator();
+		this.addLayoutItems(menu);
+
+		menu.addSeparator();
 		addHeading("Dates");
 		menu.addItem((item) =>
 			item
@@ -4090,6 +4081,30 @@ export class SectionCardsView extends ItemView {
 		menu.showAtMouseEvent(evt);
 	}
 
+	/**
+	 * The Layout group — heading plus the seven layout views, mirroring the toolbar
+	 * dropdown; shared by the hamburger menu and the wall's right-click menu. The
+	 * current one is checked, and Calendar greys out in notes with no date headings.
+	 */
+	private addLayoutItems(menu: Menu): void {
+		menu.addItem((item) =>
+			item
+				.setTitle(createFragment((frag) => frag.createSpan({ cls: "sfsc-menu-heading", text: "Layout" })))
+				.setDisabled(true),
+		);
+		for (const [value, label] of LAYOUT_OPTIONS) {
+			menu.addItem((item) =>
+				item
+					.setTitle(label)
+					.setChecked(this.layout === value)
+					.setDisabled(value === "calendar" && this.layout !== "calendar" && !this.calendarSelectable())
+					.onClick(() => {
+						if (this.layout !== value) this.setLayout(value);
+					}),
+			);
+		}
+	}
+
 	/** The Background items — shared by the hamburger menu and the wall's right-click menu. */
 	private addBackgroundItems(menu: Menu, base: ViewSettings): void {
 		menu.addItem((item) =>
@@ -4106,6 +4121,11 @@ export class SectionCardsView extends ItemView {
 						fromLocal: () => this.pickLocalBackground(base),
 						fromInternet: () => {
 							new DownloadBackgroundModal(this.app, this.filePath, (path) => {
+								void this.plugin.setBackgroundImage(this.filePath, path, base);
+							}).open();
+						},
+						fromGradient: () => {
+							new GradientBackgroundModal(this.app, this.filePath, (path) => {
 								void this.plugin.setBackgroundImage(this.filePath, path, base);
 							}).open();
 						},
@@ -6495,11 +6515,49 @@ export function backgroundDesatLayer(saturation: number): string {
 	return saturation >= 100 ? "" : `rgba(128, 128, 128, ${(100 - saturation) / 100})`;
 }
 
-/** The three places a background image can come from, offered as one dialog. */
-class SelectBackgroundModal extends Modal {
-	private readonly sources: { fromVault: () => void; fromLocal: () => void; fromInternet: () => void };
+/** Evenly spaced gradient stops (0..1) for 2–3 colors — shared by the CSS preview and
+ * the canvas render so the saved image matches what the dialog showed. */
+export function gradientStops(colors: string[]): { color: string; at: number }[] {
+	return colors.map((color, i) => ({ color, at: colors.length < 2 ? 0 : i / (colors.length - 1) }));
+}
 
-	constructor(app: App, sources: { fromVault: () => void; fromLocal: () => void; fromInternet: () => void }) {
+/** The CSS background for a gradient — what the dialog's live preview paints with. */
+export function gradientCss(kind: "linear" | "radial", angle: number, colors: string[]): string {
+	const stops = gradientStops(colors)
+		.map((s) => `${s.color} ${Math.round(s.at * 100)}%`)
+		.join(", ");
+	return kind === "radial" ? `radial-gradient(circle, ${stops})` : `linear-gradient(${angle}deg, ${stops})`;
+}
+
+/**
+ * A CSS linear-gradient's endpoints on a w×h canvas: the gradient line runs through the
+ * center at `angle` (0° = up, clockwise, like CSS), long enough that the first and last
+ * stops land exactly in the corners the CSS renderer puts them in.
+ */
+export function gradientEndpoints(
+	angle: number,
+	w: number,
+	h: number,
+): { x0: number; y0: number; x1: number; y1: number } {
+	const rad = (angle * Math.PI) / 180;
+	const dx = Math.sin(rad);
+	const dy = -Math.cos(rad);
+	const half = Math.abs((w / 2) * dx) + Math.abs((h / 2) * dy);
+	return { x0: w / 2 - dx * half, y0: h / 2 - dy * half, x1: w / 2 + dx * half, y1: h / 2 + dy * half };
+}
+
+/** The four places a background image can come from, offered as one dialog. */
+interface BackgroundSources {
+	fromVault: () => void;
+	fromLocal: () => void;
+	fromInternet: () => void;
+	fromGradient: () => void;
+}
+
+class SelectBackgroundModal extends Modal {
+	private readonly sources: BackgroundSources;
+
+	constructor(app: App, sources: BackgroundSources) {
 		super(app);
 		this.sources = sources;
 	}
@@ -6532,6 +6590,12 @@ class SelectBackgroundModal extends Modal {
 			"Download an image URL once into the vault's attachment folder.",
 			"Download…",
 			this.sources.fromInternet,
+		);
+		option(
+			"Custom gradient",
+			"Compose a two or three color gradient and save it as an image in the vault.",
+			"Create…",
+			this.sources.fromGradient,
 		);
 	}
 
@@ -6654,6 +6718,157 @@ class DownloadBackgroundModal extends Modal {
 		} finally {
 			button.disabled = false;
 			button.setText("Download");
+		}
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/** The pixel size of a saved gradient background. */
+const GRADIENT_WIDTH = 1920;
+const GRADIENT_HEIGHT = 1080;
+
+/**
+ * Compose a two or three color gradient with a live preview, then save it into the
+ * vault's attachment folder as a 1920×1080 PNG — the same home a downloaded
+ * background gets — and use it as this note's background.
+ */
+class GradientBackgroundModal extends Modal {
+	private readonly notePath: string;
+	private readonly onSaved: (vaultPath: string) => void;
+
+	private kind: "linear" | "radial" = "linear";
+	private angle = 135;
+	private colors = ["#264653", "#2a9d8f"];
+	private third = "#e9c46a";
+	private thirdOn = false;
+
+	private previewEl!: HTMLElement;
+	private angleSetting!: Setting;
+
+	constructor(app: App, notePath: string, onSaved: (vaultPath: string) => void) {
+		super(app);
+		this.notePath = notePath;
+		this.onSaved = onSaved;
+	}
+
+	private activeColors(): string[] {
+		return this.thirdOn ? [...this.colors, this.third] : this.colors.slice();
+	}
+
+	private updatePreview(): void {
+		this.previewEl.setCssProps({ "--sfsc-gradient": gradientCss(this.kind, this.angle, this.activeColors()) });
+		this.angleSetting.settingEl.toggle(this.kind === "linear");
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Custom gradient" });
+
+		this.previewEl = contentEl.createDiv({ cls: "sfsc-gradient-preview" });
+
+		new Setting(contentEl).setName("Style").addDropdown((drop) => {
+			drop.addOption("linear", "Linear");
+			drop.addOption("radial", "Radial");
+			drop.setValue(this.kind).onChange((value) => {
+				this.kind = value === "radial" ? "radial" : "linear";
+				this.updatePreview();
+			});
+		});
+
+		this.angleSetting = new Setting(contentEl).setName("Angle").addSlider((slider) => {
+			slider
+				.setLimits(0, 360, 5)
+				.setValue(this.angle)
+				.onChange((value) => {
+					this.angle = value;
+					this.updatePreview();
+				});
+		});
+
+		const colorRow = (name: string, index: number) => {
+			new Setting(contentEl).setName(name).addColorPicker((picker) => {
+				picker.setValue(this.colors[index]).onChange((value) => {
+					this.colors[index] = value;
+					this.updatePreview();
+				});
+			});
+		};
+		colorRow("First color", 0);
+		colorRow("Second color", 1);
+
+		new Setting(contentEl)
+			.setName("Third color")
+			.setDesc("Adds a middle stop between the other two.")
+			.addToggle((toggle) => {
+				toggle.setValue(this.thirdOn).onChange((value) => {
+					this.thirdOn = value;
+					this.updatePreview();
+				});
+			})
+			.addColorPicker((picker) => {
+				picker.setValue(this.third).onChange((value) => {
+					this.third = value;
+					this.thirdOn = true;
+					this.updatePreview();
+				});
+			});
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => {
+				b.setButtonText("Save and use")
+					.setCta()
+					.onClick(() => void this.save(b.buttonEl));
+			});
+
+		this.updatePreview();
+	}
+
+	/** Render the gradient to a canvas — the size the file is saved at. */
+	private renderCanvas(): HTMLCanvasElement {
+		const canvas = createEl("canvas");
+		canvas.width = GRADIENT_WIDTH;
+		canvas.height = GRADIENT_HEIGHT;
+		const ctx = canvas.getContext("2d");
+		if (!ctx) throw new Error("no 2d context");
+		const cx = GRADIENT_WIDTH / 2;
+		const cy = GRADIENT_HEIGHT / 2;
+		let fill: CanvasGradient;
+		if (this.kind === "radial") {
+			fill = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.hypot(cx, cy));
+		} else {
+			const { x0, y0, x1, y1 } = gradientEndpoints(this.angle, GRADIENT_WIDTH, GRADIENT_HEIGHT);
+			fill = ctx.createLinearGradient(x0, y0, x1, y1);
+		}
+		for (const stop of gradientStops(this.activeColors())) fill.addColorStop(stop.at, stop.color);
+		ctx.fillStyle = fill;
+		ctx.fillRect(0, 0, GRADIENT_WIDTH, GRADIENT_HEIGHT);
+		return canvas;
+	}
+
+	private async save(button: HTMLButtonElement): Promise<void> {
+		button.disabled = true;
+		button.setText("Saving…");
+		try {
+			const canvas = this.renderCanvas();
+			const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+			if (!blob) throw new Error("toBlob failed");
+			// Name the file after its colors so regenerating never shadows an older gradient.
+			const stem = `gradient-${this.activeColors()
+				.map((c) => c.replace("#", ""))
+				.join("-")}`;
+			const dest = await this.app.fileManager.getAvailablePathForAttachment(`${stem}.png`, this.notePath);
+			const file = await this.app.vault.createBinary(dest, await blob.arrayBuffer());
+			new Notice(`Background saved to "${file.path}".`);
+			this.onSaved(file.path);
+			this.close();
+		} catch {
+			new Notice("Couldn't save the gradient image.");
+			button.disabled = false;
+			button.setText("Save and use");
 		}
 	}
 
