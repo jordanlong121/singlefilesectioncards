@@ -1182,7 +1182,8 @@ export function bodyForRender(body: string): string {
 
 /**
  * Move one movable block from a section to a position in another (or the same) section:
- * before that section's movable block `beforeBlockIndex`, or to its end when null.
+ * beside that section's movable block `anchorIndex` — above it ("before") or directly
+ * below it ("after") — to the top of the body ("start"), or to the section's end (null).
  * The block's lines move byte-for-byte; paragraphs gain blank separators at the seams,
  * and a doubled blank left at the removal point is collapsed. Null = no-op/invalid.
  */
@@ -1192,13 +1193,14 @@ export function moveBlock(
 	fromSectionIndex: number,
 	blockIndex: number,
 	toSectionIndex: number,
-	beforeBlockIndex: number | null,
+	anchorIndex: number | "start" | null,
+	anchorSide: "before" | "after" = "before",
 ): string[] | null {
 	const sections = parseSections(lines, level);
 	const from = sections[fromSectionIndex];
 	const to = sections[toSectionIndex];
 	if (!from || !to) return null;
-	return moveBlockBetween(lines, from, blockIndex, to, beforeBlockIndex);
+	return moveBlockBetween(lines, from, blockIndex, to, anchorIndex, anchorSide);
 }
 
 /** moveBlock's core, taking already-located sections so the unfiled card works too. */
@@ -1207,7 +1209,8 @@ export function moveBlockBetween(
 	from: Section,
 	blockIndex: number,
 	to: Section,
-	beforeBlockIndex: number | null,
+	anchorIndex: number | "start" | null,
+	anchorSide: "before" | "after" = "before",
 ): string[] | null {
 	const fromBody = lines.slice(bodyStartLine(from), from.endLine);
 	const block = movableBlocks(fromBody)[blockIndex];
@@ -1217,15 +1220,26 @@ export function moveBlockBetween(
 	const blockLines = lines.slice(absStart, absEnd);
 
 	let insertAbs: number;
-	if (beforeBlockIndex === null) {
+	if (anchorIndex === null) {
 		insertAbs = to.endLine;
+	} else if (anchorIndex === "start") {
+		// Top of the body — above a leading subheading, which no movable anchor sits above.
+		insertAbs = bodyStartLine(to);
 	} else {
 		const toBody = lines.slice(bodyStartLine(to), to.endLine);
-		const anchor = movableBlocks(toBody)[beforeBlockIndex];
-		insertAbs = anchor ? bodyStartLine(to) + anchor.start : to.endLine;
+		const anchor = movableBlocks(toBody)[anchorIndex];
+		// "after" anchors at the hovered block's own end — NOT the next movable
+		// block's start — so the dropped text stays on this side of any subheading
+		// (or other non-draggable block) sitting between the two.
+		insertAbs = anchor ? bodyStartLine(to) + (anchorSide === "after" ? anchor.end : anchor.start) : to.endLine;
 	}
-	// Dropping a block onto its own position is a no-op.
-	if (from.startLine === to.startLine && insertAbs >= absStart && insertAbs <= absEnd) return null;
+	// Dropping a block onto its own position is a no-op — including across a gap of
+	// nothing but blank separator lines.
+	if (from.startLine === to.startLine) {
+		if (insertAbs >= absStart && insertAbs <= absEnd) return null;
+		const [lo, hi] = insertAbs < absStart ? [insertAbs, absStart] : [absEnd, insertAbs];
+		if (lines.slice(lo, hi).every((l) => l.trim() === "")) return null;
+	}
 
 	const out = lines.slice(0, absStart).concat(lines.slice(absEnd));
 	const target = insertAbs > absStart ? insertAbs - (absEnd - absStart) : insertAbs;
@@ -1303,7 +1317,8 @@ async function moveBlockInFile(
 	blockIndex: number,
 	expectedBlockText: string,
 	targetSection: Section,
-	beforeBlockIndex: number | null,
+	anchorIndex: number | "start" | null,
+	anchorSide: "before" | "after" = "before",
 ): Promise<boolean> {
 	let ok = true;
 
@@ -1322,7 +1337,7 @@ async function moveBlockInFile(
 			ok = false; // the block moved or changed since the drag started — refuse
 			return data;
 		}
-		const result = moveBlockBetween(lines, from, blockIndex, to, beforeBlockIndex);
+		const result = moveBlockBetween(lines, from, blockIndex, to, anchorIndex, anchorSide);
 		return result ? result.join(eol) : data;
 	});
 
@@ -5123,7 +5138,8 @@ export class SectionCardsView extends ItemView {
 					file,
 					{ section: from.holder.section, blockIndex: from.blockIndex, blockText: from.blockText },
 					holder.section,
-					at.beforeIndex,
+					at.anchorIndex,
+					at.anchorSide,
 				);
 				return;
 			}
@@ -5666,18 +5682,56 @@ export class SectionCardsView extends ItemView {
 	}
 
 	/** Where in the hovered card a dragged block would land. */
-	private blockDropAt(evt: DragEvent, bodyEl: HTMLElement): { beforeIndex: number | null; el: HTMLElement | null; before: boolean } {
-		const hovered = (evt.target as HTMLElement | null)?.closest<HTMLElement>(".sc-block");
+	private blockDropAt(
+		evt: DragEvent,
+		bodyEl: HTMLElement,
+	): { anchorIndex: number | "start" | null; anchorSide: "before" | "after"; el: HTMLElement | null; before: boolean } {
+		const target = evt.target as HTMLElement | null;
+		const hovered = target?.closest<HTMLElement>(".sc-block");
 		if (hovered && bodyEl.contains(hovered)) {
 			const els = this.eligibleBlockEls(bodyEl);
 			const index = els.indexOf(hovered);
 			if (index >= 0) {
 				const rect = hovered.getBoundingClientRect();
 				const before = evt.clientY < rect.top + rect.height / 2;
-				return { beforeIndex: before ? index : index + 1, el: hovered, before };
+				return { anchorIndex: index, anchorSide: before ? "before" : "after", el: hovered, before };
 			}
 		}
-		return { beforeIndex: null, el: null, before: false };
+		// Hovering a non-draggable block (a subheading, quote, fence, table…): the
+		// text lands on the hovered side of it, anchored to the nearest draggable
+		// neighbour — or the body's start/end when there is none on that side.
+		let other = target && bodyEl.contains(target) && target !== bodyEl ? target : null;
+		while (other && other.parentElement !== bodyEl) other = other.parentElement;
+		if (other && !other.hasClass("sc-block")) {
+			const els = this.eligibleBlockEls(bodyEl);
+			// A sibling may itself be draggable only through its list items.
+			const blockIn = (el: Element | null, last: boolean): number => {
+				if (!el) return -1;
+				const own = els.indexOf(el as HTMLElement);
+				if (own >= 0) return own;
+				const items = Array.from(el.querySelectorAll<HTMLElement>(":scope > li"));
+				for (const li of last ? items.reverse() : items) {
+					const i = els.indexOf(li);
+					if (i >= 0) return i;
+				}
+				return -1;
+			};
+			const rect = other.getBoundingClientRect();
+			const before = evt.clientY < rect.top + rect.height / 2;
+			if (before) {
+				for (let sib = other.previousElementSibling; sib; sib = sib.previousElementSibling) {
+					const i = blockIn(sib, true);
+					if (i >= 0) return { anchorIndex: i, anchorSide: "after", el: other, before };
+				}
+				return { anchorIndex: "start", anchorSide: "before", el: other, before };
+			}
+			for (let sib = other.nextElementSibling; sib; sib = sib.nextElementSibling) {
+				const i = blockIn(sib, false);
+				if (i >= 0) return { anchorIndex: i, anchorSide: "before", el: other, before };
+			}
+			return { anchorIndex: null, anchorSide: "before", el: other, before };
+		}
+		return { anchorIndex: null, anchorSide: "before", el: null, before: false };
 	}
 
 	/**
@@ -5886,7 +5940,8 @@ export class SectionCardsView extends ItemView {
 		file: TFile,
 		from: { section: Section; blockIndex: number; blockText: string },
 		target: Section,
-		beforeIndex: number | null,
+		anchorIndex: number | "start" | null,
+		anchorSide: "before" | "after" = "before",
 	): Promise<void> {
 		const ok = await moveBlockInFile(
 			this.app,
@@ -5896,7 +5951,8 @@ export class SectionCardsView extends ItemView {
 			from.blockIndex,
 			from.blockText,
 			target,
-			beforeIndex,
+			anchorIndex,
+			anchorSide,
 		);
 		if (!ok) {
 			new Notice("Single File Section Cards: couldn't move that block — the file changed on disk.");

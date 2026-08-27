@@ -853,6 +853,35 @@ t("moveBlock: dropping a block on its own position is a no-op", () => {
   const lines = L("### A\n- [ ] one\n- [ ] two");
   assert.equal(moveBlock(lines, 3, 0, 0, 0, 0), null);
   assert.equal(moveBlock(lines, 3, 0, 0, 0, 1), null);  // before its own successor
+  assert.equal(moveBlock(lines, 3, 0, 0, 0, 0, "after"), null); // below itself
+});
+
+t("moveBlock: 'after' a block stays on its side of a following subheading", () => {
+  // Dropping B's task on the bottom half of para1 must land between para1 and
+  // "#### Sub" — not below the subheading, where "before para2" would put it.
+  const lines = L("### A\npara1\n\n#### Sub\npara2\n\n### B\n- [ ] task");
+  const after = moveBlock(lines, 3, 1, 0, 0, 0, "after");
+  assert.equal(after.join("\n"), "### A\npara1\n- [ ] task\n\n#### Sub\npara2\n\n### B");
+  // The top half of para2 still means "under the subheading, above para2".
+  const before = moveBlock(lines, 3, 1, 0, 0, 1, "before");
+  assert.equal(before.join("\n"), "### A\npara1\n\n#### Sub\n- [ ] task\npara2\n\n### B");
+});
+
+t("moveBlock: the 'start' anchor lands above a leading subheading", () => {
+  // Dropping on the top half of a heading that opens the card: no movable block
+  // sits above it, so the drop anchors to the body's very top.
+  const lines = L("### A\n#### Sub\npara\n\n### B\n- [ ] task");
+  const out = moveBlock(lines, 3, 1, 0, 0, "start");
+  assert.equal(out.join("\n"), "### A\n- [ ] task\n#### Sub\npara\n\n### B");
+});
+
+t("moveBlock: same-card 'after' across a subheading, and blank-gap no-ops", () => {
+  const lines = L("### A\npara1\n\n#### Sub\npara2");
+  // para2 dragged to just under para1 climbs above the subheading.
+  assert.equal(moveBlock(lines, 3, 0, 1, 0, 0, "after").join("\n"), "### A\npara1\n\npara2\n\n#### Sub");
+  // Dropping para2 right below itself, or right above across only a blank, is a no-op.
+  assert.equal(moveBlock(lines, 3, 0, 1, 0, 1, "after"), null);
+  assert.equal(moveBlock(L("### A\npara1\n\npara2"), 3, 0, 1, 0, 0, "after"), null);
 });
 
 t("sample vault: moving any task of the newest day to another day touches only those two sections", () => {
