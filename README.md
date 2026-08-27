@@ -71,6 +71,16 @@ One card per row, full pane width.
 
 ![Horizontal](screenshots/horizontal.png)
 
+### Calendar
+
+Date cards on a monthly calendar grid — every month between the first and last dated
+card, with today highlighted. Needs headings that name dates (the toolbar's Dates
+checkbox); the sort control orders the months. Click an empty day to start its card,
+or drag a card onto another day to move it there — dropping it on a day that already
+has a card offers to merge them.
+
+![Calendar](screenshots/calendar.png)
+
 ### Hierarchy & Dividers
 
 The toolbar's **View mode** toggle groups cards by the headings above the card level, in any
@@ -145,6 +155,33 @@ Once a note has a starred line, a star button appears beside the filter box (key
 it to see only the starred lines, on only the cards that hold one. Cards where the starred-only
 view hid something end in a faint `…`, and both filters combine. **Remove star** on the same
 menu takes the mark back off.
+
+## The menu, and per-note backgrounds
+
+The ☰ button at the toolbar's left end collects the per-note controls in one place: the
+Dates toggle, jump-to-date, and the new-card options (all still on the toolbar too). It's
+also where **Background** lives: give the note's card wall a background image, remembered
+per note in the plugin's data.
+
+- **Select background…** — one dialog, three sources: an image already **in your vault**,
+  any image **on your computer** (a copy is saved into the vault's attachment folder so it
+  travels with the vault), or an image URL **from the internet**, downloaded **once** into
+  the attachment folder and shown from there — nothing loads from the network afterwards.
+- **Transparency** — a slider right in the menu that fades the image toward the page
+  color, previewed live as you drag; the strength is remembered per note.
+- **Remove background** — back to the plain background.
+
+> **Network use:** this download is the plugin's only network access. It only ever happens
+> when you click **Download** in that dialog, and only fetches the URL you entered.
+> Everything else works fully offline.
+
+## Style Settings
+
+With the [Style Settings](https://github.com/mgmeyers/obsidian-style-settings) plugin
+installed, **Settings → Style Settings → Single File Section Cards** offers visual knobs:
+card gap, column width, wall padding, card surface strength per theme, a flat (shadowless)
+card toggle, calendar day-cell height, and the default background-image veil. Without
+Style Settings everything simply uses the defaults.
 
 ## Card colors
 
@@ -251,19 +288,13 @@ Cards**, install, and enable. Updates arrive through the normal plugin updater.
 To track releases straight from this repository, add `jordanlong121/singlefilesectioncards` as
 a beta plugin in [BRAT](https://github.com/TfTHacker/obsidian42-brat).
 
-## Sample vault
-
-`sample-vault/` is a small vault to try the plugin (the screenshots above were rendered from
-it): `Daily Notes 2026.md` in the Single File Daily Notes format, filler notes at different
-heading depths for the H1–H6 selector, and two template notes for the new-card options menu.
-
 ## FAQ
 
 **Is this vibe-coded?**
 Yes!
 
 **Will you maintain this?**
-Don't know, but I use it every day so probably.
+Yes! I use it everyday and want to make it the best I can.
 
 **Are there other plugins like it?**
 I don't know, that's why I wrote it.

@@ -14,12 +14,117 @@
  *    itself scrolls and the toolbar is sticky.
  */
 
+/* @settings
+
+name: Single File Section Cards
+id: single-file-section-cards
+settings:
+    -
+        id: sfsc-layout-heading
+        title: Layout
+        type: heading
+        level: 2
+        collapsed: true
+    -
+        id: sfsc-card-gap
+        title: Card gap
+        description: Space between cards.
+        type: variable-number-slider
+        default: 12
+        min: 2
+        max: 32
+        step: 1
+        format: px
+    -
+        id: sfsc-col-min
+        title: Minimum column width
+        description: Columns never get narrower than this — larger means fewer, wider columns. The Tight layout keeps its own width.
+        type: variable-number-slider
+        default: 280
+        min: 180
+        max: 480
+        step: 10
+        format: px
+    -
+        id: sfsc-pad
+        title: Wall padding
+        description: Space between the cards and the pane edges.
+        type: variable-number-slider
+        default: 14
+        min: 0
+        max: 40
+        step: 2
+        format: px
+    -
+        id: sfsc-cards-heading
+        title: Cards
+        type: heading
+        level: 2
+        collapsed: true
+    -
+        id: sfsc-surface-alpha-dark
+        title: Card surface strength (dark themes)
+        description: How solid the frosted card surface is over the page.
+        type: variable-number-slider
+        default: 0.055
+        min: 0
+        max: 0.3
+        step: 0.005
+    -
+        id: sfsc-surface-alpha-light
+        title: Card surface strength (light themes)
+        type: variable-number-slider
+        default: 0.62
+        min: 0
+        max: 1
+        step: 0.02
+    -
+        id: sfsc-flat-cards
+        title: Flat cards
+        description: Turn off the card shadows.
+        type: class-toggle
+    -
+        id: sfsc-calendar-heading
+        title: Calendar
+        type: heading
+        level: 2
+        collapsed: true
+    -
+        id: sfsc-cal-cell
+        title: Day cell height
+        type: variable-number-slider
+        default: 112
+        min: 80
+        max: 240
+        step: 4
+        format: px
+    -
+        id: sfsc-background-heading
+        title: Background image
+        type: heading
+        level: 2
+        collapsed: true
+    -
+        id: sfsc-bg-veil-default
+        title: Default veil strength
+        description: How faded background images are in notes that haven't set their own transparency from the menu.
+        type: variable-number-slider
+        default: 0.45
+        min: 0
+        max: 1
+        step: 0.05
+*/
+
 /* The plugin adds .section-cards-view to contentEl (.view-content); the two-class
    prefix is needed to beat app.css's `.workspace-leaf-content .view-content`. */
 .workspace-leaf-content .view-content.section-cards-view {
 	padding: 0;
 	overflow-x: hidden;
 	overflow-y: auto;
+	/* Reserve the scrollbar's column even when the view doesn't scroll (few cards,
+	   or a layout whose grid scrolls internally), so the toolbar's right-side
+	   controls don't shift when the scrollbar comes and goes. */
+	scrollbar-gutter: stable;
 	display: block;
 	/* Fill whatever the leaf's flex column leaves us, with or without a view header,
 	   rather than hard-coding height: 100%. */
@@ -31,14 +136,17 @@
 	/* Masonry granularity: cards snap to a 4px vertical grid, so at most ~3px of
 	   rounding is added below any card. */
 	--sc-row-unit: 4px;
-	--sc-card-gap: 12px;
+	/* Knobs the Style Settings plugin can override (the --sfsc-* names in the
+	   @settings block above); everyone else gets the fallbacks. */
+	--sc-card-gap: var(--sfsc-card-gap, 12px);
 	/* Column width and grid padding; the Tight layout overrides both. */
-	--sc-col-min: 280px;
-	--sc-pad: 14px;
+	--sc-col-min: var(--sfsc-col-min, 280px);
+	--sc-pad: var(--sfsc-pad, 14px);
 	/* Dark: a light veil over the (possibly transparent) page. --mono-rgb-100 is the
-	   foreground color — white in dark mode, black in light mode. */
-	--sc-surface: rgba(var(--mono-rgb-100), 0.055);
-	--sc-surface-hover: rgba(var(--mono-rgb-100), 0.09);
+	   foreground color — white in dark mode, black in light mode. The hover shade
+	   tracks the surface strength so it stays visible at any setting. */
+	--sc-surface: rgba(var(--mono-rgb-100), var(--sfsc-surface-alpha-dark, 0.055));
+	--sc-surface-hover: rgba(var(--mono-rgb-100), calc(var(--sfsc-surface-alpha-dark, 0.055) + 0.035));
 	--sc-header: rgba(var(--mono-rgb-100), 0.06);
 	--sc-line: rgba(var(--mono-rgb-100), 0.14);
 	--sc-bar: rgba(var(--mono-rgb-0), 0.55);
@@ -53,13 +161,55 @@
    with a light grey outline. These must be foreground-based (--mono-rgb-100 = black in
    light mode) or the border is white-on-white and the cards read as edgeless blocks. */
 .theme-light .section-cards-view {
-	--sc-surface: rgba(var(--mono-rgb-0), 0.62);
-	--sc-surface-hover: rgba(var(--mono-rgb-0), 0.82);
+	--sc-surface: rgba(var(--mono-rgb-0), var(--sfsc-surface-alpha-light, 0.62));
+	--sc-surface-hover: rgba(var(--mono-rgb-0), calc(var(--sfsc-surface-alpha-light, 0.62) + 0.2));
 	--sc-header: rgba(var(--mono-rgb-100), 0.045);
 	--sc-line: rgba(var(--mono-rgb-100), 0.18);
 	--sc-bar: rgba(var(--mono-rgb-0), 0.62);
 	--sc-shadow: 0 1px 2px rgba(var(--mono-rgb-100), 0.07), 0 2px 6px rgba(var(--mono-rgb-100), 0.09);
 	--sc-shadow-hover: 0 2px 4px rgba(var(--mono-rgb-100), 0.1), 0 6px 14px rgba(var(--mono-rgb-100), 0.13);
+}
+
+/* Style Settings: the "Flat cards" toggle turns the card shadows off. */
+body.sfsc-flat-cards .section-cards-view {
+	--sc-shadow: none;
+	--sc-shadow-hover: none;
+}
+
+/* ---------- per-note background image (hamburger menu → Background) ----------
+   Painted on the view itself so every layout sits over it; because the view is the
+   scroll container, the default background-attachment keeps the photo still while
+   the cards scroll. A veil keeps the toolbar and cards readable — --mono-rgb-0 is
+   the page color, so it's a black veil on dark themes and white on light. Its
+   strength is the per-note transparency slider (menu → Background: transparency). */
+.workspace-leaf-content .view-content.section-cards-view.has-sfsc-bg {
+	background-image: linear-gradient(
+			rgba(var(--mono-rgb-0), var(--sfsc-bg-veil, var(--sfsc-bg-veil-default, 0.45))),
+			rgba(var(--mono-rgb-0), var(--sfsc-bg-veil, var(--sfsc-bg-veil-default, 0.45)))
+		),
+		var(--sfsc-bg-image);
+	background-size: cover;
+	background-position: center;
+}
+
+/* The transparency slider row inside the hamburger menu. */
+.menu .sfsc-menu-slider {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.menu .sfsc-menu-slider input[type="range"] {
+	width: 110px;
+}
+
+/* Group headings in the hamburger menu: small caps-style labels on disabled items. */
+.menu .sfsc-menu-heading {
+	font-size: calc(var(--font-ui-smaller, 12px) * 0.8);
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--text-faint);
 }
 
 /* ---------- toolbar ---------- */
@@ -132,6 +282,88 @@
 .section-cards-icon-btn {
 	padding: 4px 9px;
 	line-height: 1;
+}
+
+/* ---------- compact toolbar (Settings → Toolbar, or right-click the bar) ----------
+   One line for narrow panes: labels gone, view modes as icons, the note button and
+   filter box shortened. If the pane is narrower still, the bar pans sideways rather
+   than ever wrapping to a second line. */
+.section-cards-toolbar.is-compact {
+	flex-wrap: nowrap;
+	gap: 6px;
+	padding: 4px 8px;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.section-cards-toolbar.is-compact::-webkit-scrollbar {
+	display: none;
+}
+
+.section-cards-toolbar.is-compact .section-cards-label {
+	display: none;
+}
+
+/* The one label compact keeps: a bare checkbox wouldn't say what it toggles. */
+.section-cards-toolbar.is-compact .section-cards-label.section-cards-dates-text {
+	display: inline;
+	font-size: calc(var(--font-ui-smaller, 12px) * 0.8);
+}
+
+.section-cards-toolbar.is-compact .section-cards-file-btn {
+	max-width: 24ch;
+	flex: 0 1 auto;
+}
+
+.section-cards-toolbar.is-compact .section-cards-filter-input {
+	width: 11.25ch;
+}
+
+/* Much smaller type and tighter boxes throughout the compact bar. The bare
+   `button` here out-ranks the theme's button:not(.clickable-icon) chrome. */
+.section-cards-toolbar.is-compact button,
+.section-cards-toolbar.is-compact select.dropdown,
+.section-cards-toolbar.is-compact .section-cards-filter-input {
+	font-size: calc(var(--font-ui-smaller, 12px) * 0.8);
+	height: 20px;
+	line-height: 1;
+}
+
+.section-cards-toolbar.is-compact button {
+	padding: 2px 6px;
+}
+
+.section-cards-toolbar.is-compact select.dropdown {
+	padding-top: 0;
+	padding-bottom: 0;
+	padding-left: 6px;
+}
+
+.section-cards-toolbar.is-compact .section-cards-filter-input {
+	padding: 0 20px 0 6px;
+}
+
+.section-cards-toolbar.is-compact .section-cards-segmented button {
+	padding: 2px 5px;
+	height: 18px;
+}
+
+.section-cards-toolbar.is-compact .section-cards-segmented button svg {
+	display: block;
+	width: 12px;
+	height: 12px;
+}
+
+.section-cards-toolbar.is-compact .section-cards-icon-btn svg {
+	width: 12px;
+	height: 12px;
+	display: block;
+}
+
+.section-cards-toolbar.is-compact .section-cards-help-btn {
+	width: 18px;
+	height: 18px;
+	padding: 0;
 }
 
 /* ---------- filter box ---------- */
@@ -221,6 +453,11 @@
 
 .section-cards-dates-toggle {
 	margin: 0;
+}
+
+/* The Calendar layout implies Dates, so the toggle hides once it's on there. */
+.section-cards-dates-label.is-hidden {
+	display: none;
 }
 
 /* ---------- jump to date ----------
@@ -438,6 +675,169 @@ body.is-mobile .is-layout-tight .section-card-body {
 	flex: 0 0 1px;
 	height: auto;
 	align-self: stretch;
+}
+
+/* ---------- Calendar layout ----------
+   Seven fixed columns; the cards were re-ordered by date and interleaved with month
+   labels and blank day cells in code, so auto-placement forms the weeks. */
+
+/* Days are never grouped, so View mode says nothing here — the layout class
+   hides it the moment Calendar is picked. (Sort stays: it orders the months.)
+   Card level goes too: the Calendar follows the note's date-heading level itself. */
+.is-layout-calendar .section-cards-toolbar .section-cards-mode-control,
+.is-layout-calendar .section-cards-toolbar .section-cards-level-control {
+	display: none;
+}
+
+.is-layout-calendar .section-cards-grid {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	/* Real content rows — the base grid's 4px masonry rows would stack the cells. */
+	grid-auto-rows: auto;
+	gap: 4px;
+	align-items: stretch;
+}
+
+/* The masonry span-60 safety net must not apply here (as in the pinned band). */
+.is-layout-calendar .section-cards-grid .section-card {
+	grid-row-end: auto;
+}
+
+/* Weekday names, pinned just below the toolbar while the months scroll past. */
+.sc-cal-dow {
+	position: sticky;
+	top: var(--sc-toolbar-h, 0px);
+	z-index: 3;
+	padding: 4px 2px;
+	text-align: center;
+	font-size: calc(var(--font-ui-smaller) * 0.9);
+	font-weight: 600;
+	color: var(--text-muted);
+	background-color: var(--sc-bar);
+	background-image: linear-gradient(var(--sc-header), var(--sc-header));
+}
+
+/* Styled like the Dividers view's bars: the month name with a horizontal rule
+   filling the rest of the row. */
+.sc-cal-month {
+	grid-column: 1 / -1;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 14px 2px 2px;
+	font-size: calc(var(--font-ui-small) * var(--sfsc-divider-font-scale, 1));
+	font-weight: 600;
+	color: var(--text-muted);
+	user-select: none;
+}
+
+.sc-cal-month::after {
+	content: "";
+	flex: 1 1 auto;
+	height: 1px;
+	background-color: var(--sc-line);
+}
+
+/* A day the note has no card for: a faint square holding just its day number. */
+.sc-cal-blank {
+	/* The day-card height, so every square in a week matches. */
+	min-height: var(--sfsc-cal-cell, 112px);
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 3px 6px;
+	font-size: calc(var(--font-ui-smaller) * 0.9);
+	color: var(--text-faint);
+}
+
+/* An empty day is an offer: click it to create that date's card. */
+.sc-cal-blank:not(.sc-cal-pad) {
+	cursor: pointer;
+}
+
+.sc-cal-blank:not(.sc-cal-pad):hover {
+	border-color: var(--interactive-accent);
+	color: var(--text-muted);
+}
+
+/* The pads that shift a month's first day into its weekday column stay invisible. */
+.sc-cal-blank.sc-cal-pad {
+	border: none;
+	cursor: default;
+}
+
+/* The day a dragged card would land on: an empty day takes the card (retitled to
+   that day); an occupied one offers a merge. */
+.sc-cal-blank.is-cal-drop,
+.is-layout-calendar .section-card.is-cal-drop {
+	outline: 2px dashed var(--interactive-accent);
+	outline-offset: -2px;
+}
+
+/* Day cards are uniform squares-ish cells; clicking one opens it big. */
+.is-layout-calendar .section-card {
+	height: var(--sfsc-cal-cell, 112px);
+	min-width: 0;
+	overflow: hidden;
+	cursor: zoom-in;
+}
+
+/* The card is a fixed-height flex column: without these, a full body used to
+   squeeze the header thin while short cards kept a taller natural one. The header
+   is pinned to one tight line on every card; the body absorbs the rest. */
+.is-layout-calendar .section-card .section-card-header {
+	flex: 0 0 auto;
+	padding: 0 8px;
+	min-height: 0;
+}
+
+/* The pin's default button height was what kept the header tall — and pinning
+   means nothing on a calendar (date order is fixed, the band is off), so it goes. */
+.is-layout-calendar .section-card .section-card-pin {
+	display: none;
+}
+
+.is-layout-calendar .section-card .section-card-title {
+	font-size: calc(var(--font-ui-smaller) * 0.85);
+	line-height: 1.4;
+}
+
+.is-layout-calendar .section-card .section-card-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	padding: 4px 8px 6px;
+	font-size: calc(var(--font-ui-smaller) * 0.85);
+	overflow: hidden;
+	/* Task checkboxes at half size — the theme sizes them off this variable. */
+	--checkbox-size: calc(var(--font-text-size, 16px) * 0.5);
+	/* Nested list levels step in by this much (the default ~2.25em eats a third
+	   of a day cell). Top level is the li rule below — core uses a fixed 3ch. */
+	--list-indent: 1em;
+}
+
+/* A day made big is a normal card again: the checkbox size falls back to what
+   the theme sets everywhere else (inherit reaches past the cell-size override). */
+.is-layout-calendar .section-card.is-maximized .section-card-body {
+	--checkbox-size: inherit;
+}
+
+/* Lists sit flush with the card edge: core indents top-level items a fixed 3ch.
+   Bullet/number markers move inside the line so zero margin can't clip them;
+   task items render their checkbox inline and need no room at all. */
+.is-layout-calendar .section-card .section-card-body ul > li,
+.is-layout-calendar .section-card .section-card-body ol > li {
+	margin-inline-start: 0;
+	list-style-position: inside;
+}
+
+/* A second section naming the same date has no square to sit on. */
+.is-layout-calendar .section-card.is-cal-extra {
+	display: none;
+}
+
+/* Filtered-out days keep their cell, so the other days hold their weekday columns. */
+.is-layout-calendar .section-cards-grid .section-card.is-filtered-out:not(.is-maximized) {
+	display: block;
+	visibility: hidden;
 }
 
 /* ---------- section dividers (toolbar toggle) ----------

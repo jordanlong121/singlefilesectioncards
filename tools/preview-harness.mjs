@@ -102,8 +102,10 @@ function cardHtml(s, { maxHeight = null, placed = null, hierHidden = false } = {
 
 const DECK_ICON = `<svg viewBox="0 0 100 100" class="svg-icon" width="16" height="16"><g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="9" width="12" height="12.5" rx="2"/><path d="M5.5 6h10a2 2 0 0 1 2 2v10"/><path d="M8.5 3h10a2 2 0 0 1 2 2v10"/></g></svg>`;
 
-const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid" };
+const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid", calendar: "Calendar" };
 const SORT_LABELS = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
+/* On the Calendar the sort control orders the months instead of the cards. */
+const CAL_SORT_LABELS = { asc: "Ascending", desc: "Descending", doc: "Ascending" };
 
 const CAL_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-calendar-days"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`;
 const TEMPLATE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-layout-template"><rect width="18" height="7" x="3" y="3" rx="1"/><rect width="9" height="7" x="3" y="14" rx="1"/><rect width="5" height="7" x="16" y="14" rx="1"/></svg>`;
@@ -114,19 +116,22 @@ const TEMPLATE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height
 function toolbarHtml(layout, mode = "default") {
 	const seg = (label, key) =>
 		`<button${mode === key ? ' class="is-active"' : ""}${layout === "custom" ? " disabled" : ""}>${label}</button>`;
+	// The Calendar hides the dates checkbox (redundant there) and, via the layout
+	// class in styles.css, the Card level and View mode controls.
+	const datesHidden = layout === "calendar" ? " is-hidden" : "";
 	return `<div class="section-cards-toolbar">
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
-	<div class="section-cards-control"><span class="section-cards-label">Card level</span><select class="dropdown"><option>H${LEVEL}</option></select></div>
+	<div class="section-cards-control section-cards-level-control"><span class="section-cards-label">Card level</span><select class="dropdown"><option>H${LEVEL}</option></select></div>
 	<div class="section-cards-control section-cards-filter"><input type="text" class="section-cards-filter-input" placeholder="Filter…" spellcheck="false"><button class="section-cards-filter-clear"></button></div>
 	<div class="section-cards-spacer"></div>
 	<div class="section-cards-control">
 		<div class="section-cards-jump-date"><button class="section-cards-icon-btn section-cards-jump-btn">${CAL_ICON}</button></div>
-		<label class="section-cards-dates-label"><span class="section-cards-label">Dates</span><input type="checkbox" class="section-cards-dates-toggle" checked></label>
+		<label class="section-cards-dates-label${datesHidden}"><span class="section-cards-label">Dates</span><input type="checkbox" class="section-cards-dates-toggle" checked></label>
 	</div>
 	<div class="section-cards-spacer"></div>
-	<div class="section-cards-control"><span class="section-cards-label">View mode</span><div class="section-cards-segmented">${seg("Default", "default")}${seg("Hierarchy", "hier")}${seg("Dividers", "sections")}</div></div>
+	<div class="section-cards-control section-cards-mode-control"><span class="section-cards-label">View mode</span><div class="section-cards-segmented">${seg("Default", "default")}${seg("Hierarchy", "hier")}${seg("Dividers", "sections")}</div></div>
+	<div class="section-cards-control section-cards-sort-control"><span class="section-cards-label">Sort</span><select class="dropdown"><option>${(layout === "calendar" ? CAL_SORT_LABELS : SORT_LABELS)[SORT]}</option></select></div>
 	<div class="section-cards-control"><span class="section-cards-label">Layout</span><select class="dropdown"><option>${LAYOUT_LABELS[layout]}</option></select></div>
-	<div class="section-cards-control"><span class="section-cards-label">Sort</span><select class="dropdown"><option>${SORT_LABELS[SORT]}</option></select></div>
 	<button class="section-cards-new-btn mod-cta">+ New card</button>
 	<button class="section-cards-icon-btn section-cards-template-btn">${TEMPLATE_ICON}</button>
 	<button class="section-cards-icon-btn">↻</button>
@@ -147,8 +152,45 @@ const PLACEMENTS = process.env.PLACEMENTS
 
 const CHEVRON_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-chevron-down"><path d="m6 9 6 6 6-6"/></svg>`;
 
+/** Replays layoutCalendar: a weekday header row, then per month a full-width label,
+ * leading pads to the 1st's weekday column, and a cell per day — card or blank. */
+function calendarHtml() {
+	const byIso = new Map();
+	for (const s of sections) {
+		const iso = /\d{4}-\d{2}-\d{2}/.exec(s.title)?.[0];
+		if (iso && !byIso.has(iso)) byIso.set(iso, s);
+	}
+	const isos = [...byIso.keys()].sort();
+	const [y0, m0] = isos[0].split("-").map(Number);
+	const [y1, m1] = isos[isos.length - 1].split("-").map(Number);
+	const months = [];
+	for (let year = y0, month = m0; year < y1 || (year === y1 && month <= m1); month++, month > 12 && (month = 1, year++)) {
+		months.push([year, month]);
+	}
+	if (SORT === "desc") months.reverse();
+	const parts = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((n) => `<div class="sc-cal-dow">${n}</div>`);
+	for (const [year, month] of months) {
+		const label = new Date(year, month - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+		parts.push(`<div class="sc-cal-month">${label}</div>`);
+		const lead = new Date(year, month - 1, 1).getDay();
+		for (let i = 0; i < lead; i++) parts.push(`<div class="sc-cal-blank sc-cal-pad"></div>`);
+		const days = new Date(year, month, 0).getDate();
+		for (let day = 1; day <= days; day++) {
+			const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+			const s = byIso.get(iso);
+			parts.push(s ? cardHtml(s) : `<div class="sc-cal-blank" role="button">${day}</div>`);
+		}
+	}
+	return `<div class="section-cards-pinned"></div>
+<div class="section-cards-grid">
+${parts.join("\n")}
+</div>
+<div class="section-cards-tray"></div>`;
+}
+
 function gridHtml(layout, mode = "default") {
 	const hier = mode === "hier";
+	if (layout === "calendar") return calendarHtml();
 	if (layout === "custom") {
 		const placedCards = sections.slice(0, PLACEMENTS.length).map((s, i) => cardHtml(s, { placed: PLACEMENTS[i] }));
 		const hidden = sections.slice(PLACEMENTS.length).map((s) => cardHtml(s));
@@ -309,6 +351,12 @@ const PACK_SCRIPT = `<script>
 (() => {
 	const layout = document.currentScript.dataset.layout;
 	const grid = document.querySelector(".section-cards-grid");
+	if (layout === "calendar") {
+		// The weekday header pins just under the toolbar, like the app's sticky row.
+		const bar = document.querySelector(".section-cards-toolbar");
+		document.querySelector(".section-cards-view").style.setProperty("--sc-toolbar-h", bar.offsetHeight + "px");
+		return;
+	}
 	if (layout === "vertical" || layout === "custom") return;
 	const style = getComputedStyle(grid);
 	const cards = [...grid.children].filter((c) =>

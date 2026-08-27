@@ -1,6 +1,7 @@
 import {
 	App,
 	Component,
+	FuzzySuggestModal,
 	SuggestModal,
 	addIcon,
 	ItemView,
@@ -23,6 +24,7 @@ import {
 	moment,
 	normalizePath,
 	prepareFuzzySearch,
+	requestUrl,
 	type SearchResult,
 } from "obsidian";
 import { createEmbeddedEditor, type EmbeddedEditor } from "./editor-embed";
@@ -68,7 +70,7 @@ export type Placement = "top" | "logical" | "bottom";
  * heading columns on the left, with the selected branch's cards rendered in whichever
  * of these layouts is active.
  */
-export type Layout = "grid" | "aligned" | "tight" | "horizontal" | "vertical" | "custom";
+export type Layout = "grid" | "aligned" | "tight" | "horizontal" | "vertical" | "custom" | "calendar";
 
 const SORT_LABELS: Record<SortOrder, string> = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 
@@ -80,6 +82,7 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["horizontal", "Horizontal", "One card per row, full width"],
 	["vertical", "Vertical", "Full-height cards side by side, scrolling sideways"],
 	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
+	["calendar", "Calendar", "Date cards on a monthly calendar grid — needs the Dates checkbox"],
 ];
 
 /** What clicking a card's title bar does. */
@@ -131,6 +134,13 @@ interface SectionCardsSettings {
 	 * toggle and the block tagging match against it. Stored in the note as literal text. */
 	starEmoji: string;
 	titleBarClick: TitleBarClick;
+	/** Full toolbar with text labels, or the compact one-line version for narrow panes. */
+	toolbarStyle: "full" | "compact";
+	/** First day of the Calendar layout's weeks; "locale" follows the language default. */
+	weekStart: "locale" | "sunday" | "monday";
+	/** Extra date-detection pattern: a moment format, optionally wrapped in `*`
+	 * wildcards standing for text before/after the date. Empty = built-ins only. */
+	dateDetectFormat: string;
 	/** Card editor flavour: Obsidian's live-preview editor, or the plain textarea. */
 	editorMode: EditorMode;
 	/** Periodically write an open card editor's content back to the note. */
@@ -159,6 +169,10 @@ export interface PerFileView extends ViewSettings {
 	colors?: Record<string, string>;
 	/** Note whose contents pre-fill the body of every new card made for this note. */
 	templatePath?: string;
+	/** Vault path of the image shown behind this note's card wall (menu → Background). */
+	backgroundImage?: string;
+	/** How faded the background image is, 0 (fully visible) to 100 (invisible). */
+	backgroundDim?: number;
 	/** This note's heading-name format for new cards, overriding the global default. */
 	newCardFormat?: string;
 }
@@ -357,6 +371,9 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	strikeNestedUnderDone: true,
 	starEmoji: "⭐",
 	titleBarClick: "maximize",
+	toolbarStyle: "compact",
+	weekStart: "locale",
+	dateDetectFormat: "",
 	editorMode: "live",
 	autosaveEnabled: true,
 	autosaveMinutes: 5,
@@ -401,6 +418,18 @@ const moParse = moment as unknown as (
 
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 const FENCE_RE = /^\s*(```|~~~)/;
+
+/** An ISO date anywhere in a title — the one spelling every date feature recognizes. */
+const ISO_DATE_RE = /\d{4}-\d{2}-\d{2}/;
+
+/** Whether an ISO-shaped string names a real day (rejects 2026-13-99 without moment). */
+function validIsoDate(iso: string): boolean {
+	const y = Number(iso.slice(0, 4));
+	const m = Number(iso.slice(5, 7));
+	const d = Number(iso.slice(8, 10));
+	const dt = new Date(y, m - 1, d);
+	return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
 
 export function parseSections(lines: string[], level: number): Section[] {
 	const sections: Section[] = [];
@@ -750,11 +779,164 @@ export function isTodayTitle(title: string, todayISO: string, todayFormatted: st
 	return formatted.length > 3 && title.toLowerCase().includes(formatted);
 }
 
-/** Does a heading title look like a date: an ISO date anywhere, or exactly the new-card format? */
-export function titleHasDate(title: string, format: string): boolean {
-	if (/\d{4}-\d{2}-\d{2}/.test(title)) return true;
+/** A parsed date plus the [start, end) span of the title's characters that spelled it,
+ * so a retitle can swap just those characters and keep the rest of the title. */
+interface TitleDateMatch {
+	parsed: { format: (f: string) => string };
+	start: number;
+	end: number;
+	/** The moment format the span was parsed with — how a new date should be written back. */
+	core: string;
+}
+
+/** The [start, end) offsets of each of a title's first `max` words (whitespace-delimited). */
+function wordSpans(title: string, max: number): { start: number; end: number }[] {
+	const spans: { start: number; end: number }[] = [];
+	const re = /\S+/g;
+	let m: RegExpExecArray | null;
+	while (spans.length < max && (m = re.exec(title)) !== null) {
+		spans.push({ start: m.index, end: m.index + m[0].length });
+	}
+	return spans;
+}
+
+/** How words are trimmed when a window leaves punctuation at a candidate's edge. */
+const EDGE_PUNCT_RE = /^[\s,;:–—-]+|[\s,;:–—-]+$/gu;
+
+/**
+ * Strict-parse a title against the heading format: the whole title, or a prefix
+ * ending at a word boundary — a heading that STARTS with a date is a date heading,
+ * so "August 26, 2026 — review" (format "MMMM D, YYYY") still reads as its date.
+ * Longest prefix wins; trailing punctuation on a prefix is forgiven.
+ */
+function titleFormatDate(title: string, format: string): TitleDateMatch | null {
 	const trimmed = format.trim();
-	return trimmed.length > 0 && moParse(title.trim(), trimmed, true).isValid();
+	if (!trimmed) return null;
+	const words = wordSpans(title, 8);
+	for (let n = words.length - 1; n >= 0; n--) {
+		const lead = words[0].start;
+		const raw = title.slice(lead, words[n].end).replace(/[\s,;:–—-]+$/u, "");
+		const parsed = moParse(raw.replace(/\s+/g, " "), trimmed, true);
+		if (parsed.isValid()) return { parsed, start: lead, end: lead + raw.length, core: trimmed };
+	}
+	return null;
+}
+
+/**
+ * Parse a title against the user's date-detection pattern (settings → "Date
+ * detection format"): a moment format optionally wrapped in `*` wildcards that
+ * stand for arbitrary text before and/or after the date. `*MMMM D, YYYY*` finds
+ * the date anywhere; without a `*`, that side of the title must end with it.
+ */
+function titleDetectSpan(title: string, pattern: string): TitleDateMatch | null {
+	const trimmed = pattern.trim();
+	if (!trimmed) return null;
+	const leading = trimmed.startsWith("*");
+	const trailing = trimmed.endsWith("*");
+	const core = trimmed.replace(/^\*+/, "").replace(/\*+$/, "").trim();
+	if (!core) return null;
+	const words = wordSpans(title, Number.MAX_SAFE_INTEGER);
+	const maxStart = leading ? Math.min(words.length - 1, 11) : 0;
+	for (let start = 0; start <= maxStart; start++) {
+		// Candidate word-windows: any length up to 8 with a trailing wildcard,
+		// otherwise the window must reach the title's end.
+		const windowEnds: number[] = [];
+		if (trailing) {
+			for (let end = Math.min(words.length, start + 8); end > start; end--) windowEnds.push(end);
+		} else if (words.length - start <= 8) {
+			windowEnds.push(words.length);
+		}
+		for (const end of windowEnds) {
+			const raw = title.slice(words[start].start, words[end - 1].end);
+			// Edge punctuation a wildcard left behind sits outside the date's span.
+			const lead = /^[\s,;:–—-]*/u.exec(raw)![0].length;
+			const candidate = raw.replace(EDGE_PUNCT_RE, "");
+			if (!candidate) continue;
+			const parsed = moParse(candidate.replace(/\s+/g, " "), core, true);
+			if (parsed.isValid()) {
+				const from = words[start].start + lead;
+				return { parsed, start: from, end: from + candidate.length, core };
+			}
+		}
+	}
+	return null;
+}
+
+/** The date the custom detection pattern finds in a title, if any (see titleDetectSpan). */
+export function titleDetectDate(title: string, pattern: string): { format: (f: string) => string } | null {
+	return titleDetectSpan(title, pattern)?.parsed ?? null;
+}
+
+/** Does a heading title look like a date: a real ISO date anywhere, the new-card format
+ * as the whole title or its leading words, or the custom detection pattern? */
+export function titleHasDate(title: string, format: string, detect = ""): boolean {
+	return titleToIso(title, format, detect) !== null;
+}
+
+/** The date a heading names, as YYYY-MM-DD: a valid ISO date anywhere in the title wins,
+ * then the heading format at the title's start, then the custom detection pattern. */
+export function titleToIso(title: string, format: string, detect = ""): string | null {
+	const iso = ISO_DATE_RE.exec(title)?.[0];
+	if (iso && validIsoDate(iso)) return iso;
+	return (titleFormatDate(title, format) ?? titleDetectSpan(title, detect))?.parsed.format("YYYY-MM-DD") ?? null;
+}
+
+/**
+ * The title after a card is moved to another day (Calendar drag). Whichever spelling
+ * placed the card on the calendar — the heading format at the title's start, a raw ISO
+ * date anywhere, or the custom detection pattern — is swapped for the new day in that
+ * same spelling; the rest of the title stays. A title whose date can't be located is
+ * replaced with the new day in the heading format.
+ */
+export function retitledDateTitle(title: string, format: string, iso: string, detect = ""): string {
+	const to = moParse(iso, "YYYY-MM-DD", true);
+	const t = title.trim();
+	const old = titleFormatDate(t, format);
+	if (old) return to.format(format) + t.slice(old.end);
+	const rawIso = ISO_DATE_RE.exec(t)?.[0];
+	if (rawIso) {
+		let out = t.replace(rawIso, iso);
+		// A weekday word naming the old day follows the date to the new one.
+		const from = moParse(rawIso, "YYYY-MM-DD", true);
+		const oldDow = from.isValid() ? from.format("dddd") : "";
+		if (/^[\p{L}]+$/u.test(oldDow)) {
+			const dowRe = new RegExp(`(?<![\\p{L}])${oldDow}(?![\\p{L}])`, "u");
+			if (dowRe.test(out)) out = out.replace(dowRe, to.format("dddd"));
+		}
+		return out;
+	}
+	const det = titleDetectSpan(t, detect);
+	if (det) return t.slice(0, det.start) + to.format(det.core) + t.slice(det.end);
+	return to.format(format);
+}
+
+/** Date-looking headings per level (index 1–6), in one pass over the file. */
+export function dateHeadingCounts(lines: string[], format: string, detect = ""): number[] {
+	const counts = [0, 0, 0, 0, 0, 0, 0];
+	// Level 7 keeps nothing out: every real heading (1–6) comes back, each seen once.
+	for (const h of parseAncestorHeadings(lines, 7)) {
+		if (titleHasDate(h.title, format, detect)) counts[h.level]++;
+	}
+	return counts;
+}
+
+/** The heading level whose headings name days — where the Calendar layout finds its
+ * cards. The level with the most date-looking headings wins; null when none has any. */
+export function dateHeadingLevel(lines: string[], format: string, detect = ""): number | null {
+	return bestDateLevel(dateHeadingCounts(lines, format, detect));
+}
+
+/** The level with the most date headings in a dateHeadingCounts tally (ties go shallower). */
+export function bestDateLevel(counts: number[]): number | null {
+	let best: number | null = null;
+	let bestCount = 0;
+	for (let level = 1; level <= 6; level++) {
+		if (counts[level] > bestCount) {
+			best = level;
+			bestCount = counts[level];
+		}
+	}
+	return best;
 }
 
 /**
@@ -764,7 +946,7 @@ export function titleHasDate(title: string, format: string): boolean {
  * 2026-08-20 writes that day rather than today; `{{time}}` is always now.
  */
 export function applyTemplatePlaceholders(raw: string, title: string, headingFormat: string): string {
-	const iso = /\d{4}-\d{2}-\d{2}/.exec(title)?.[0];
+	const iso = ISO_DATE_RE.exec(title)?.[0];
 	let cardDate: { format: (f: string) => string };
 	if (iso) {
 		cardDate = mo(iso, "YYYY-MM-DD");
@@ -1685,6 +1867,80 @@ async function moveSectionInFile(
 	return ok;
 }
 
+/**
+ * Merge one section into another: `from`'s body lines land at the bottom of `into`'s
+ * body (like a Quick Add), and `from`'s section — heading included — is removed.
+ * Both sections must come from a fresh parse of `lines`.
+ */
+export function mergeSections(lines: string[], from: Section, into: Section): string[] {
+	// Merging must not change how the file ends (e.g. its trailing newline).
+	let tailBlanks = 0;
+	while (tailBlanks < lines.length && lines[lines.length - 1 - tailBlanks].trim() === "") tailBlanks++;
+
+	const body = lines.slice(bodyStartLine(from), from.endLine);
+	while (body.length && body[body.length - 1].trim() === "") body.pop();
+	const [delStart, delEnd] = sectionDeleteRange(lines, from);
+	const out = lines.slice(0, delStart).concat(lines.slice(delEnd));
+	// into.endLine excludes the blank separator; shift it when `from` sat above it.
+	const at = delEnd <= into.endLine ? into.endLine - (delEnd - delStart) : into.endLine;
+	out.splice(at, 0, ...body);
+
+	while (out.length && out[out.length - 1].trim() === "") out.pop();
+	for (let i = 0; i < tailBlanks; i++) out.push("");
+	return out;
+}
+
+/** Calendar merge at write time, re-locating both sections like every other write. */
+async function mergeSectionsInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	fromOriginal: Section,
+	intoOriginal: Section,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const from = locateCard(lines, level, fromOriginal);
+		const into = locateCard(lines, level, intoOriginal);
+		if (!from || !into || from.unfiled || into.unfiled || from.startLine === into.startLine) {
+			ok = false;
+			return data;
+		}
+		return mergeSections(lines, from, into).join(eol);
+	});
+
+	return ok;
+}
+
+/** Rewrite a card's heading line (Calendar day move); the body stays byte-for-byte. */
+async function retitleSectionInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	original: Section,
+	newHeading: string,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, original);
+		if (!target || target.unfiled) {
+			ok = false;
+			return data;
+		}
+		const out = lines.slice();
+		out[target.startLine] = newHeading;
+		return out.join(eol);
+	});
+
+	return ok;
+}
+
 /** Where Quick Add drops its text within the section body. */
 export type QuickAddPlacement = "top" | "bottom";
 
@@ -1902,6 +2158,22 @@ export class SectionCardsView extends ItemView {
 	private hasStars = false;
 	/** The per-note "Dates" checkbox, kept current by refresh. */
 	private datesToggle: HTMLInputElement | null = null;
+	/** The toolbar's template button, so the hamburger menu can reuse its state styling. */
+	private templateBtn: HTMLElement | null = null;
+	/** Opens the jump-to-date picker — stored so the hamburger menu can trigger it too. */
+	private openJumpPicker: (() => void) | null = null;
+	/** The Layout dropdown, so refresh can grey out Calendar in date-less notes. */
+	private layoutSelect: HTMLSelectElement | null = null;
+	/** Whether ANY heading level of the note has date headings (Calendar picks its
+	 * own level, so this is broader than the current level's noteHasDates). */
+	private hasAnyDates = false;
+	/** The user's own heading level, parked while the Calendar follows the note's
+	 * date-heading level — restored (and re-persisted) when the layout changes back. */
+	private preCalendarLevel: number | null = null;
+	/** Its label wrap, so the Calendar layout can hide the toggle once Dates is on
+	 * (the layout implies it) — but not while it's off, or the gate message's own
+	 * "turn on the Dates checkbox" advice would point at nothing. */
+	private datesLabelEl: HTMLElement | null = null;
 	/** The open editor's card and its finish function, so clicks elsewhere can commit it. */
 	private activeEditor: {
 		card: HTMLElement;
@@ -1986,6 +2258,8 @@ export class SectionCardsView extends ItemView {
 	} | null = null;
 	/** The card currently showing a drop indicator. */
 	private dropMarker: HTMLElement | null = null;
+	/** Calendar: the day cell (card or blank) highlighted as the drag's landing day. */
+	private calDropEl: HTMLElement | null = null;
 	/** Heading of a just-created section, to be opened for editing after the next render. */
 	private pendingEditHeading: string | null = null;
 	/** Heading of a card that should still be blown up after the next render. */
@@ -2105,17 +2379,20 @@ export class SectionCardsView extends ItemView {
 		});
 		this.layout = resolved.layout;
 		this.headingLevel = resolved.headingLevel;
+		this.preCalendarLevel = null; // a fresh level; the next calendar refresh re-parks it
 		this.sortOrder = resolved.sortOrder;
 		this.hierarchyOn = resolved.hierarchy ?? false;
 		this.sectionsOn = resolved.sections ?? false;
 		this.starredOnly = resolved.starredOnly ?? false;
 	}
 
-	/** The current view as one ViewSettings value — the shape everything persists. */
+	/** The current view as one ViewSettings value — the shape everything persists.
+	 * While the Calendar borrows the date-heading level, the USER'S level is what
+	 * persists, so trying the Calendar never clobbers the remembered card level. */
 	private viewSettings(): ViewSettings {
 		return {
 			layout: this.layout,
-			headingLevel: this.headingLevel,
+			headingLevel: this.preCalendarLevel ?? this.headingLevel,
 			sortOrder: this.sortOrder,
 			hierarchy: this.hierarchyOn,
 			sections: this.sectionsOn,
@@ -2123,16 +2400,42 @@ export class SectionCardsView extends ItemView {
 		};
 	}
 
-	/** Whether the hierarchy columns actually show: toggled on, and not on the canvas. */
-	private hierarchyActive(): boolean {
-		return this.hierarchyOn && this.layout !== "custom";
+	/** Custom Grid and Calendar place every card themselves, so the grouped view
+	 * modes (hierarchy columns, section dividers) don't apply on them. One predicate,
+	 * so the next self-placing layout changes exactly one line. */
+	private layoutOwnsPlacement(): boolean {
+		return this.layout === "custom" || this.layout === "calendar";
 	}
 
-	/** Whether the section divider bars actually show: toggled on, not on the canvas
-	 * (cards are placed by hand there), and never alongside the hierarchy columns —
-	 * both group by the ancestor headings, so the columns win a both-on state. */
+	/** The Calendar option is offered while any heading level names dates (and the
+	 * active layout always stays selectable). Shared by the dropdown and the L cycle. */
+	private calendarSelectable(): boolean {
+		return this.hasAnyDates || this.layout === "calendar";
+	}
+
+	/** Grey the layout dropdown's Calendar option in/out as the note's headings change. */
+	private syncCalendarOption(): void {
+		const option = this.layoutSelect?.querySelector<HTMLOptionElement>('option[value="calendar"]');
+		if (option) option.disabled = !this.calendarSelectable();
+	}
+
+	/** The Calendar layout implies Dates, so the toggle hides once it's on there — but
+	 * not while it's off, or the gate message's "turn on the Dates checkbox" advice
+	 * would point at nothing. */
+	private syncDatesLabel(): void {
+		this.datesLabelEl?.toggleClass("is-hidden", this.layout === "calendar" && this.containsDates);
+	}
+
+	/** Whether the hierarchy columns actually show: toggled on, and the layout groups. */
+	private hierarchyActive(): boolean {
+		return this.hierarchyOn && !this.layoutOwnsPlacement();
+	}
+
+	/** Whether the section divider bars actually show: toggled on, the layout groups,
+	 * and never alongside the hierarchy columns — both group by the ancestor headings,
+	 * so the columns win a both-on state. */
 	private sectionsActive(): boolean {
-		return this.sectionsOn && this.layout !== "custom" && !this.hierarchyActive();
+		return this.sectionsOn && !this.layoutOwnsPlacement() && !this.hierarchyActive();
 	}
 
 	/** Remember the current view for the current note (in the plugin's data, not the note). */
@@ -2159,6 +2462,8 @@ export class SectionCardsView extends ItemView {
 		this.contentEl.empty();
 		this.contentEl.addClass("section-cards-view");
 		this.toolbarEl = this.contentEl.createDiv({ cls: "section-cards-toolbar" });
+		// Attached once here, not in buildToolbar — the bar element survives rebuilds.
+		this.toolbarEl.addEventListener("contextmenu", (evt) => this.openToolbarMenu(evt));
 		// Clicking anywhere in the toolbar returns an editing card to its preview.
 		this.registerDomEvent(this.toolbarEl, "click", () => {
 			const open = this.activeEditor;
@@ -2169,6 +2474,27 @@ export class SectionCardsView extends ItemView {
 		this.pinnedEl = this.contentEl.createDiv({ cls: "section-cards-pinned" });
 		this.hierEl = this.contentEl.createDiv({ cls: "section-cards-hier" });
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
+		// Right-click on the wall itself — not a card or a control, which have their
+		// own menus — offers the background options where the background actually is.
+		// Registered on the hierarchy columns pane too: it covers the wall's left side
+		// in the Hierarchy view mode.
+		const backgroundMenu = (evt: MouseEvent) => {
+			const target = evt.target as HTMLElement | null;
+			if (target?.closest(".section-card, button")) return;
+			evt.preventDefault();
+			const menu = new Menu();
+			menu.addItem((item) =>
+				item
+					.setTitle("New card…")
+					.setIcon("plus")
+					.onClick(() => this.promptNewCard()),
+			);
+			menu.addSeparator();
+			this.addBackgroundItems(menu, this.viewSettings());
+			menu.showAtMouseEvent(evt);
+		};
+		this.registerDomEvent(this.gridEl, "contextmenu", backgroundMenu);
+		this.registerDomEvent(this.hierEl, "contextmenu", backgroundMenu);
 		// A user scroll or click cancels the pending today-card re-aim, so it can't
 		// yank the view away from wherever they have already navigated to.
 		this.registerDomEvent(this.contentEl, "wheel", () => (this.todayJumpPending = false), { passive: true });
@@ -2212,6 +2538,9 @@ export class SectionCardsView extends ItemView {
 		for (let level = 1; level <= 6; level++) {
 			this.scope.register([], String(level), (evt) => {
 				if (!this.plainShortcutOk(evt)) return true;
+				// The Calendar follows the note's date-heading level; a manual level
+				// would only be forced back (and churn the stored view) on refresh.
+				if (this.layout === "calendar") return true;
 				if (!this.levelOptionValues().includes(level)) return true;
 				if (this.headingLevel !== level) {
 					this.headingLevel = level;
@@ -2226,7 +2555,12 @@ export class SectionCardsView extends ItemView {
 		this.scope.register([], "L", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
 			const values = LAYOUT_OPTIONS.map(([value]) => value);
-			this.layout = values[(values.indexOf(this.layout) + 1) % values.length];
+			let next = values[(values.indexOf(this.layout) + 1) % values.length];
+			// The cycle skips a greyed-out Calendar, like the dropdown refuses it.
+			if (next === "calendar" && !this.calendarSelectable()) {
+				next = values[(values.indexOf(next) + 1) % values.length];
+			}
+			this.layout = next;
 			this.rememberView();
 			this.applyLayoutClass();
 			this.buildToolbar(); // the layout dropdown and hierarchy toggle follow along
@@ -2237,7 +2571,7 @@ export class SectionCardsView extends ItemView {
 		// Turning them on turns the section dividers off — never both at once.
 		this.scope.register([], "H", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
-			if (this.layout === "custom") return true;
+			if (this.layoutOwnsPlacement()) return true;
 			this.hierarchyOn = !this.hierarchyOn;
 			if (this.hierarchyOn) this.sectionsOn = false;
 			this.rememberView();
@@ -2249,7 +2583,7 @@ export class SectionCardsView extends ItemView {
 		// D: show/hide the dividers (not on the canvas); turns the columns off.
 		this.scope.register([], "D", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
-			if (this.layout === "custom") return true;
+			if (this.layoutOwnsPlacement()) return true;
 			this.sectionsOn = !this.sectionsOn;
 			if (this.sectionsOn) this.hierarchyOn = false;
 			this.rememberView();
@@ -2419,7 +2753,7 @@ export class SectionCardsView extends ItemView {
 
 	/** The layout lives as a class on the view root so CSS can restyle grid *and* scrolling. */
 	private applyLayoutClass(): void {
-		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical", "custom"]) {
+		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical", "custom", "calendar"]) {
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name);
 		}
 		this.contentEl.toggleClass("is-hier-on", this.hierarchyActive());
@@ -2470,9 +2804,11 @@ export class SectionCardsView extends ItemView {
 		this.pinnedEl?.empty();
 	}
 
-	/** The sticky band sits just below the toolbar, whose height varies as it wraps. */
-	private updatePinnedOffset(): void {
-		if (!this.toolbarEl || !this.pinnedEl?.hasChildNodes()) return;
+	/** The sticky pinned band and the Calendar's weekday header sit just below the
+	 * toolbar, whose height varies as it wraps or switches style — so the offset is
+	 * refreshed unconditionally (a resize, a toolbar rebuild, a calendar render). */
+	private updateToolbarOffset(): void {
+		if (!this.toolbarEl) return;
 		this.contentEl.setCssProps({ "--sc-toolbar-h": `${this.toolbarEl.offsetHeight}px` });
 	}
 
@@ -2552,8 +2888,8 @@ export class SectionCardsView extends ItemView {
 		if (!bodyEl) return;
 		const cap = this.plugin.settings.cardMaxHeight;
 		const target =
-			this.layout === "vertical" || this.layout === "custom"
-				? ""
+			this.layout === "vertical" || this.layoutOwnsPlacement()
+				? "" // calendar cells cap the whole card in CSS instead
 				: `${this.layout === "tight" ? Math.min(cap, 190) : cap}px`;
 		// Refresh re-applies this to every reused card; identical values skip the write.
 		if (bodyEl.style.maxHeight !== target) bodyEl.setCssStyles({ maxHeight: target });
@@ -2660,7 +2996,7 @@ export class SectionCardsView extends ItemView {
 
 		// Masonry spans only apply to the packed column layouts. The aligned grid wants
 		// real auto rows, and the sideways layout is a flex row, so clear any leftovers.
-		if (this.layout === "vertical" || this.layout === "aligned" || this.layout === "custom") {
+		if (this.layout === "vertical" || this.layout === "aligned" || this.layoutOwnsPlacement()) {
 			grid.removeClass("is-one-col");
 			for (const card of Array.from(grid.children) as HTMLElement[]) {
 				// Reading inline style is free; rewriting an already-empty one is not.
@@ -2721,6 +3057,118 @@ export class SectionCardsView extends ItemView {
 	 * grid's current track count. Because the rule spans all columns it also *enforces*
 	 * rows of N, and it is rebuilt whenever the column count changes.
 	 */
+	/**
+	 * Calendar layout: rebuild the grid as a weekday header row plus one block per
+	 * month — a full-width label, leading pads to the first day's weekday column,
+	 * then one cell per day: the day's card, or a blank square. The cards are already
+	 * in date order, so plain 7-column auto-placement makes the calendar. Every month
+	 * between the first and last dated card renders, so scrolling walks the months.
+	 */
+	private layoutCalendar(isoByHeading: Map<string, string>): void {
+		const grid = this.gridEl;
+		if (!grid) return;
+		const locale = moment as unknown as {
+			weekdaysShort: (localeSorted: boolean) => string[];
+			localeData: () => { firstDayOfWeek: () => number };
+		};
+		const weekStart = this.plugin.settings.weekStart;
+		const firstDow =
+			weekStart === "sunday" ? 0 : weekStart === "monday" ? 1 : locale.localeData().firstDayOfWeek();
+		// Sunday-first names, rotated to whichever day starts the week.
+		const names = locale.weekdaysShort(false);
+		for (const name of [...names.slice(firstDow), ...names.slice(0, firstDow)]) {
+			grid.createDiv({ cls: "sc-cal-dow", text: name });
+		}
+
+		// One card per day; a second section naming the same date has no square and hides.
+		// (refresh parsed every title once into isoByHeading — nothing re-parses here.)
+		const byIso = new Map<string, HTMLElement>();
+		for (const entry of this.cardEntries) {
+			const iso = isoByHeading.get(entry.holder.section.headingRaw);
+			const primary = iso !== undefined && !byIso.has(iso);
+			if (primary) byIso.set(iso, entry.el);
+			entry.el.toggleClass("is-cal-extra", !primary);
+		}
+		if (!byIso.size) return;
+
+		const isos = [...byIso.keys()].sort();
+		const [y0, m0] = isos[0].split("-").map(Number);
+		const [y1, m1] = isos[isos.length - 1].split("-").map(Number);
+		// The toolbar's sort control orders the months (days inside stay calendar
+		// order — a month grid reads one way): ascending walks first → last.
+		let months: [number, number][] = [];
+		{
+			let year = y0;
+			let month = m0;
+			while (year < y1 || (year === y1 && month <= m1)) {
+				months.push([year, month]);
+				month++;
+				if (month > 12) {
+					month = 1;
+					year++;
+				}
+			}
+		}
+		// Scrolling walks the months — but one stray date (a typo year, an archived
+		// reference) must not explode the walk into thousands of day cells. Past five
+		// years of span, only months that actually hold a card render.
+		if (months.length > 60) {
+			const withCards = new Set(isos.map((iso) => iso.slice(0, 7)));
+			months = months.filter(([year, month]) => withCards.has(`${year}-${String(month).padStart(2, "0")}`));
+		}
+		if (this.sortOrder === "desc") months.reverse();
+
+		// Shared by every blank day cell: three handlers total, not three per day.
+		const blankIso = (evt: Event) => (evt.currentTarget as HTMLElement).dataset.scIso;
+		const onBlankClick = (evt: MouseEvent) => {
+			const iso = blankIso(evt);
+			if (iso) this.promptCreateDateCard(iso);
+		};
+		// A card dragged onto an empty day moves there: its heading is rewritten.
+		const onBlankDragover = (evt: DragEvent) => {
+			if (!this.dragging) return;
+			evt.preventDefault();
+			if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
+			this.setCalDrop(evt.currentTarget as HTMLElement);
+		};
+		const onBlankDrop = (evt: DragEvent) => {
+			if (!this.dragging) return;
+			evt.preventDefault();
+			const moved = this.dragging.section;
+			const iso = blankIso(evt);
+			this.setCalDrop(null);
+			this.dragging = null;
+			if (iso) void this.moveCardToDate(moved, iso);
+		};
+		for (const [year, month] of months) {
+			grid.createDiv({
+				cls: "sc-cal-month",
+				text: new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+			});
+			const lead = (new Date(year, month - 1, 1).getDay() - firstDow + 7) % 7;
+			for (let i = 0; i < lead; i++) grid.createDiv({ cls: "sc-cal-blank sc-cal-pad" });
+			const days = new Date(year, month, 0).getDate();
+			for (let day = 1; day <= days; day++) {
+				const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+				const el = byIso.get(iso);
+				// appendChild MOVES an existing card into place; the dow header and any
+				// earlier days were appended before it, so date order builds the grid.
+				if (el) {
+					grid.appendChild(el);
+				} else {
+					// An empty day offers to start its card — same dialog as jump-to-date.
+					const blank = grid.createDiv({ cls: "sc-cal-blank", text: String(day) });
+					blank.setAttr("role", "button");
+					blank.setAttr("aria-label", `Create a card for ${iso}`);
+					blank.dataset.scIso = iso;
+					blank.addEventListener("click", onBlankClick);
+					blank.addEventListener("dragover", onBlankDragover);
+					blank.addEventListener("drop", onBlankDrop);
+				}
+			}
+		}
+	}
+
 	private insertRowRules(): void {
 		const grid = this.gridEl;
 		if (!grid || !grid.isConnected) return;
@@ -3043,7 +3491,7 @@ export class SectionCardsView extends ItemView {
 			if (this.layout === "custom") this.previewCustomResize();
 			this.repack();
 			// A narrower pane wraps the toolbar taller; the sticky band rides below it.
-			this.updatePinnedOffset();
+			this.updateToolbarOffset();
 		});
 		for (const card of Array.from(this.gridEl.children)) {
 			if ((card as HTMLElement).hasClass("section-card")) this.cardObserver.observe(card);
@@ -3052,10 +3500,53 @@ export class SectionCardsView extends ItemView {
 		this.cardObserver.observe(this.gridEl);
 	}
 
+	/** Re-render the toolbar in the current style (full/compact); no data refresh. */
+	rebuildToolbar(): void {
+		this.buildToolbar();
+		// The pinned band and the Calendar's weekday header hang off the toolbar's
+		// height, which just changed.
+		this.updateToolbarOffset();
+	}
+
+	/** Right-click anywhere on the toolbar (fields excluded): switch its style. */
+	private openToolbarMenu(evt: MouseEvent): void {
+		const target = evt.target as HTMLElement | null;
+		if (target?.closest("input, select, textarea")) return; // fields keep their native menu
+		evt.preventDefault();
+		const menu = new Menu();
+		const styles: ["full" | "compact", string][] = [
+			["full", "Full toolbar"],
+			["compact", "Compact toolbar"],
+		];
+		for (const [value, label] of styles) {
+			menu.addItem((item) =>
+				item
+					.setTitle(label)
+					.setChecked(this.plugin.settings.toolbarStyle === value)
+					.onClick(async () => {
+						if (this.plugin.settings.toolbarStyle === value) return;
+						this.plugin.settings.toolbarStyle = value;
+						await this.plugin.saveSettings();
+						this.plugin.applyToolbarStyle();
+					}),
+			);
+		}
+		menu.showAtMouseEvent(evt);
+	}
+
 	private buildToolbar() {
 		const bar = this.toolbarEl;
 		if (!bar) return;
 		bar.empty();
+		const compact = this.plugin.settings.toolbarStyle === "compact";
+		bar.toggleClass("is-compact", compact);
+
+		// The hamburger menu leads the bar: dates, new-card options, and the per-note
+		// background live here as well as (for now) on their own toolbar controls.
+		const menuBtn = bar.createEl("button", { cls: "section-cards-icon-btn section-cards-menu-btn" });
+		setIcon(menuBtn, "menu");
+		menuBtn.setAttr("aria-label", "Cards view menu");
+		menuBtn.addEventListener("click", (evt) => this.openMainMenu(evt));
 
 		const fileBtn = bar.createEl("button", { cls: "section-cards-file-btn" });
 		fileBtn.setAttr("aria-label", "Pick a different note");
@@ -3066,7 +3557,7 @@ export class SectionCardsView extends ItemView {
 
 		// Heading level leads the controls, the filter box beside it: what becomes a
 		// card sits on the left with the note name; the view options keep the right.
-		const levelWrap = bar.createDiv({ cls: "section-cards-control" });
+		const levelWrap = bar.createDiv({ cls: "section-cards-control section-cards-level-control" });
 		levelWrap.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
 		levelWrap.createSpan({ text: "Card level", cls: "section-cards-label" });
 		const levelSelect = levelWrap.createEl("select", { cls: "dropdown" });
@@ -3163,7 +3654,7 @@ export class SectionCardsView extends ItemView {
 			cls: "section-cards-jump-input",
 			attr: { type: "date", "aria-hidden": "true", tabindex: "-1" },
 		});
-		jumpBtn.addEventListener("click", () => {
+		const openJumpPicker = () => {
 			if (!jumpInput.value) jumpInput.value = mo().format("YYYY-MM-DD");
 			const picker = jumpInput as HTMLInputElement & { showPicker?: () => void };
 			try {
@@ -3172,7 +3663,9 @@ export class SectionCardsView extends ItemView {
 			} catch {
 				jumpInput.focus();
 			}
-		});
+		};
+		this.openJumpPicker = openJumpPicker;
+		jumpBtn.addEventListener("click", openJumpPicker);
 		jumpInput.addEventListener("change", () => {
 			if (jumpInput.value) this.jumpToDate(jumpInput.value);
 		});
@@ -3181,13 +3674,19 @@ export class SectionCardsView extends ItemView {
 		// jump-to-today scroll, and the calendar button. Until first clicked it mirrors
 		// what the note's headings look like (refresh keeps it current).
 		const datesLabel = datesWrap.createEl("label", { cls: "section-cards-dates-label" });
+		this.datesLabelEl = datesLabel;
+		this.syncDatesLabel();
 		datesLabel.setAttr(
 			"aria-label",
 			"This note's headings contain dates — highlight today's card and offer jump-to-date",
 		);
 		// The text is a .section-cards-label span so phones drop it like the other labels
 		// (the checkbox itself stays); the checkbox sits to the label's right.
-		datesLabel.createSpan({ cls: "section-cards-label", text: "Dates" });
+		// Compact keeps this one label (as "Dates?") — a bare checkbox says nothing.
+		datesLabel.createSpan({
+			cls: "section-cards-label section-cards-dates-text",
+			text: compact ? "Dates?" : "Dates",
+		});
 		const datesToggle = datesLabel.createEl("input", {
 			cls: "section-cards-dates-toggle",
 			attr: { type: "checkbox" },
@@ -3206,28 +3705,37 @@ export class SectionCardsView extends ItemView {
 		// centered between the left and right clusters.
 		bar.createDiv({ cls: "section-cards-spacer" });
 
+		// The new-card button leads the right cluster, ahead of the view controls.
+		const newBtn = bar.createEl("button", { cls: "section-cards-new-btn mod-cta", text: compact ? "+" : "+ New card" });
+		newBtn.setAttr("aria-label", "Create a new section in this note (N)");
+		newBtn.addEventListener("click", () => this.promptNewCard());
+
 		// View mode: a three-way toggle for how the wall is grouped by the headings
 		// above the card level — one flat wall, drill-down hierarchy columns, or a
 		// collapsible divider bar per heading. The grouped modes keep whatever layout
 		// the dropdown says; neither is available on the Custom Grid canvas.
-		const modeWrap = bar.createDiv({ cls: "section-cards-control" });
+		const modeWrap = bar.createDiv({ cls: "section-cards-control section-cards-mode-control" });
 		modeWrap.createSpan({ text: "View mode", cls: "section-cards-label" });
 		const modeSeg = modeWrap.createDiv({ cls: "section-cards-segmented" });
 		const modeButtons: [HTMLButtonElement, () => boolean][] = [];
 		const syncModeButtons = () => {
-			const onCanvas = this.layout === "custom";
+			const modesOff = this.layoutOwnsPlacement();
 			for (const [btn, isOn] of modeButtons) {
 				btn.toggleClass("is-active", isOn());
-				btn.toggleAttribute("disabled", onCanvas);
-				if (onCanvas) btn.setAttr("aria-label", "View modes aren't available on the Custom Grid canvas");
+				btn.toggleAttribute("disabled", modesOff);
+				if (modesOff) {
+					btn.setAttr("aria-label", "View modes aren't available on the Custom Grid canvas or the Calendar");
+				}
 			}
 		};
-		const addModeBtn = (label: string, hint: string, isOn: () => boolean, apply: () => void) => {
-			const btn = modeSeg.createEl("button", { text: label });
+		// Compact swaps the three text buttons for icons; the hints still name them.
+		const addModeBtn = (label: string, icon: string, hint: string, isOn: () => boolean, apply: () => void) => {
+			const btn = modeSeg.createEl("button", { text: compact ? "" : label });
+			if (compact) setIcon(btn, icon);
 			btn.setAttr("aria-label", hint);
 			modeButtons.push([btn, isOn]);
 			btn.addEventListener("click", () => {
-				if (this.layout === "custom" || isOn()) return;
+				if (this.layoutOwnsPlacement() || isOn()) return;
 				apply();
 				this.rememberView();
 				this.applyLayoutClass();
@@ -3235,12 +3743,19 @@ export class SectionCardsView extends ItemView {
 				void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 			});
 		};
-		addModeBtn("Default", "One flat wall of cards, ungrouped", () => !this.hierarchyActive() && !this.sectionsActive(), () => {
-			this.hierarchyOn = false;
-			this.sectionsOn = false;
-		});
+		addModeBtn(
+			"Default",
+			"layout-grid",
+			"One flat wall of cards, ungrouped",
+			() => !this.hierarchyActive() && !this.sectionsActive(),
+			() => {
+				this.hierarchyOn = false;
+				this.sectionsOn = false;
+			},
+		);
 		addModeBtn(
 			"Hierarchy",
+			"list-tree",
 			"Hierarchy columns: drill into the headings above the card level (H)",
 			() => this.hierarchyActive(),
 			() => {
@@ -3250,6 +3765,7 @@ export class SectionCardsView extends ItemView {
 		);
 		addModeBtn(
 			"Dividers",
+			"rows-3",
 			"Dividers: group the cards under the heading above the card level (D)",
 			() => this.sectionsActive(),
 			() => {
@@ -3260,45 +3776,58 @@ export class SectionCardsView extends ItemView {
 		syncModeButtons();
 
 		// Tooltips sit on the wrapper as well as the control, so hovering the text
-		// label ("Layout", "Sort", …) shows them too, not just the dropdown.
-		const layoutWrap = bar.createDiv({ cls: "section-cards-control" });
-		layoutWrap.setAttr("aria-label", "Card layout (L cycles)");
-		layoutWrap.createSpan({ text: "Layout", cls: "section-cards-label" });
-		const layoutSelect = layoutWrap.createEl("select", { cls: "dropdown" });
-		layoutSelect.setAttr("aria-label", "Card layout (L cycles)");
-		for (const [value, label, hint] of LAYOUT_OPTIONS) {
-			const option = layoutSelect.createEl("option", { text: label, value });
-			option.title = hint;
-		}
-		layoutSelect.value = this.layout;
-		layoutSelect.addEventListener("change", () => {
-			this.layout = layoutSelect.value as Layout;
-			this.rememberView();
-			this.applyLayoutClass();
-			syncModeButtons();
-			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
-		});
-
-		const sortWrap = bar.createDiv({ cls: "section-cards-control" });
+		// label ("Sort", "Layout", …) shows them too, not just the dropdown.
+		const sortWrap = bar.createDiv({ cls: "section-cards-control section-cards-sort-control" });
 		sortWrap.setAttr("aria-label", "Order the cards are shown in");
 		sortWrap.createSpan({ text: "Sort", cls: "section-cards-label" });
 		const sortSelect = sortWrap.createEl("select", { cls: "dropdown" });
 		sortSelect.setAttr("aria-label", "Order the cards are shown in");
-		sortSelect.createEl("option", { text: "A → Z", value: "asc" });
-		sortSelect.createEl("option", { text: "Z → A", value: "desc" });
-		sortSelect.createEl("option", { text: "Document order", value: "doc" });
-		sortSelect.value = this.sortOrder;
+		// On the Calendar the same control orders the months instead of the cards.
+		if (this.layout === "calendar") {
+			sortWrap.setAttr("aria-label", "Order the months are shown in");
+			sortSelect.setAttr("aria-label", "Order the months are shown in");
+			sortSelect.createEl("option", { text: "Ascending", value: "asc" });
+			sortSelect.createEl("option", { text: "Descending", value: "desc" });
+			sortSelect.value = this.sortOrder === "desc" ? "desc" : "asc";
+		} else {
+			sortSelect.createEl("option", { text: "A → Z", value: "asc" });
+			sortSelect.createEl("option", { text: "Z → A", value: "desc" });
+			sortSelect.createEl("option", { text: "Document order", value: "doc" });
+			sortSelect.value = this.sortOrder;
+		}
 		sortSelect.addEventListener("change", () => {
 			this.sortOrder = sortSelect.value as SortOrder;
 			this.rememberView();
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 		});
 
-		const newBtn = bar.createEl("button", { cls: "section-cards-new-btn mod-cta", text: "+ New card" });
-		newBtn.setAttr("aria-label", "Create a new section in this note (N)");
-		newBtn.addEventListener("click", () => this.promptNewCard());
+		// Layout sits rightmost of the dropdowns: everything between it and the pane
+		// edge is fixed-width, so it stays put when the Sort options change widths
+		// (the Calendar's do) or a mid-bar control comes and goes.
+		const layoutWrap = bar.createDiv({ cls: "section-cards-control" });
+		layoutWrap.setAttr("aria-label", "Card layout (L cycles)");
+		layoutWrap.createSpan({ text: "Layout", cls: "section-cards-label" });
+		const layoutSelect = layoutWrap.createEl("select", { cls: "dropdown" });
+		this.layoutSelect = layoutSelect;
+		layoutSelect.setAttr("aria-label", "Card layout (L cycles)");
+		for (const [value, label, hint] of LAYOUT_OPTIONS) {
+			const option = layoutSelect.createEl("option", { text: label, value });
+			option.title = hint;
+			// Calendar is greyed out in notes with no date headings at any level
+			// (refresh keeps this current; the current layout stays selectable).
+			if (value === "calendar") option.disabled = !this.calendarSelectable();
+		}
+		layoutSelect.value = this.layout;
+		layoutSelect.addEventListener("change", () => {
+			this.layout = layoutSelect.value as Layout;
+			this.rememberView();
+			this.applyLayoutClass();
+			this.buildToolbar(); // the sort options differ on the Calendar
+			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+		});
 
 		const templateBtn = bar.createEl("button", { cls: "section-cards-icon-btn section-cards-template-btn" });
+		this.templateBtn = templateBtn;
 		setIcon(templateBtn, "layout-template");
 		templateBtn.setAttr("aria-label", "New-card options for this note: template and heading name");
 		templateBtn.toggleClass("has-template", !!this.plugin.getTemplatePath(this.filePath));
@@ -3344,12 +3873,26 @@ export class SectionCardsView extends ItemView {
 		return !el.closest("input, textarea, select");
 	}
 
+	/** Offer to create the card for a day that has none — jump-to-date landing on an
+	 * empty day and a click on an empty Calendar cell share this dialog. */
+	private promptCreateDateCard(iso: string): void {
+		const formatted = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
+		new CreateDateCardModal(this.app, formatted, () => this.createDateCard(iso)).open();
+	}
+
 	/** Scroll the card whose heading is the picked ISO date into view, like the today jump. */
 	private jumpToDate(iso: string): void {
 		const formatted = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
-		const entry = this.cardEntries.find((e) => isTodayTitle(e.holder.section.title, iso, formatted));
+		const detect = this.plugin.settings.dateDetectFormat;
+		// The quick textual match first; the detect pattern finds the rest — a card the
+		// calendar places must be findable here too, or this would offer a duplicate.
+		const entry =
+			this.cardEntries.find((e) => isTodayTitle(e.holder.section.title, iso, formatted)) ??
+			(detect
+				? this.cardEntries.find((e) => titleToIso(e.holder.section.title, this.cardFormat(), detect) === iso)
+				: undefined);
 		if (!entry) {
-			new CreateDateCardModal(this.app, formatted, () => this.createDateCard(iso)).open();
+			this.promptCreateDateCard(iso);
 			return;
 		}
 		const title = entry.holder.section.title || "(untitled)";
@@ -3387,6 +3930,185 @@ export class SectionCardsView extends ItemView {
 	}
 
 	/** The new-card options menu: this note's template, and its own heading-name format. */
+	/**
+	 * The hamburger menu at the toolbar's left edge: the per-note dates controls and
+	 * new-card options (still on the toolbar too, for now), plus the note's background
+	 * image — picked from the vault, or downloaded once into it.
+	 */
+	private openMainMenu(evt: MouseEvent): void {
+		const base: ViewSettings = this.viewSettings();
+		const menu = new Menu();
+
+		// Group labels: all-caps via CSS (the source text stays sentence case), and
+		// disabled so they read as headings rather than actions.
+		const addHeading = (text: string) => {
+			menu.addItem((item) =>
+				item
+					.setTitle(createFragment((frag) => frag.createSpan({ cls: "sfsc-menu-heading", text })))
+					.setDisabled(true),
+			);
+		};
+
+		addHeading("Cards");
+		menu.addItem((item) =>
+			item
+				.setTitle("New card…")
+				.setIcon("plus")
+				.onClick(() => this.promptNewCard()),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Use template…")
+				.setIcon("layout-template")
+				.onClick(() => this.openTemplateMenu(evt, this.templateBtn ?? this.toolbarEl)),
+		);
+
+		menu.addSeparator();
+		addHeading("Dates");
+		menu.addItem((item) =>
+			item
+				.setTitle("Highlight today's card")
+				.setIcon("calendar-check")
+				.setChecked(this.containsDates)
+				.onClick(() => void this.plugin.setContainsDates(this.filePath, !this.containsDates, base)),
+		);
+		if (this.hasDateHeadings) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Jump to a date's card…")
+					.setIcon("calendar-days")
+					.onClick(() => this.openJumpPicker?.()),
+			);
+		}
+
+		menu.addSeparator();
+		addHeading("Background");
+		this.addBackgroundItems(menu, base);
+
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle("Settings…")
+				.setIcon("settings")
+				.onClick(() => this.plugin.openSettingsTab()),
+		);
+
+		menu.showAtMouseEvent(evt);
+	}
+
+	/** The Background items — shared by the hamburger menu and the wall's right-click menu. */
+	private addBackgroundItems(menu: Menu, base: ViewSettings): void {
+		menu.addItem((item) =>
+			item
+				.setTitle("Select background…")
+				.setIcon("image")
+				.onClick(() => {
+					new SelectBackgroundModal(this.app, {
+						fromVault: () => {
+							new BackgroundSuggestModal(this.app, (file) => {
+								void this.plugin.setBackgroundImage(this.filePath, file.path, base);
+							}).open();
+						},
+						fromLocal: () => this.pickLocalBackground(base),
+						fromInternet: () => {
+							new DownloadBackgroundModal(this.app, this.filePath, (path) => {
+								void this.plugin.setBackgroundImage(this.filePath, path, base);
+							}).open();
+						},
+					}).open();
+				}),
+		);
+		if (this.plugin.getBackgroundImage(this.filePath)) {
+			// The transparency slider lives right in the menu: it previews live while
+			// dragging and saves on release. Events stop at the row so the menu stays
+			// open while it's being used.
+			menu.addItem((item) => {
+				item.setIcon("sun-dim");
+				item.setTitle(
+					createFragment((frag) => {
+						const wrap = frag.createDiv({ cls: "sfsc-menu-slider" });
+						wrap.createSpan({ text: "Transparency" });
+						const slider = wrap.createEl("input", {
+							attr: { type: "range", min: "0", max: "100", step: "5", "aria-label": "Background transparency" },
+						});
+						slider.value = String(this.plugin.getBackgroundDim(this.filePath));
+						for (const type of ["click", "mousedown", "pointerdown", "touchstart"]) {
+							wrap.addEventListener(type, (e) => e.stopPropagation());
+						}
+						slider.addEventListener("input", () => {
+							this.contentEl.setCssProps({ "--sfsc-bg-veil": String(Number(slider.value) / 100) });
+						});
+						slider.addEventListener("change", () => {
+							void this.plugin.setBackgroundDim(this.filePath, Number(slider.value), base);
+						});
+					}),
+				);
+			});
+			menu.addItem((item) =>
+				item
+					.setTitle("Remove background")
+					.setIcon("x")
+					.onClick(() => void this.plugin.setBackgroundImage(this.filePath, null, base)),
+			);
+		}
+	}
+
+	/**
+	 * Background from anywhere on disk: the OS picker chooses the file, and a copy
+	 * lands in the vault's attachment folder so the image travels with the vault
+	 * (and keeps working if the original moves).
+	 */
+	private pickLocalBackground(base: ViewSettings): void {
+		const input = createEl("input", { attr: { type: "file", accept: "image/*" } });
+		input.addEventListener("change", () => {
+			const picked = input.files?.[0];
+			if (!picked) return;
+			void (async () => {
+				try {
+					const dot = picked.name.lastIndexOf(".");
+					const ext = dot > 0 ? picked.name.slice(dot + 1).toLowerCase() : "";
+					if (!BACKGROUND_EXTENSIONS.has(ext)) {
+						new Notice("Pick an image file (PNG, JPG, GIF, WebP, AVIF, or BMP).");
+						return;
+					}
+					const stem =
+						picked.name
+							.slice(0, dot)
+							.replace(/[^\w-]+/g, "-")
+							.replace(/^-+|-+$/g, "")
+							.slice(0, 40) || "background";
+					const buffer = await picked.arrayBuffer();
+					const dest = await this.app.fileManager.getAvailablePathForAttachment(`${stem}.${ext}`, this.filePath);
+					const file = await this.app.vault.createBinary(dest, buffer);
+					await this.plugin.setBackgroundImage(this.filePath, file.path, base);
+					new Notice(`Background copied into the vault: "${file.path}".`);
+				} catch {
+					new Notice("Couldn't read that file.");
+				}
+			})();
+		});
+		input.click();
+	}
+
+	/** Show or clear the note's background image behind the card wall. */
+	private applyBackground(): void {
+		const path = this.plugin.getBackgroundImage(this.filePath);
+		const file = path ? this.app.vault.getFileByPath(path) : null;
+		if (file) {
+			// The veil is only written inline when this note set its own strength;
+			// otherwise styles.css's default (Style Settings can override it) applies.
+			const dim = this.plugin.getBackgroundDimOverride(this.filePath);
+			this.contentEl.setCssProps({
+				"--sfsc-bg-image": `url("${this.app.vault.getResourcePath(file)}")`,
+				"--sfsc-bg-veil": dim === null ? "" : String(dim / 100),
+			});
+			this.contentEl.addClass("has-sfsc-bg");
+		} else {
+			this.contentEl.setCssProps({ "--sfsc-bg-image": "", "--sfsc-bg-veil": "" });
+			this.contentEl.removeClass("has-sfsc-bg");
+		}
+	}
+
 	private openTemplateMenu(evt: MouseEvent, btn: HTMLElement): void {
 		const base: ViewSettings = this.viewSettings();
 		const current = this.plugin.getTemplatePath(this.filePath);
@@ -3566,6 +4288,15 @@ export class SectionCardsView extends ItemView {
 		return resolved ?? null;
 	}
 
+	/** Clear the wall (cards and hierarchy columns) and show a two-line message instead. */
+	private showEmpty(line1: string, line2: string): void {
+		this.clearAllCards();
+		this.clearHierarchy();
+		const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
+		empty.createEl("p", { text: line1 });
+		empty.createEl("p", { text: line2 });
+	}
+
 	async refresh(): Promise<void> {
 		if (!this.gridEl) return;
 
@@ -3583,15 +4314,18 @@ export class SectionCardsView extends ItemView {
 			this.jumpDateWrap?.toggleClass("is-hidden", true);
 			this.hasStars = false;
 			this.starBtn?.toggleClass("is-hidden", true);
-			this.clearAllCards();
-			this.clearHierarchy();
-			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
-			empty.createEl("p", { text: `Can't find "${this.filePath}".` });
-			empty.createEl("p", { text: "Pick a note from the toolbar, or set a default in the plugin settings." });
+			this.hasAnyDates = false;
+			this.syncCalendarOption();
+			this.applyBackground();
+			this.showEmpty(
+				`Can't find "${this.filePath}".`,
+				"Pick a note from the toolbar, or set a default in the plugin settings.",
+			);
 			return;
 		}
 
 		this.filePath = file.path;
+		this.applyBackground();
 		const content = await this.app.vault.cachedRead(file);
 		if (gen !== this.renderGeneration) return;
 		const lines = content.split(/\r?\n/);
@@ -3617,16 +4351,41 @@ export class SectionCardsView extends ItemView {
 			}
 		}
 
+		// Any level with date headings makes the Calendar layout available — the
+		// dropdown greys it out otherwise. In the Calendar itself, the view follows
+		// that level, regardless of the level dropdown's last setting; the user's own
+		// level is parked in preCalendarLevel and comes back when the layout does.
+		const cardFormat = this.plugin.getNewCardFormat(file.path);
+		const detect = this.plugin.settings.dateDetectFormat;
+		const dateCounts = dateHeadingCounts(lines, cardFormat, detect);
+		const dateLevel = bestDateLevel(dateCounts);
+		this.hasAnyDates = dateLevel !== null;
+		this.syncCalendarOption();
+		if (this.layout !== "calendar" && this.preCalendarLevel !== null) {
+			this.headingLevel = this.preCalendarLevel;
+			this.preCalendarLevel = null;
+			this.buildToolbar();
+		}
+		if (this.layout === "calendar" && dateLevel && dateLevel !== this.headingLevel) {
+			this.preCalendarLevel ??= this.headingLevel;
+			this.headingLevel = dateLevel;
+			this.buildToolbar();
+		}
+		// Measured before the card DOM churns below — reading offsetHeight after the
+		// rebuild would force a synchronous reflow of the whole freshly-touched grid.
+		if (this.layout === "calendar") this.updateToolbarOffset();
+
 		const sections = parseCards(lines, this.headingLevel, this.plugin.unfiledTitle());
 
 		// Does this note deal in dates? The checkbox rules when the user has set it;
-		// until then the note decides for itself. The jump-to-date button additionally
-		// needs a date heading to actually land on.
-		const noteHasDates = sections.some((s) => titleHasDate(s.title, this.plugin.getNewCardFormat(file.path)));
+		// until then the note decides for itself (the tally above already looked at
+		// every heading). The jump-to-date button additionally needs a date to land on.
+		const noteHasDates = dateCounts[this.headingLevel] > 0;
 		this.containsDates = this.plugin.getContainsDates(file.path) ?? noteHasDates;
 		this.hasDateHeadings = this.containsDates && noteHasDates;
 		this.jumpDateWrap?.toggleClass("is-hidden", !this.hasDateHeadings);
 		if (this.datesToggle) this.datesToggle.checked = this.containsDates;
+		this.syncDatesLabel();
 
 		// The starred-only toggle is only offered while the note has a starred line.
 		// When the last star goes, the mode turns itself off so nothing stays hidden
@@ -3640,11 +4399,39 @@ export class SectionCardsView extends ItemView {
 		this.starBtn?.toggleClass("is-hidden", !this.hasStars);
 		this.starBtn?.toggleClass("is-active", this.starredOnly);
 
+		// The Calendar only means something on a dated note: without the Dates checkbox
+		// there is nothing to place on a month, so say so instead of guessing.
+		const calendar = this.layout === "calendar";
+		if (calendar && !this.containsDates) {
+			this.showEmpty(
+				"The Calendar layout needs date headings.",
+				"Turn on the toolbar's Dates checkbox, or pick another layout.",
+			);
+			return;
+		}
+
 		const pinnedList = this.plugin.getPinned(file.path);
 		const pinnedKeys = new Set(pinnedList);
 		const cardColors = this.plugin.getCardColors(file.path);
-		let ordered = applyPinned(sortSections(sections, this.sortOrder), pinnedList);
-		const pinnedCount = pinnedKeys.size ? ordered.filter((s) => pinnedKeys.has(s.headingRaw)).length : 0;
+		// The Calendar shows dated cards in date order — sort and pins don't apply,
+		// and sections whose headings name no date have no square to sit on. Each
+		// title is parsed once here; layoutCalendar reuses the map instead of re-parsing.
+		const isoByHeading = new Map<string, string>();
+		let ordered: Section[];
+		if (calendar) {
+			const dated: { s: Section; iso: string }[] = [];
+			for (const s of sections) {
+				const iso = titleToIso(s.title, cardFormat, detect);
+				if (iso === null) continue;
+				dated.push({ s, iso });
+				isoByHeading.set(s.headingRaw, iso);
+			}
+			ordered = dated.sort((a, b) => a.iso.localeCompare(b.iso)).map((x) => x.s);
+		} else {
+			ordered = applyPinned(sortSections(sections, this.sortOrder), pinnedList);
+		}
+		const pinnedCount =
+			!calendar && pinnedKeys.size ? ordered.filter((s) => pinnedKeys.has(s.headingRaw)).length : 0;
 		// Sticky pins render in their own band between toolbar and grid. pinnedShown
 		// tracks only pins leading the grid itself — the divider and Grid Aligned's
 		// row math key off it, and neither applies to the band. With hierarchy on,
@@ -3653,7 +4440,7 @@ export class SectionCardsView extends ItemView {
 			this.plugin.settings.stickyPinned &&
 			pinnedCount > 0 &&
 			pinnedCount < ordered.length &&
-			this.layout !== "custom";
+			!this.layoutOwnsPlacement();
 		this.pinnedShown = stickyPinned ? 0 : pinnedCount;
 
 		// Section dividers: after the pinned prefix, regroup the cards under their nearest
@@ -3687,8 +4474,13 @@ export class SectionCardsView extends ItemView {
 			if (this.hierarchyActive()) this.renderHierarchy(lines);
 			else this.clearHierarchy();
 			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
-			empty.createEl("p", { text: `No level-${this.headingLevel} headings in ${file.basename}.` });
-			empty.createEl("p", { text: "Try a different heading level in the toolbar." });
+			if (calendar) {
+				empty.createEl("p", { text: `No date headings found in ${file.basename}.` });
+				empty.createEl("p", { text: "The Calendar places headings that name a day, like 2026-08-26." });
+			} else {
+				empty.createEl("p", { text: `No level-${this.headingLevel} headings in ${file.basename}.` });
+				empty.createEl("p", { text: "Try a different heading level in the toolbar." });
+			}
 			return;
 		}
 
@@ -3700,7 +4492,7 @@ export class SectionCardsView extends ItemView {
 		// section rebuilds one card and every other card's rendered markdown is kept.
 		for (const stray of Array.from(
 			this.gridEl.querySelectorAll(
-				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty",
+				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty, .sc-cal-dow, .sc-cal-month, .sc-cal-blank",
 			),
 		)) {
 			stray.remove();
@@ -3791,7 +4583,7 @@ export class SectionCardsView extends ItemView {
 				container.insertBefore(entry.el, cursor);
 			}
 		}
-		if (stickyPinned) this.updatePinnedOffset();
+		if (stickyPinned) this.updateToolbarOffset();
 
 		// A full-width rule closes the pinned band; auto-placement can't put anything
 		// beside or above it, so the band holds even in the packed masonry layouts.
@@ -3808,6 +4600,10 @@ export class SectionCardsView extends ItemView {
 		}
 
 		this.insertSectionBars();
+
+		// Calendar: interleave the date-ordered cards with month labels and blank day
+		// cells, so grid auto-placement puts every day in its weekday column.
+		if (calendar) this.layoutCalendar(isoByHeading);
 
 		// Hierarchy: rebuild the drill-down columns and hide off-branch cards before the
 		// masonry pass below measures anything.
@@ -3935,6 +4731,43 @@ export class SectionCardsView extends ItemView {
 		header.addClass(titleClick === "maximize" ? "is-click-big" : "is-click-edit");
 		header.createDiv({ cls: "section-card-title", text: section.title || "(untitled)" });
 
+		// The delete confirmation, shared by the hover strip's trash button and the
+		// title bar's right-click menu.
+		const confirmDeleteCard = () => {
+			const target = holder.section;
+			new ConfirmDeleteModal(this.app, target.title || "(untitled)", async () => {
+				const ok = await deleteSection(this.app, file, this.headingLevel, target);
+				if (ok) {
+					new Notice(`Deleted “${target.title || "(untitled)"}” from ${file.basename}`);
+				} else {
+					new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+				}
+				await this.refresh();
+			}).open();
+		};
+
+		// Right-click on the title bar: copy the card's contents, or delete the card.
+		header.addEventListener("contextmenu", (evt) => {
+			evt.preventDefault();
+			evt.stopPropagation();
+			const menu = new Menu();
+			menu.addItem((item) =>
+				item
+					.setTitle("Copy card contents")
+					.setIcon("copy")
+					.onClick(async () => {
+						try {
+							await navigator.clipboard.writeText(holder.section.body);
+							new Notice("Card contents copied.");
+						} catch {
+							new Notice("Couldn't access the clipboard.");
+						}
+					}),
+			);
+			menu.addItem((item) => item.setTitle("Delete card").setIcon("trash-2").onClick(confirmDeleteCard));
+			menu.showAtMouseEvent(evt);
+		});
+
 		// The pin sits in the title bar's right corner, always visible as a bare glyph:
 		// dim when unpinned, full-strength accent when pinned. (applyPinState below sets
 		// the icon and label; the other actions stay in the hover strip.)
@@ -4022,16 +4855,7 @@ export class SectionCardsView extends ItemView {
 		deleteBtn.setAttr("aria-label", "Delete this card");
 		deleteBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
-			const target = holder.section;
-			new ConfirmDeleteModal(this.app, target.title || "(untitled)", async () => {
-				const ok = await deleteSection(this.app, file, this.headingLevel, target);
-				if (ok) {
-					new Notice(`Deleted “${target.title || "(untitled)"}” from ${file.basename}`);
-				} else {
-					new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
-				}
-				await this.refresh();
-			}).open();
+			confirmDeleteCard();
 		});
 
 		const bigBtn = actions.createEl("button", { cls: "section-card-big" });
@@ -4119,6 +4943,16 @@ export class SectionCardsView extends ItemView {
 			if (target.closest("a")) return;
 			if (target.closest("input[type=checkbox]")) return;
 			if (card.hasClass("is-editing")) return;
+			// A calendar cell is too small to edit in place: any click makes the day
+			// big first; the maximized card then edits on click as usual. Another
+			// card's open editor still commits, exactly like the click-away below.
+			if (this.layout === "calendar" && !card.hasClass("is-maximized")) {
+				evt.stopPropagation();
+				const editing = this.activeEditor;
+				if (editing && editing.card !== card) void editing.finish(true);
+				this.toggleMaximized(card);
+				return;
+			}
 			const open = this.activeEditor;
 			if (open && open.card !== card) {
 				// Click-away commits the other card's edit; the reconciler reuses this
@@ -4218,6 +5052,17 @@ export class SectionCardsView extends ItemView {
 				return;
 			}
 			evt.stopPropagation(); // keep the app's global drag handling out of card drags
+			// On the Calendar a drag moves the card to another day (or merges it into
+			// one) instead of reordering, so the document-order rule doesn't apply.
+			if (this.layout === "calendar") {
+				this.dragging = holder;
+				card.addClass("is-dragging");
+				if (evt.dataTransfer) {
+					evt.dataTransfer.effectAllowed = "move";
+					evt.dataTransfer.setData("text/plain", holder.section.headingRaw);
+				}
+				return;
+			}
 			if (this.sortOrder !== "doc") {
 				evt.preventDefault();
 				new SwitchToDocumentOrderModal(this.app, SORT_LABELS[this.sortOrder], async () => {
@@ -4238,6 +5083,7 @@ export class SectionCardsView extends ItemView {
 		card.addEventListener("dragend", () => {
 			card.removeClass("is-dragging");
 			this.setDropMarker(null, false);
+			this.setCalDrop(null);
 			this.dragging = null;
 		});
 		card.addEventListener("dragover", (evt) => {
@@ -4260,7 +5106,9 @@ export class SectionCardsView extends ItemView {
 			if (!this.dragging || this.dragging === holder || holder.section.unfiled) return;
 			evt.preventDefault();
 			if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
-			this.setDropMarker(card, this.isDropBefore(evt, card));
+			// Calendar: the whole day is the target (a merge), not a before/after slot.
+			if (this.layout === "calendar") this.setCalDrop(card);
+			else this.setDropMarker(card, this.isDropBefore(evt, card));
 		});
 		card.addEventListener("drop", (evt) => {
 			if (this.draggingBlock) {
@@ -4283,10 +5131,21 @@ export class SectionCardsView extends ItemView {
 			evt.preventDefault();
 			evt.stopPropagation();
 			const moved = this.dragging.section;
-			const before = this.isDropBefore(evt, card);
 			this.setDropMarker(null, false);
+			this.setCalDrop(null);
 			this.dragging = null;
-			void this.completeDrag(file, moved, holder.section, before);
+			// Calendar: the day already has a card — offer to merge into it, or cancel.
+			if (this.layout === "calendar") {
+				new MergeCardsModal(this.app, moved.title, holder.section.title, async () => {
+					const ok = await mergeSectionsInFile(this.app, file, this.headingLevel, moved, holder.section);
+					if (!ok) {
+						new Notice("Single File Section Cards: couldn't merge — the file changed on disk.");
+					}
+					await this.refresh();
+				}).open();
+				return;
+			}
+			void this.completeDrag(file, moved, holder.section, this.isDropBefore(evt, card));
 		});
 
 		return { el: card, bodyEl, scope, holder, raw: section.raw, renderBody };
@@ -5065,6 +5924,36 @@ export class SectionCardsView extends ItemView {
 		card.toggleClass("sc-drop-after", !before);
 	}
 
+	/** Highlight the calendar day (card or blank cell) a drag would land on. */
+	private setCalDrop(el: HTMLElement | null): void {
+		if (this.calDropEl && this.calDropEl !== el) this.calDropEl.removeClass("is-cal-drop");
+		this.calDropEl = el;
+		el?.addClass("is-cal-drop");
+	}
+
+	/** Calendar: a card was dropped on an empty day — rewrite its heading to that day. */
+	private async moveCardToDate(moved: Section, iso: string): Promise<void> {
+		const file = this.getFile();
+		if (!file) return;
+		const newTitle = retitledDateTitle(moved.title, this.cardFormat(), iso, this.plugin.settings.dateDetectFormat);
+		// Keep the card's own hash prefix so the heading stays at its level.
+		const hashes = /^#+/.exec(moved.headingRaw)?.[0] ?? "#".repeat(this.headingLevel);
+		const newHeading = `${hashes} ${newTitle}`;
+		const ok = await retitleSectionInFile(this.app, file, this.headingLevel, moved, newHeading);
+		if (ok) {
+			// The pin, color, and canvas placement are keyed by the heading line — follow it.
+			await this.plugin.renameCardKey(file.path, moved.headingRaw, newHeading);
+			const placed = this.customPlacements[moved.headingRaw];
+			if (placed) {
+				this.customPlacements[newHeading] = placed;
+				delete this.customPlacements[moved.headingRaw];
+			}
+		} else {
+			new Notice("Single File Section Cards: couldn't move that card — the file changed on disk.");
+		}
+		await this.refresh();
+	}
+
 	private async completeDrag(file: TFile, moved: Section, target: Section, before: boolean): Promise<void> {
 		const ok = await moveSectionInFile(this.app, file, this.headingLevel, moved, target, before);
 		if (!ok) {
@@ -5303,6 +6192,179 @@ export class SectionCardsView extends ItemView {
 	}
 }
 
+/** Image files the vault offers as card-wall backgrounds. */
+const BACKGROUND_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp"]);
+
+/** The veil strength a background image starts with (styles.css falls back to it too). */
+const BACKGROUND_DIM_DEFAULT = 45;
+
+/** The three places a background image can come from, offered as one dialog. */
+class SelectBackgroundModal extends Modal {
+	private readonly sources: { fromVault: () => void; fromLocal: () => void; fromInternet: () => void };
+
+	constructor(app: App, sources: { fromVault: () => void; fromLocal: () => void; fromInternet: () => void }) {
+		super(app);
+		this.sources = sources;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Select background" });
+		contentEl.createEl("p", { text: "Where should this note's background image come from?" });
+
+		const option = (name: string, desc: string, button: string, pick: () => void) => {
+			new Setting(contentEl)
+				.setName(name)
+				.setDesc(desc)
+				.addButton((b) =>
+					b.setButtonText(button).onClick(() => {
+						this.close();
+						pick();
+					}),
+				);
+		};
+		option("From the vault", "Pick an image already in your vault.", "Choose…", this.sources.fromVault);
+		option(
+			"From this computer",
+			"Pick any image on disk; a copy is saved into the vault's attachment folder.",
+			"Browse…",
+			this.sources.fromLocal,
+		);
+		option(
+			"From the internet",
+			"Download an image URL once into the vault's attachment folder.",
+			"Download…",
+			this.sources.fromInternet,
+		);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/** Fuzzy-pick an image from the vault for the note's background. */
+class BackgroundSuggestModal extends FuzzySuggestModal<TFile> {
+	private readonly onChoose: (file: TFile) => void;
+
+	constructor(app: App, onChoose: (file: TFile) => void) {
+		super(app);
+		this.onChoose = onChoose;
+		this.setPlaceholder("Pick an image from the vault…");
+	}
+
+	getItems(): TFile[] {
+		return this.app.vault.getFiles().filter((f) => BACKGROUND_EXTENSIONS.has(f.extension.toLowerCase()));
+	}
+
+	getItemText(file: TFile): string {
+		return file.path;
+	}
+
+	onChooseItem(file: TFile): void {
+		this.onChoose(file);
+	}
+}
+
+/** The saved extension for each image content type a background download may return. */
+const IMAGE_TYPE_EXTENSIONS: Record<string, string> = {
+	"image/jpeg": "jpg",
+	"image/png": "png",
+	"image/gif": "gif",
+	"image/webp": "webp",
+	"image/avif": "avif",
+	"image/bmp": "bmp",
+};
+
+/**
+ * Background from the internet: the image at a user-given URL is downloaded ONCE
+ * into the vault's attachment folder and used from there — the plugin's only
+ * network use, and only ever at the user's explicit request.
+ */
+class DownloadBackgroundModal extends Modal {
+	private readonly notePath: string;
+	private readonly onSaved: (vaultPath: string) => void;
+
+	constructor(app: App, notePath: string, onSaved: (vaultPath: string) => void) {
+		super(app);
+		this.notePath = notePath;
+		this.onSaved = onSaved;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Background from the internet" });
+		contentEl.createEl("p", {
+			text: "The image is downloaded once into your vault's attachment folder and shown from there — nothing loads from the network afterwards.",
+		});
+
+		let url = "";
+		new Setting(contentEl).setName("Image URL").addText((text) => {
+			text.setPlaceholder("https://…");
+			text.onChange((value) => (url = value));
+		});
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => {
+				b.setButtonText("Download")
+					.setCta()
+					.onClick(() => void this.download(url.trim(), b.buttonEl));
+			});
+	}
+
+	private async download(url: string, button: HTMLButtonElement): Promise<void> {
+		if (!url) {
+			new Notice("Enter an image URL first.");
+			return;
+		}
+		button.disabled = true;
+		button.setText("Downloading…");
+		try {
+			const res = await requestUrl({ url });
+			const type =
+				Object.entries(res.headers)
+					.find(([k]) => k.toLowerCase() === "content-type")?.[1]
+					?.split(";")[0]
+					.trim()
+					.toLowerCase() ?? "";
+			if (type && !type.startsWith("image/")) {
+				new Notice("That URL didn't return an image.");
+				return;
+			}
+			const ext =
+				IMAGE_TYPE_EXTENSIONS[type] ??
+				/\.(png|jpe?g|gif|webp|avif|bmp)$/i.exec(new URL(url).pathname)?.[1]?.toLowerCase().replace("jpeg", "jpg");
+			if (!ext) {
+				new Notice("That URL didn't return an image.");
+				return;
+			}
+			// Name the file after the URL's last path segment, cleaned for the file system.
+			const last = new URL(url).pathname.split("/").filter(Boolean).pop() ?? "";
+			const stem =
+				last
+					.replace(/\.[a-z0-9]+$/i, "")
+					.replace(/[^\w-]+/g, "-")
+					.replace(/^-+|-+$/g, "")
+					.slice(0, 40) || "background";
+			const dest = await this.app.fileManager.getAvailablePathForAttachment(`${stem}.${ext}`, this.notePath);
+			const file = await this.app.vault.createBinary(dest, res.arrayBuffer);
+			new Notice(`Background saved to "${file.path}".`);
+			this.onSaved(file.path);
+			this.close();
+		} catch {
+			new Notice("Couldn't download that image — check the URL and your connection.");
+		} finally {
+			button.disabled = false;
+			button.setText("Download");
+		}
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
 class FileSuggestModal extends SuggestModal<string> {
 	private readonly plugin: SectionCardsPlugin;
 	private readonly onChoose: (path: string) => void;
@@ -5440,6 +6502,45 @@ class SwitchToDocumentOrderModal extends Modal {
 						void this.onSwitch();
 					});
 				// Enter switches, Esc cancels.
+				b.buttonEl.focus();
+			});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/** Calendar: a card was dropped on a day that already has one — merge them, or cancel. */
+class MergeCardsModal extends Modal {
+	private readonly fromTitle: string;
+	private readonly intoTitle: string;
+	private readonly onMerge: () => void | Promise<void>;
+
+	constructor(app: App, fromTitle: string, intoTitle: string, onMerge: () => void | Promise<void>) {
+		super(app);
+		this.fromTitle = fromTitle;
+		this.intoTitle = intoTitle;
+		this.onMerge = onMerge;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Merge cards?" });
+		contentEl.createEl("p", {
+			text: `That day already has a card. Merge "${this.fromTitle || "(untitled)"}" into "${this.intoTitle || "(untitled)"}"? Its lines are added to the bottom, and its own card is removed.`,
+		});
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => {
+				b.setButtonText("Merge cards")
+					.setCta()
+					.onClick(() => {
+						this.close();
+						void this.onMerge();
+					});
+				// Enter merges, Esc cancels.
 				b.buttonEl.focus();
 			});
 	}
@@ -5928,6 +7029,29 @@ class SectionCardsSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						name: "Date detection format",
+						desc: 'Extra pattern that marks a heading as a date: a moment format, with optional * wildcards standing for text before/after the date — "*MMMM D, YYYY*" finds one anywhere in a title. Empty uses only the built-in detection (an ISO date anywhere; the heading-name format at the title\'s start).',
+						control: { type: "text", key: "dateDetectFormat", placeholder: "*MMMM D, YYYY*" },
+					},
+					{
+						name: "Start the week on",
+						desc: "First day of the Calendar layout's weeks.",
+						control: {
+							type: "dropdown",
+							key: "weekStart",
+							options: { locale: "Language default", sunday: "Sunday", monday: "Monday" },
+						},
+					},
+					{
+						name: "Toolbar",
+						desc: "Compact fits one line: icons for the view modes, no control labels, a shorter note button. Also switchable by right-clicking the toolbar.",
+						control: {
+							type: "dropdown",
+							key: "toolbarStyle",
+							options: { full: "Full", compact: "Compact" },
+						},
+					},
+					{
 						name: "Jump to today's card",
 						desc: "When a note opens in the cards view, scroll to the card whose heading is today's date. Needs the note's Dates checkbox (in the toolbar) to be on.",
 						control: { type: "toggle", key: "jumpToToday" },
@@ -6110,6 +7234,7 @@ class SectionCardsSettingTab extends PluginSettingTab {
 		}
 		await super.setControlValue(key, value);
 		if (key === "strikeNestedUnderDone") this.plugin.applyBodyClasses();
+		if (key === "toolbarStyle") this.plugin.applyToolbarStyle();
 		if (key === "fontScale" || key === "dividerFontScale") this.plugin.applyFontScale();
 		if (
 			key === "titleBarClick" ||
@@ -6117,7 +7242,9 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			key === "unfiledEnabled" ||
 			key === "hierTaskCounts" ||
 			key === "dynamicLevelOptions" ||
-			key === "starEmoji"
+			key === "starEmoji" ||
+			key === "weekStart" ||
+			key === "dateDetectFormat"
 		) {
 			this.plugin.refreshAllViews();
 		}
@@ -6134,9 +7261,9 @@ export default class SectionCardsPlugin extends Plugin {
 
 		this.registerView(VIEW_TYPE_SECTION_CARDS, (leaf) => new SectionCardsView(leaf, this));
 
-		this.addRibbonIcon(DECK_ICON, `Single File Section Cards (${MOD_LABEL}+Click: new tab)`, (evt) => {
-			// Ctrl/⌘-click opens an additional tab even when one already shows the note.
-			void this.openCardsView(undefined, undefined, evt.ctrlKey || evt.metaKey ? "new" : "reuse");
+		this.addRibbonIcon(DECK_ICON, "Single File Section Cards (new tab)", () => {
+			// Every click opens its own tab, even when one already shows the note.
+			void this.openCardsView(undefined, undefined, "new");
 		});
 
 		this.addCommand({
@@ -6423,6 +7550,32 @@ export default class SectionCardsPlugin extends Plugin {
 		this.refreshAllViews();
 	}
 
+	/**
+	 * A card's heading line was rewritten (Calendar day move): pins, colors, and Custom
+	 * Grid placements are keyed by the heading line, so carry them to the new key.
+	 */
+	async renameCardKey(path: string, oldRaw: string, newRaw: string): Promise<void> {
+		const entry = this.settings.perFile?.[path];
+		if (!entry || oldRaw === newRaw) return;
+		let changed = false;
+		const at = entry.pinned?.indexOf(oldRaw) ?? -1;
+		if (entry.pinned && at >= 0) {
+			entry.pinned[at] = newRaw;
+			changed = true;
+		}
+		if (entry.colors?.[oldRaw]) {
+			entry.colors[newRaw] = entry.colors[oldRaw];
+			delete entry.colors[oldRaw];
+			changed = true;
+		}
+		if (entry.customGrid?.[oldRaw]) {
+			entry.customGrid[newRaw] = entry.customGrid[oldRaw];
+			delete entry.customGrid[oldRaw];
+			changed = true;
+		}
+		if (changed) await this.saveSettings();
+	}
+
 	/** The per-note "headings are dates" choice; undefined = the user hasn't set it. */
 	getContainsDates(path: string): boolean | undefined {
 		return this.settings.perFile?.[path]?.containsDates;
@@ -6433,6 +7586,44 @@ export default class SectionCardsPlugin extends Plugin {
 		this.settings.perFile = this.settings.perFile ?? {};
 		const current = this.settings.perFile[path] ?? { ...base };
 		current.containsDates = value;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+		this.refreshAllViews();
+	}
+
+	/** Vault path of a note's background image, or null when it has none. */
+	getBackgroundImage(path: string): string | null {
+		return this.settings.perFile?.[path]?.backgroundImage ?? null;
+	}
+
+	async setBackgroundImage(path: string, imagePath: string | null, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (imagePath) current.backgroundImage = imagePath;
+		else delete current.backgroundImage;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+		this.refreshAllViews();
+	}
+
+	/** How faded a note's background image is, 0 (fully visible) to 100 (invisible). */
+	getBackgroundDim(path: string): number {
+		return this.getBackgroundDimOverride(path) ?? BACKGROUND_DIM_DEFAULT;
+	}
+
+	/** The note's own stored veil strength, or null when it follows the default —
+	 * which styles.css owns, so a Style Settings override can supply it. */
+	getBackgroundDimOverride(path: string): number | null {
+		return this.settings.perFile?.[path]?.backgroundDim ?? null;
+	}
+
+	async setBackgroundDim(path: string, value: number, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (value === BACKGROUND_DIM_DEFAULT) delete current.backgroundDim;
+		else current.backgroundDim = value;
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
 		this.refreshAllViews();
@@ -6535,6 +7726,13 @@ export default class SectionCardsPlugin extends Plugin {
 	}
 
 	/** Re-render every open cards view, e.g. after a setting changes what they draw. */
+	/** Rebuild every open view's toolbar after a style change — no data refresh needed. */
+	applyToolbarStyle(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
+			if (leaf.view instanceof SectionCardsView) leaf.view.rebuildToolbar();
+		}
+	}
+
 	refreshAllViews(): void {
 		// A background tab can hold a deferred placeholder, not the real view (Obsidian
 		// 1.7+). Calling into it throws — which used to abort this loop before the
