@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -586,6 +586,56 @@ t("moveSection returns null for no-op or out-of-range moves", () => {
   assert.equal(moveSection(L(T3), 3, 1, 2), null);      // before its own successor
   assert.equal(moveSection(L(T3), 3, 5, 0), null);
   assert.equal(moveSection(L(T3), 3, 0, 9), null);
+});
+
+// ---------- calendar: drop on a day ----------
+
+t("mergeSections appends the dragged card's body and removes its section", () => {
+  const lines = L(T3);
+  const secs = parseSections(lines, 3);
+  const out = mergeSections(lines, secs[0], secs[2]);   // a into c
+  assert.equal(out.join("\n"), "### b\n2\n\n### c\n3\n1");
+});
+
+t("mergeSections works downward too, keeping the file's tail byte-for-byte", () => {
+  const lines = L("### a\n1\n\n### b\n2\n\n");
+  const secs = parseSections(lines, 3);
+  const out = mergeSections(lines, secs[1], secs[0]);   // b into a
+  assert.equal(out.join("\n"), "### a\n1\n2\n\n");
+});
+
+t("mergeSections with an empty dragged card just deletes it", () => {
+  const lines = L("### a\n\n### b\n2");
+  const secs = parseSections(lines, 3);
+  const out = mergeSections(lines, secs[0], secs[1]);
+  assert.equal(out.join("\n"), "### b\n2");
+});
+
+t("retitledDateTitle rewrites a format title, keeping any trailing text", () => {
+  assert.equal(retitledDateTitle("2026-08-06, Thursday", "YYYY-MM-DD, dddd", "2026-08-10"), "2026-08-10, Monday");
+  assert.equal(retitledDateTitle("2026-08-06, Thursday — trip", "YYYY-MM-DD, dddd", "2026-08-10"), "2026-08-10, Monday — trip");
+});
+
+t("retitledDateTitle swaps a raw ISO date in place when the format doesn't match", () => {
+  assert.equal(retitledDateTitle("Standup 2026-08-06 notes", "YYYY-MM-DD, dddd", "2026-08-10"), "Standup 2026-08-10 notes");
+});
+
+t("retitledDateTitle falls back to the formatted day when no date is found", () => {
+  assert.equal(retitledDateTitle("no date here", "YYYY-MM-DD, dddd", "2026-08-10"), "2026-08-10, Monday");
+});
+
+t("retitledDateTitle carries a stale weekday word along with a raw ISO swap", () => {
+  assert.equal(
+    retitledDateTitle("Standup 2026-08-06, Thursday", "MMMM D", "2026-08-10"),
+    "Standup 2026-08-10, Monday",
+  );
+});
+
+t("retitledDateTitle swaps a detect-pattern date in place, in the note's own spelling", () => {
+  assert.equal(
+    retitledDateTitle("standup 2026.08.06 retro", "YYYY-MM-DD, dddd", "2026-08-10", "*YYYY.MM.DD*"),
+    "standup 2026.08.10 retro",
+  );
 });
 
 t("sample vault: every (from, to) move preserves all sections and hits the right slot", () => {
@@ -1279,6 +1329,53 @@ t("starInfo: hidden only when starred-only would actually hide something", () =>
   assert.deepEqual(starInfo(L("\u2b50 starred\n\n> a quote hides too"), "\u2b50"), { has: true, hidden: true, count: 1 });
   assert.deepEqual(starInfo(L("no stars here"), "\u2b50"), { has: false, hidden: true, count: 0 });
   assert.deepEqual(starInfo(L(""), "\u2b50"), { has: false, hidden: false, count: 0 }, "an empty body hides nothing");
+});
+
+
+t("titleToIso reads ISO dates anywhere in a title, and strict-format titles", () => {
+  assert.equal(titleToIso("2026-08-26, Wednesday", "YYYY-MM-DD, dddd"), "2026-08-26");
+  assert.equal(titleToIso("Notes for 2026-01-05", ""), "2026-01-05");
+  assert.equal(titleToIso("Groceries", "YYYY-MM-DD, dddd"), null);
+  assert.equal(titleToIso("2026-13-99 nonsense", ""), null, "an impossible date is not a date");
+  assert.ok(!titleHasDate("2026-13-99 nonsense", ""), "titleHasDate agrees an impossible date is not a date");
+  assert.equal(
+    titleToIso("2026.08.26 (was 2026-13-99)", "YYYY.MM.DD"),
+    "2026-08-26",
+    "an invalid ISO falls back to the format parse instead of vetoing it",
+  );
+});
+
+t("dateHeadingLevel picks the heading level whose titles name days", () => {
+  const note = L("# Year\n## Month 1\n### 2026-08-17, Monday\nx\n### 2026-08-20, Thursday\ny\n## Month 2\n### 2026-08-21, Friday\nz");
+  assert.equal(dateHeadingLevel(note, "YYYY-MM-DD, dddd"), 3);
+  assert.equal(dateHeadingLevel(L("# A\n## B\ntext"), "YYYY-MM-DD, dddd"), null);
+});
+
+
+t("titleHasDate and titleToIso accept a heading that STARTS with the date", () => {
+  assert.ok(titleHasDate("2026.08.26 planning day", "YYYY.MM.DD"));
+  assert.equal(titleToIso("2026.08.26 planning day", "YYYY.MM.DD"), "2026-08-26");
+  assert.equal(titleToIso("2026.08.26 — review, then retro", "YYYY.MM.DD"), "2026-08-26");
+  assert.equal(titleToIso("planning 2026.08.26", "YYYY.MM.DD"), null, "mid-title is not a date heading");
+  assert.ok(!titleHasDate("no dates here", "YYYY.MM.DD"));
+});
+
+
+t("titleDetectDate: * wildcards allow text before and/or after the date", () => {
+  const iso = (m) => (m ? m.format("YYYY-MM-DD") : null);
+  assert.equal(iso(titleDetectDate("meeting notes 2026.08.26", "*YYYY.MM.DD")), "2026-08-26");
+  assert.equal(iso(titleDetectDate("2026.08.26 planning", "YYYY.MM.DD*")), "2026-08-26");
+  assert.equal(iso(titleDetectDate("notes — 2026.08.26 — retro", "*YYYY.MM.DD*")), "2026-08-26");
+  assert.equal(iso(titleDetectDate("2026.08.26 planning", "*YYYY.MM.DD")), null, "no trailing * means the date ends the title");
+  assert.equal(iso(titleDetectDate("notes 2026.08.26", "YYYY.MM.DD*")), null, "no leading * means the date starts the title");
+  assert.equal(iso(titleDetectDate("2026.08.26", "YYYY.MM.DD")), "2026-08-26", "no wildcards: the whole title");
+  assert.equal(iso(titleDetectDate("anything", "")), null, "empty pattern never matches");
+});
+
+t("titleHasDate and titleToIso consult the custom detection pattern last", () => {
+  assert.ok(titleHasDate("standup 2026.08.26", "YYYY-MM-DD, dddd", "*YYYY.MM.DD*"));
+  assert.equal(titleToIso("standup 2026.08.26", "YYYY-MM-DD, dddd", "*YYYY.MM.DD*"), "2026-08-26");
+  assert.ok(!titleHasDate("standup 2026.08.26", "YYYY-MM-DD, dddd"), "without the pattern it is not a date");
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
