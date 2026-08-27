@@ -1968,11 +1968,13 @@ body.theme-light .sfsc-swatch {
 }
 
 /* Accent line on the side of the block the drop will land. */
-.sc-block.sc-blockdrop-before {
+/* The marks also land on non-draggable blocks (subheadings, quotes, fences) —
+   dropping there inserts the text on the marked side of them. */
+.section-card-body .sc-blockdrop-before {
 	box-shadow: inset 0 2px 0 var(--interactive-accent);
 }
 
-.sc-block.sc-blockdrop-after {
+.section-card-body .sc-blockdrop-after {
 	box-shadow: inset 0 -2px 0 var(--interactive-accent);
 }
 
