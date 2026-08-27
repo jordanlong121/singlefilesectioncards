@@ -2,7 +2,8 @@
 
 An [Obsidian](https://obsidian.md) plugin that shows the sections of **one** note as a wall of
 cards — one card per heading — and lets you edit any section in place. With the freeform **Custom Grid** canvas, it doubles as a home for ad hoc
-dashboards, sticky notes, task management, and brainstorming.
+dashboards, sticky notes, task management, brainstorming, and a diary or journal — one
+dated card per day.
 
 While this is a standalone plugin that works on any note, it pairs nicely with
 [Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes) as well as
