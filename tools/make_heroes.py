@@ -1,4 +1,10 @@
-"""Compose README hero banners: dark rounded panel, big headline left, screenshot right."""
+"""Compose README hero banners: dark rounded panel, big headline left, screenshot right.
+
+The calendar banner uses screenshots/calendar-full.png, staged from tools/calendar-hero-note.md:
+  NOTE="tools/calendar-hero-note.md" node tools/preview-harness.mjs <outdir>   # then headless
+  chrome --headless=new --screenshot=calendar-full.png --window-size=1280,760 <outdir>/calendar.html
+(Copy the note as "Daily Notes 2026.md" first so the tab wears that name.)
+"""
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 FONTS = "/mnt/c/Windows/Fonts"
@@ -11,7 +17,7 @@ PANEL_BG = (14, 14, 17, 255)
 WHITE = (245, 245, 247, 255)
 GRAY = (146, 152, 160, 255)
 
-HEAD = ImageFont.truetype(BOLD, 84)
+HEAD = ImageFont.truetype(BOLD, 78)
 SUB = ImageFont.truetype(REG, 36)
 
 
@@ -42,7 +48,7 @@ def banner(shot_name, lines, subtitle, out_name):
     ImageDraw.Draw(panel).rounded_rectangle([sx, sy, sx + sw - 1, sy + sh - 1], 18, outline=(58, 58, 64, 255), width=2)
 
     # Headline: list of lines, each a list of (text, color) segments.
-    line_h = 102
+    line_h = 96
     block_h = len(lines) * line_h + 28 + 48
     y = (H - block_h) // 2
     x0 = 96
@@ -74,7 +80,7 @@ banner(
         [("The best of", WHITE)],
         [("sticky notes", YELLOW)],
         [("and ", WHITE), ("daily notes", PINK), (".", WHITE)],
-        [("Built for Obsidian.", WHITE)],
+        [("One file, no complexity.", WHITE)],
     ],
     "One card per heading — edit everything in place.",
     "hero-cards.png",
@@ -86,19 +92,19 @@ banner(
         [("The best of", WHITE)],
         [("whiteboards", TEAL)],
         [("and ", WHITE), ("kanban", PURPLE), (".", WHITE)],
-        [("Built for Obsidian.", WHITE)],
+        [("One file, no complexity.", WHITE)],
     ],
     "Drag, place, and resize sections on a canvas.",
     "hero-canvas.png",
 )
 
 banner(
-    "calendar.png",
+    "calendar-full.png",
     [
         [("The best of", WHITE)],
         [("a journal", GREEN)],
         [("and ", WHITE), ("a calendar", CORAL), (".", WHITE)],
-        [("Built for Obsidian.", WHITE)],
+        [("One file, no complexity.", WHITE)],
     ],
     "Your days on a monthly grid, today highlighted.",
     "hero-calendar.png",
