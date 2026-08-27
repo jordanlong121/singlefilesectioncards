@@ -1,5 +1,11 @@
 # Single File Section Cards
 
+[![One note as a wall of editable cards](screenshots/hero-cards.png)](#layouts)
+
+[![A freeform canvas for sticky notes and brainstorming](screenshots/hero-canvas.png)](#custom-grid)
+
+[![Dated cards on a monthly calendar](screenshots/hero-calendar.png)](#calendar)
+
 An [Obsidian](https://obsidian.md) plugin that shows the sections of **one** note as a wall of
 cards — one card per heading — and lets you edit any section in place. With the freeform **Custom Grid** canvas, it doubles as a home for ad hoc
 dashboards, sticky notes, task management, brainstorming, and a diary or journal — one
@@ -11,6 +17,10 @@ While this is a standalone plugin that works on any note, it pairs nicely with
 
 **[Install it from the Obsidian community plugin directory →](https://community.obsidian.md/plugins/single-file-section-cards)**
 · [Release notes](https://github.com/jordanlong121/singlefilesectioncards/releases)
+
+If this plugin is useful to you, you can support its development:
+
+<a href="https://buymeacoffee.com/zippydo"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="42"></a>
 
 ## What it does
 
