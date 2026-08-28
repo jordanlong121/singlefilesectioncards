@@ -90,7 +90,7 @@ banner(
     "custom.png",
     [
         [("The best of", WHITE)],
-        [("whiteboards", TEAL)],
+        [("brainstorming", TEAL)],
         [("and ", WHITE), ("kanban", PURPLE), (".", WHITE)],
         [("One file, no complexity.", WHITE)],
     ],
