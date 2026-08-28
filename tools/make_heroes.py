@@ -87,7 +87,7 @@ banner(
 )
 
 banner(
-    "brainstorm-custom.png",
+    "custom.png",
     [
         [("The best of", WHITE)],
         [("whiteboards", TEAL)],
