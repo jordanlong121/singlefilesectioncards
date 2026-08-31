@@ -6,6 +6,8 @@
 
 [![Dated cards on a monthly calendar](screenshots/hero-calendar.png)](#calendar)
 
+[![The note's images arranged freely on a canvas](screenshots/hero-images.png)](#images)
+
 An [Obsidian](https://obsidian.md) plugin that shows the sections of **one** note as a wall of
 cards — one card per heading — and lets you edit any section in place. With the freeform **Custom Grid** canvas, it doubles as a home for ad hoc
 dashboards, sticky notes, task management, brainstorming, and a diary or journal — one
@@ -61,18 +63,11 @@ onto the tray) returns one to the list. Layout is remembered per note in the plu
 
 ### Images
 
-The same freeform canvas, for the note's pictures: everything the note links —
-`![[embedded.png]]`, `![](markdown.jpg)`, HTML `<img>` tags, `data:` URIs, external
-URLs, and videos (mp4/webm/ogv/mov/mkv/m4v; double-click a placed clip to play it,
-muted) — is listed in the tray on the right. Images cover png, jpg, gif, webp, svg,
-bmp, and avif. Drag previews onto the dot grid, then place and resize them freely
-(a fresh drop keeps the image's aspect ratio; the ✕ or a drag back onto the tray
-returns one to the list). Hovering a placed preview also offers a magnifier that
-blows it up over the canvas (double-click an image does the same; in there, scroll
-to zoom toward the pointer, drag to pan, double-click to reset) and a ↗ that
-opens the original — vault files in your system's default app, URLs in the browser.
-The arrangement is remembered per note in the plugin's data — your note and its
-media are never changed.
+The same canvas, for the note's pictures: every image and video the note links waits
+in the tray — drag previews on, place and resize them freely, and it becomes a
+reference or idea board built from what the note already holds. Hover a preview to
+magnify it (scroll zooms, drag pans) or open the original file. Arrangements live in
+the plugin's data; the note and its media are never changed.
 
 ![Images](screenshots/images.png)
 

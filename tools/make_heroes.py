@@ -109,3 +109,18 @@ banner(
     "Your days on a monthly grid, today highlighted.",
     "hero-calendar.png",
 )
+
+# The images banner uses screenshots/images-full.png, staged with real photos:
+#   BG=bg-aurora IMAGES="a.jpg,b.jpg,…" node tools/preview-harness.mjs <outdir>   # then headless
+#   chrome --headless=new --screenshot=images-full.png --window-size=1280,760 <outdir>/images.html
+banner(
+    "images-full.png",
+    [
+        [("The best of", WHITE)],
+        [("an idea board", BLUE)],
+        [("and ", WHITE), ("your notes", PINK), (".", WHITE)],
+        [("One file, no complexity.", WHITE)],
+    ],
+    "The note's images, arranged freely on a canvas.",
+    "hero-images.png",
+)
