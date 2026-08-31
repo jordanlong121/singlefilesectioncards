@@ -1612,23 +1612,33 @@ body.theme-light .sfsc-swatch {
 	flex: 0 0 auto;
 }
 
-/* ---------- Custom Grid: freeform canvas + tray ---------- */
+/* ---------- Custom Grid + Images: freeform canvas + tray ---------- */
 
 /* Toolbar spans the top; canvas left, tray right; each pane scrolls itself. */
-.workspace-leaf-content .view-content.section-cards-view.is-layout-custom {
+.workspace-leaf-content .view-content.section-cards-view.is-layout-custom,
+.workspace-leaf-content .view-content.section-cards-view.is-layout-images {
 	display: grid;
 	grid-template-columns: 1fr 232px;
 	grid-template-rows: auto 1fr;
 	overflow: hidden;
 }
 
-.is-layout-custom .section-cards-toolbar {
+.is-layout-custom .section-cards-toolbar,
+.is-layout-images .section-cards-toolbar {
 	grid-column: 1 / -1;
 	position: static;
 }
 
+/* The Images canvas shows what the note links, not its sections — the heading-level
+   and text-filter controls would only mislead there. */
+.is-layout-images .section-cards-level-control,
+.is-layout-images .section-cards-filter {
+	display: none;
+}
+
 /* The canvas: subtle dot pattern, its own scrolling, placements are absolute. */
-.is-layout-custom .section-cards-grid {
+.is-layout-custom .section-cards-grid,
+.is-layout-images .section-cards-grid {
 	grid-column: 1;
 	grid-row: 2;
 	display: block;
@@ -1648,11 +1658,13 @@ body.theme-light .sfsc-swatch {
 	display: none;
 }
 
-.is-layout-custom.section-cards-view {
+.is-layout-custom.section-cards-view,
+.is-layout-images.section-cards-view {
 	position: relative;
 }
 
-.is-layout-custom .section-cards-zoom {
+.is-layout-custom .section-cards-zoom,
+.is-layout-images .section-cards-zoom {
 	display: flex;
 	gap: 2px;
 	position: absolute;
@@ -1684,11 +1696,13 @@ body.theme-light .sfsc-swatch {
 	visibility: hidden;
 }
 
-.is-layout-custom .section-cards-grid.is-panning {
+.is-layout-custom .section-cards-grid.is-panning,
+.is-layout-images .section-cards-grid.is-panning {
 	cursor: grabbing;
 }
 
-.is-layout-custom .section-cards-grid.is-drop-target {
+.is-layout-custom .section-cards-grid.is-drop-target,
+.is-layout-images .section-cards-grid.is-drop-target {
 	outline: 2px dashed var(--interactive-accent);
 	outline-offset: -2px;
 }
@@ -1698,7 +1712,8 @@ body.theme-light .sfsc-swatch {
 	display: none;
 }
 
-.is-layout-custom .section-cards-tray {
+.is-layout-custom .section-cards-tray,
+.is-layout-images .section-cards-tray {
 	grid-column: 2;
 	grid-row: 2;
 	display: block;
@@ -1855,7 +1870,8 @@ body.theme-light .sfsc-swatch {
    the bottom-right corner. Each layer is a square anchored at the corner whose 135°
    stripe runs corner-to-corner, so the lines form a triangle with no clipping.
    pointer-events: none keeps the native resizer underneath doing the actual work. */
-.is-layout-custom .section-card.is-placed::after {
+.is-layout-custom .section-card.is-placed::after,
+.is-layout-images .sc-image-card.is-placed::after {
 	content: "";
 	position: absolute;
 	right: 3px;
@@ -1891,7 +1907,8 @@ body.theme-light .sfsc-swatch {
 	opacity: 0.8;
 }
 
-.is-layout-custom .section-card.is-placed:hover::after {
+.is-layout-custom .section-card.is-placed:hover::after,
+.is-layout-images .sc-image-card.is-placed:hover::after {
 	--sc-grip: var(--interactive-accent);
 	opacity: 1;
 }
@@ -1903,12 +1920,14 @@ body.theme-light .sfsc-swatch {
 
 /* Chromium sizes the native resizer square from the element's scrollbar metrics —
    these never render (overflow: hidden) but grow the draggable corner to 20px. */
-.is-layout-custom .section-card.is-placed::-webkit-scrollbar {
+.is-layout-custom .section-card.is-placed::-webkit-scrollbar,
+.is-layout-images .sc-image-card.is-placed::-webkit-scrollbar {
 	width: 20px;
 	height: 20px;
 }
 
-.is-layout-custom .section-card.is-placed::-webkit-resizer {
+.is-layout-custom .section-card.is-placed::-webkit-resizer,
+.is-layout-images .sc-image-card.is-placed::-webkit-resizer {
 	background: transparent;
 }
 
@@ -1954,6 +1973,210 @@ body.theme-light .sfsc-swatch {
 .section-card-untray svg {
 	width: 19px;
 	height: 19px;
+}
+
+/* ---------- Images canvas: preview tiles ---------- */
+
+/* Like canvas cards, previews are hidden until placed. */
+.sc-image-card {
+	display: none;
+}
+
+.is-layout-images .sc-image-card.is-placed {
+	display: flex;
+	zoom: var(--sc-zoom, 1);
+	position: absolute;
+	margin: 0;
+	resize: both;
+	overflow: hidden;
+	min-width: 96px;
+	min-height: 72px;
+	border: 1px solid var(--sc-line);
+	border-radius: var(--radius-m, 8px);
+	background-color: var(--sc-surface);
+	box-shadow: var(--shadow-s);
+	cursor: grab;
+	touch-action: none; /* pointer dragging owns the gesture */
+}
+
+.sc-image-card-img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	display: block;
+	pointer-events: none; /* clicks and drags belong to the tile */
+	user-select: none;
+}
+
+/* Videos: a centered play badge over the first frame; double-click plays (muted,
+   looping — native controls would fight the canvas drag) and hides the badge. */
+.sc-image-play {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: 44px;
+	height: 44px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	background-color: rgba(0, 0, 0, 0.55);
+	color: #fff;
+	pointer-events: none;
+	opacity: 0.85;
+}
+
+.sc-image-play svg {
+	width: 20px;
+	height: 20px;
+}
+
+.sc-image-card.is-playing .sc-image-play {
+	opacity: 0;
+}
+
+/* The file name, a bottom gradient bar that only appears on hover. */
+.sc-image-card-name {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	padding: 14px 10px 5px;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: #fff;
+	background: linear-gradient(transparent, rgba(0, 0, 0, 0.65));
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	opacity: 0;
+	transition: opacity 120ms ease;
+	pointer-events: none;
+}
+
+.sc-image-card.is-placed:hover .sc-image-card-name {
+	opacity: 1;
+}
+
+/* The remove ✕ (top-left), the open-original ↗ (top-right), and the magnifier
+   beside it — all hover-revealed, the same affordances as canvas cards. */
+.sc-image-untray,
+.sc-image-open,
+.sc-image-big {
+	position: absolute;
+	top: 2px;
+	padding: 4px 6px;
+	line-height: 1;
+	opacity: 0;
+	background: transparent;
+	box-shadow: none;
+	color: #fff;
+	filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
+}
+
+.sc-image-untray {
+	left: 2px;
+}
+
+.sc-image-open {
+	right: 2px;
+}
+
+.sc-image-big {
+	right: 30px;
+}
+
+/* Without the ↗ (an inline data: URI), the magnifier takes the corner itself. */
+.sc-image-big:last-child {
+	right: 2px;
+}
+
+.sc-image-card.is-placed:hover .sc-image-untray,
+.sc-image-card.is-placed:hover .sc-image-open,
+.sc-image-card.is-placed:hover .sc-image-big {
+	opacity: 1;
+}
+
+.sc-image-untray:hover {
+	color: var(--text-error);
+}
+
+.sc-image-open:hover,
+.sc-image-big:hover {
+	color: var(--interactive-accent);
+}
+
+.sc-image-untray svg,
+.sc-image-open svg,
+.sc-image-big svg {
+	width: 19px;
+	height: 19px;
+}
+
+/* The magnifier's lightbox: the preview blown up over the whole view. */
+.sc-image-lightbox {
+	position: absolute;
+	inset: 0;
+	z-index: 40;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	padding: 28px;
+	background-color: rgba(0, 0, 0, 0.78);
+	cursor: zoom-out;
+}
+
+.sc-image-lightbox img,
+.sc-image-lightbox video {
+	max-width: 100%;
+	max-height: calc(100% - 36px);
+	object-fit: contain;
+	border-radius: var(--radius-m, 8px);
+	box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+	cursor: default;
+	touch-action: none; /* wheel zoom and drag-pan own the gestures */
+}
+
+/* Zoomed or panned (wheel / drag): grabbable, and the name bar stays legible above. */
+.sc-image-lightbox img.is-zoomed,
+.sc-image-lightbox video.is-zoomed {
+	cursor: grab;
+}
+
+.sc-image-lightbox-name {
+	color: #fff;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 100%;
+}
+
+/* Tray tiles: a small preview above the file name. */
+.section-cards-tray-tile.sc-image-tile {
+	padding: 6px;
+}
+
+.sc-image-thumb {
+	display: block;
+	width: 100%;
+	height: 84px;
+	object-fit: cover;
+	border-radius: 4px;
+	pointer-events: none;
+	user-select: none;
+}
+
+.sc-image-tile-name {
+	margin-top: 4px;
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 /* ---------- drag a block (task/paragraph) between cards ---------- */

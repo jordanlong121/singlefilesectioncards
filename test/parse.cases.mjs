@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -1487,6 +1487,58 @@ t("titleHasDate and titleToIso consult the custom detection pattern last", () =>
   assert.ok(titleHasDate("standup 2026.08.26", "YYYY-MM-DD, dddd", "*YYYY.MM.DD*"));
   assert.equal(titleToIso("standup 2026.08.26", "YYYY-MM-DD, dddd", "*YYYY.MM.DD*"), "2026-08-26");
   assert.ok(!titleHasDate("standup 2026.08.26", "YYYY-MM-DD, dddd"), "without the pattern it is not a date");
+});
+
+t("imageLinksIn finds wiki and markdown images in document order", () => {
+  const links = imageLinksIn(
+    [
+      "Intro text with ![[shot one.png]] inline.",
+      "![alt text](assets/diagram.jpg \"a title\")",
+      "![[sub/photo.webp|300]] and ![[notes/deep dive#section]]",
+      "![](https://example.com/pic)",
+      "![spaced](<my folder/spaced name.png>)",
+    ].join("\n"),
+  );
+  assert.deepEqual(links, [
+    { target: "shot one.png", external: false },
+    { target: "assets/diagram.jpg", external: false },
+    { target: "sub/photo.webp", external: false },
+    { target: "notes/deep dive", external: false },
+    { target: "https://example.com/pic", external: true },
+    { target: "my folder/spaced name.png", external: false },
+  ]);
+});
+
+t("imageLinksIn: markdown links need a media extension unless external; plain links don't count", () => {
+  const links = imageLinksIn(
+    ["[not an image](picture.png)", "![](document.pdf)", "![](HTTPS://Example.com/x?raw=1)", "![](chart.SVG)"].join("\n"),
+  );
+  assert.deepEqual(links, [
+    { target: "HTTPS://Example.com/x?raw=1", external: true },
+    { target: "chart.SVG", external: false },
+  ]);
+});
+
+t("imageLinksIn: HTML <img> tags, data: URIs, and video files all count", () => {
+  const links = imageLinksIn(
+    [
+      '<img src="attachments/pasted.png" alt="pasted">',
+      "<img src='https://example.com/hosted.jpg' width=200>",
+      "<img class=\"x\" src=bare-src.gif>",
+      "<img src=\"not-media.txt\">",
+      "![](data:image/png;base64,iVBORw0KGgo=)",
+      "![[demo clip.mp4]]",
+      "![](walkthrough.webm)",
+    ].join("\n"),
+  );
+  assert.deepEqual(links, [
+    { target: "attachments/pasted.png", external: false },
+    { target: "https://example.com/hosted.jpg", external: true },
+    { target: "bare-src.gif", external: false },
+    { target: "data:image/png;base64,iVBORw0KGgo=", external: true },
+    { target: "demo clip.mp4", external: false },
+    { target: "walkthrough.webm", external: false },
+  ]);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

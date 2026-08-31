@@ -59,6 +59,23 @@ onto the tray) returns one to the list. Layout is remembered per note in the plu
 
 ![Custom Grid](screenshots/custom.png)
 
+### Images
+
+The same freeform canvas, for the note's pictures: everything the note links —
+`![[embedded.png]]`, `![](markdown.jpg)`, HTML `<img>` tags, `data:` URIs, external
+URLs, and videos (mp4/webm/ogv/mov/mkv/m4v; double-click a placed clip to play it,
+muted) — is listed in the tray on the right. Images cover png, jpg, gif, webp, svg,
+bmp, and avif. Drag previews onto the dot grid, then place and resize them freely
+(a fresh drop keeps the image's aspect ratio; the ✕ or a drag back onto the tray
+returns one to the list). Hovering a placed preview also offers a magnifier that
+blows it up over the canvas (double-click an image does the same; in there, scroll
+to zoom toward the pointer, drag to pan, double-click to reset) and a ↗ that
+opens the original — vault files in your system's default app, URLs in the browser.
+The arrangement is remembered per note in the plugin's data — your note and its
+media are never changed.
+
+![Images](screenshots/images.png)
+
 ### Grid
 
 Masonry columns: every card takes only the height it needs, so a short card never leaves dead space

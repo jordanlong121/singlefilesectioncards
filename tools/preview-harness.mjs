@@ -104,7 +104,7 @@ function cardHtml(s, { maxHeight = null, placed = null, hierHidden = false } = {
 
 const DECK_ICON = `<svg viewBox="0 0 100 100" class="svg-icon" width="16" height="16"><g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="9" width="12" height="12.5" rx="2"/><path d="M5.5 6h10a2 2 0 0 1 2 2v10"/><path d="M8.5 3h10a2 2 0 0 1 2 2v10"/></g></svg>`;
 
-const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid", calendar: "Calendar" };
+const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid", images: "Images", calendar: "Calendar" };
 const SORT_LABELS = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 /* On the Calendar the sort control orders the months instead of the cards. */
 const CAL_SORT_LABELS = { asc: "Ascending", desc: "Descending", doc: "Ascending" };
@@ -118,7 +118,7 @@ const TEMPLATE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height
  * mode: "default" | "hier" | "sections" — which View mode segment is active. */
 function toolbarHtml(layout, mode = "default") {
 	const seg = (label, key) =>
-		`<button${mode === key ? ' class="is-active"' : ""}${layout === "custom" ? " disabled" : ""}>${label}</button>`;
+		`<button${mode === key ? ' class="is-active"' : ""}${layout === "custom" || layout === "images" ? " disabled" : ""}>${label}</button>`;
 	// The Calendar hides the dates checkbox (redundant there) and, via the layout
 	// class in styles.css, the Card level and View mode controls.
 	const datesHidden = layout === "calendar" ? " is-hidden" : "";
@@ -195,9 +195,52 @@ ${parts.join("\n")}
 <div class="section-cards-tray"></div>`;
 }
 
+/** Images canvas: a few images placed at mixed sizes, the rest as thumbnail tiles
+ * in the tray. Stage real photos (screenshots/images.png uses royalty-free ones)
+ * by copying them into the out dir and passing IMAGES="a.jpg,b.jpg,…" — the first
+ * four land on the canvas (spots sized 8:5, 11:7, 11:10, 16:9), the rest fill the
+ * tray. Without the override the harness's abstract background SVGs stand in. */
+function imagesHtml() {
+	const files = process.env.IMAGES
+		? process.env.IMAGES.split(",").map((f) => f.trim())
+		: ["bg-sunset.svg", "bg-ocean.svg", "bg-forest.svg", "bg-plum.svg", "bg-aurora.svg", "bg-dunes.svg", "bg-meadow.svg"];
+	const IMG_SPOTS = [
+		{ x: 48, y: 48, w: 384, h: 240 },
+		{ x: 456, y: 48, w: 264, h: 168 },
+		{ x: 456, y: 240, w: 264, h: 240 },
+		{ x: 48, y: 312, w: 384, h: 216 },
+	];
+	const placed = IMG_SPOTS.slice(0, files.length).map(
+		(r, i) =>
+			`<div class="sc-image-card is-placed" style="left: ${r.x}px; top: ${r.y}px; width: ${r.w}px; height: ${r.h}px;">` +
+			`<img class="sc-image-card-img" src="${files[i]}" alt="${files[i]}" draggable="false">` +
+			`<div class="sc-image-card-name">${files[i]}</div>` +
+			`<button class="sc-image-untray">✕</button></div>`,
+	);
+	const tiles = files.slice(IMG_SPOTS.length).map(
+		(name) =>
+			`<div class="section-cards-tray-tile sc-image-tile">` +
+			`<img class="sc-image-thumb" src="${name}" alt="${name}" draggable="false">` +
+			`<div class="sc-image-tile-name">${name}</div></div>`,
+	);
+	return `<div class="section-cards-pinned"></div>
+<div class="section-cards-grid" style="--sc-zoom: 1;">
+<div class="section-cards-canvas-extent" style="left: 1447px; top: 1049px;"></div>
+${placed.join("\n")}
+</div>
+<div class="section-cards-tray">
+	<div class="section-cards-tray-actions"><button class="section-cards-tray-clear">Clear layout</button></div>
+	<div class="section-cards-tray-sorts"><button class="section-cards-tray-sort${SORT === "asc" ? " is-active" : ""}">A→Z</button><button class="section-cards-tray-sort${SORT === "desc" ? " is-active" : ""}">Z→A</button><button class="section-cards-tray-sort${SORT === "doc" ? " is-active" : ""}">Doc</button></div>
+	<div class="section-cards-tray-hint">Drag an image onto the canvas</div>
+${tiles.join("\n")}
+</div>
+<div class="section-cards-zoom"><button>−</button><button class="section-cards-zoom-label">100%</button><button>+</button></div>`;
+}
+
 function gridHtml(layout, mode = "default") {
 	const hier = mode === "hier";
 	if (layout === "calendar") return calendarHtml();
+	if (layout === "images") return imagesHtml();
 	if (layout === "custom") {
 		const placedCards = sections.slice(0, PLACEMENTS.length).map((s, i) => cardHtml(s, { placed: PLACEMENTS[i] }));
 		const hidden = sections.slice(PLACEMENTS.length).map((s) => cardHtml(s));
@@ -420,6 +463,7 @@ const PAGE_BACKGROUNDS = {
 	horizontal: "bg-dunes",
 	vertical: "bg-aurora",
 	custom: "bg-plum",
+	images: null, // the previews are the pictures — a photo background would fight them
 	calendar: "bg-meadow",
 	hierarchy: "bg-aurora",
 	dividers: "bg-dunes",
