@@ -1694,21 +1694,27 @@ const EXTERNAL_SRC = /^(https?:\/\/|data:)/i;
  */
 export function imageLinksIn(content: string): ImageLink[] {
 	const found: { index: number; link: ImageLink }[] = [];
+	// exec loops rather than matchAll: the tsconfig's ES2019 lib has no matchAll,
+	// whose any-typed matches tripped the plugin review's no-unsafe-* lints.
 	const wiki = /!\[\[([^\][|#\n]+)(?:#[^\][|\n]*)?(?:\|[^\][\n]*)?\]\]/g;
 	const md = /!\[[^\]\n]*\]\(\s*(?:<([^<>\n]+)>|([^)\s]+))(?:\s+"[^"\n]*")?\s*\)/g;
 	const htmlImg = /<img\s[^>]*?src\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)'|([^\s>'"]+))[^>]*>/gi;
-	for (const m of content.matchAll(wiki)) {
-		found.push({ index: m.index ?? 0, link: { target: m[1].trim(), external: false } });
+	for (let m = wiki.exec(content); m !== null; m = wiki.exec(content)) {
+		found.push({ index: m.index, link: { target: m[1].trim(), external: false } });
 	}
-	const pathLike = (m: RegExpMatchArray, target: string) => {
+	const pathLike = (index: number, target: string) => {
 		if (!target) return;
 		const external = EXTERNAL_SRC.test(target);
 		const path = target.split("#")[0];
 		if (!external && !IMAGE_EXT.test(path) && !VIDEO_EXT.test(path)) return;
-		found.push({ index: m.index ?? 0, link: { target, external } });
+		found.push({ index, link: { target, external } });
 	};
-	for (const m of content.matchAll(md)) pathLike(m, (m[1] ?? m[2] ?? "").trim());
-	for (const m of content.matchAll(htmlImg)) pathLike(m, (m[1] ?? m[2] ?? m[3] ?? "").trim());
+	for (let m = md.exec(content); m !== null; m = md.exec(content)) {
+		pathLike(m.index, (m[1] ?? m[2] ?? "").trim());
+	}
+	for (let m = htmlImg.exec(content); m !== null; m = htmlImg.exec(content)) {
+		pathLike(m.index, (m[1] ?? m[2] ?? m[3] ?? "").trim());
+	}
 	return found.sort((a, b) => a.index - b.index).map((f) => f.link);
 }
 
