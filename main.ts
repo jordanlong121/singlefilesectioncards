@@ -70,7 +70,7 @@ export type Placement = "top" | "logical" | "bottom";
  * heading columns on the left, with the selected branch's cards rendered in whichever
  * of these layouts is active.
  */
-export type Layout = "grid" | "aligned" | "tight" | "horizontal" | "vertical" | "custom" | "calendar";
+export type Layout = "grid" | "aligned" | "tight" | "horizontal" | "vertical" | "custom" | "images" | "calendar";
 
 const SORT_LABELS: Record<SortOrder, string> = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 
@@ -82,6 +82,7 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["horizontal", "Horizontal", "One card per row, full width"],
 	["vertical", "Vertical", "Full-height cards side by side, scrolling sideways"],
 	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
+	["images", "Images", "Freeform canvas of the note's images: drag previews on from the tray, place and resize them"],
 	["calendar", "Calendar", "Date cards on a monthly calendar grid — needs the Dates checkbox"],
 ];
 
@@ -156,10 +157,13 @@ interface SectionCardsSettings {
 	perFile: Record<string, PerFileView>;
 }
 
-/** A note's remembered view plus, for the Custom Grid, its card placements by heading. */
+/** A note's remembered view plus, for the canvas layouts, its placements: Custom Grid
+ * cards by heading line, Images previews by image path (or URL, for external images). */
 export interface PerFileView extends ViewSettings {
 	customGrid?: Record<string, CardRect>;
 	customZoom?: number;
+	imagesGrid?: Record<string, CardRect>;
+	imagesZoom?: number;
 	/** Headings pinned to the top of the card wall, in the order they were pinned. */
 	pinned?: string[];
 	/** Whether this note's headings name dates (today highlight, jump-to-date). Unset
@@ -1658,6 +1662,73 @@ const CUSTOM_MIN_W = 192;
 const CUSTOM_MIN_H = 120;
 const CUSTOM_DEFAULT_W = 288;
 const CUSTOM_DEFAULT_H = 192;
+/** Images canvas: previews may shrink well below card size (a thumbnail row, say). */
+const IMAGE_MIN_W = 96;
+const IMAGE_MIN_H = 72;
+const IMAGE_DEFAULT_W = 288;
+/** A fresh drop sizes itself to the image's aspect ratio, capped so a tall
+ * screenshot doesn't land as a full-column monolith. */
+const IMAGE_DEFAULT_MAX_H = 480;
+
+/** File extensions the Images layout treats as previewable images and videos. */
+const IMAGE_EXT = /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i;
+const VIDEO_EXT = /\.(mp4|webm|ogv|mov|mkv|m4v)$/i;
+
+/** One image link found in the note, in document order. `target` is the raw link
+ * destination: a vault linkpath for embeds, a URL or data: URI for external ones. */
+export interface ImageLink {
+	target: string;
+	external: boolean;
+}
+
+/** External here means "renderable as-is, no vault resolution": a URL or data: URI. */
+const EXTERNAL_SRC = /^(https?:\/\/|data:)/i;
+
+/**
+ * Every image or video the note links, in order of first appearance: wiki embeds
+ * (`![[shot.png]]`, with optional `#block` and `|size` suffixes), markdown images
+ * (`![alt](path "title")`, angle-bracketed paths and data: URIs included), and HTML
+ * `<img>` tags. Wiki embeds of notes/PDFs are filtered later, at resolution — here
+ * only markdown/HTML paths are screened, because an unresolvable URL never gets
+ * another chance.
+ */
+export function imageLinksIn(content: string): ImageLink[] {
+	const found: { index: number; link: ImageLink }[] = [];
+	const wiki = /!\[\[([^\][|#\n]+)(?:#[^\][|\n]*)?(?:\|[^\][\n]*)?\]\]/g;
+	const md = /!\[[^\]\n]*\]\(\s*(?:<([^<>\n]+)>|([^)\s]+))(?:\s+"[^"\n]*")?\s*\)/g;
+	const htmlImg = /<img\s[^>]*?src\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)'|([^\s>'"]+))[^>]*>/gi;
+	for (const m of content.matchAll(wiki)) {
+		found.push({ index: m.index ?? 0, link: { target: m[1].trim(), external: false } });
+	}
+	const pathLike = (m: RegExpMatchArray, target: string) => {
+		if (!target) return;
+		const external = EXTERNAL_SRC.test(target);
+		const path = target.split("#")[0];
+		if (!external && !IMAGE_EXT.test(path) && !VIDEO_EXT.test(path)) return;
+		found.push({ index: m.index ?? 0, link: { target, external } });
+	};
+	for (const m of content.matchAll(md)) pathLike(m, (m[1] ?? m[2] ?? "").trim());
+	for (const m of content.matchAll(htmlImg)) pathLike(m, (m[1] ?? m[2] ?? m[3] ?? "").trim());
+	return found.sort((a, b) => a.index - b.index).map((f) => f.link);
+}
+
+/** A short stable digest for keying data: URIs — storing the URI itself as a
+ * placement key would copy the whole image into the plugin's data file. */
+export function shortHash(text: string): string {
+	let h = 5381;
+	for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+	return h.toString(36);
+}
+
+/** A resolved image or video for the Images canvas: a stable placement key (vault
+ * path, URL, or data-URI digest), a renderable src, and the name the tray and drag
+ * ghost show. */
+interface NoteImage {
+	key: string;
+	src: string;
+	label: string;
+	kind: "image" | "video";
+}
 
 /** Round a rect onto the snap grid, clamped to the canvas and the minimum card size. */
 export function snapRect(rect: CardRect, step: number, minW: number, minH: number): CardRect {
@@ -2304,7 +2375,7 @@ export class SectionCardsView extends ItemView {
 		if (!this.gridEl || this.viewIsHidden()) return; // zero sizes while backgrounded
 		this.layoutMasonry();
 		this.insertRowRules();
-		if (this.layout === "custom") this.validateCustomSizes();
+		if (this.isCanvasLayout()) this.validateCanvasSizes();
 	}, 60, true);
 	/** The card currently blown up over the others, if any. */
 	private maximized: {
@@ -2320,11 +2391,21 @@ export class SectionCardsView extends ItemView {
 	private dragging: { section: Section } | null = null;
 	/** Custom Grid: placements for the current note, keyed by heading line. */
 	private customPlacements: Record<string, CardRect> = {};
+	/** Images canvas: placements for the current note, keyed by image path/URL. */
+	private imagePlacements: Record<string, CardRect> = {};
+	/** Which note's image placements are loaded (like placementsLoadedFor for cards). */
+	private imagesLoadedFor: string | null = null;
+	/** The Images canvas's preview tiles, in document order. Rebuilt every render. */
+	private imageEntries: { key: string; el: HTMLElement; label: string }[] = [];
+	/** The current note's images by placement key, for tray tiles and collision checks. */
+	private imagesByKey = new Map<string, NoteImage>();
 	private trayEl!: HTMLElement;
 	/** Invisible marker that gives the canvas its scrollable size in every direction. */
 	private canvasExtentEl!: HTMLElement;
 	/** Custom Grid zoom factor (0.4–1.6), persisted per note. */
 	private customZoom = 1;
+	/** Images canvas zoom factor, persisted per note separately from the card canvas. */
+	private imagesZoom = 1;
 	private zoomLabelEl: HTMLElement | null = null;
 	/** Which note's placements are loaded; reloading on every refresh caused revert races. */
 	private placementsLoadedFor: string | null = null;
@@ -2354,16 +2435,26 @@ export class SectionCardsView extends ItemView {
 		onUp: (evt: PointerEvent) => void;
 	} | null = null;
 	private swallowNextClick = false;
-	/** Placement writes are immediate: a debounced save raced the next refresh's re-read. */
-	private persistCustom = (): void => {
+	/** Placement writes are immediate: a debounced save raced the next refresh's re-read.
+	 * Saves whichever canvas is active: the card placements or the image placements. */
+	private persistCanvas = (): void => {
 		const file = this.getFile();
 		if (!file) return;
-		void this.plugin.saveCustomGrid(
-			file.path,
-			{ ...this.customPlacements },
-			this.viewSettings(),
-			this.customZoom,
-		);
+		if (this.layout === "images") {
+			void this.plugin.saveImagesGrid(
+				file.path,
+				{ ...this.imagePlacements },
+				this.viewSettings(),
+				this.imagesZoom,
+			);
+		} else {
+			void this.plugin.saveCustomGrid(
+				file.path,
+				{ ...this.customPlacements },
+				this.viewSettings(),
+				this.customZoom,
+			);
+		}
 	};
 	/** The block (task/paragraph) being dragged between cards, if any. */
 	private draggingBlock: {
@@ -2516,11 +2607,42 @@ export class SectionCardsView extends ItemView {
 		};
 	}
 
-	/** Custom Grid and Calendar place every card themselves, so the grouped view
-	 * modes (hierarchy columns, section dividers) don't apply on them. One predicate,
-	 * so the next self-placing layout changes exactly one line. */
+	/** Custom Grid, Images, and Calendar place everything themselves, so the grouped
+	 * view modes (hierarchy columns, section dividers) don't apply on them. One
+	 * predicate, so the next self-placing layout changes exactly one line. */
 	private layoutOwnsPlacement(): boolean {
-		return this.layout === "custom" || this.layout === "calendar";
+		return this.isCanvasLayout() || this.layout === "calendar";
+	}
+
+	/** The freeform canvases — Custom Grid (section cards) and Images (previews) —
+	 * share the tray, zoom, pointer-drag, and snap machinery. These helpers pick the
+	 * active canvas's state so that machinery never has to know which one it serves. */
+	private isCanvasLayout(): boolean {
+		return this.layout === "custom" || this.layout === "images";
+	}
+
+	private activePlacements(): Record<string, CardRect> {
+		return this.layout === "images" ? this.imagePlacements : this.customPlacements;
+	}
+
+	private canvasZoom(): number {
+		return this.layout === "images" ? this.imagesZoom : this.customZoom;
+	}
+
+	private canvasMins(): { w: number; h: number } {
+		return this.layout === "images" ? { w: IMAGE_MIN_W, h: IMAGE_MIN_H } : { w: CUSTOM_MIN_W, h: CUSTOM_MIN_H };
+	}
+
+	/** The active canvas's placeable elements and their placement keys. */
+	private canvasItems(): { key: string; el: HTMLElement }[] {
+		if (this.layout === "images") return this.imageEntries;
+		return this.cardEntries.map((entry) => ({ key: entry.holder.section.headingRaw, el: entry.el }));
+	}
+
+	/** Re-place the active canvas after a placement change (drop, untray, clear, zoom). */
+	private applyCanvasLayout(): void {
+		if (this.layout === "images") this.applyImagesLayout();
+		else this.applyCustomLayout();
 	}
 
 	/** The Calendar option is offered while any heading level names dates (and the
@@ -2546,9 +2668,13 @@ export class SectionCardsView extends ItemView {
 
 	/** The Calendar layout implies Dates, so the toggle hides once it's on there — but
 	 * not while it's off, or the gate message's "turn on the Dates checkbox" advice
-	 * would point at nothing. */
+	 * would point at nothing. The Images canvas hides it too (dates mean nothing to
+	 * pictures); the note's saved Dates choice is untouched either way. */
 	private syncDatesLabel(): void {
-		this.datesLabelEl?.toggleClass("is-hidden", this.layout === "calendar" && this.containsDates);
+		this.datesLabelEl?.toggleClass(
+			"is-hidden",
+			(this.layout === "calendar" && this.containsDates) || this.layout === "images",
+		);
 	}
 
 	/** Whether the hierarchy columns actually show: toggled on, and the layout groups. */
@@ -2633,13 +2759,13 @@ export class SectionCardsView extends ItemView {
 		const zoomBar = this.contentEl.createDiv({ cls: "section-cards-zoom" });
 		const zoomOut = zoomBar.createEl("button", { text: "−" });
 		zoomOut.setAttr("aria-label", "Zoom out");
-		zoomOut.addEventListener("click", () => this.setCustomZoom(this.customZoom - 0.1));
+		zoomOut.addEventListener("click", () => this.setCanvasZoom(this.canvasZoom() - 0.1));
 		this.zoomLabelEl = zoomBar.createEl("button", { cls: "section-cards-zoom-label", text: "100%" });
 		this.zoomLabelEl.setAttr("aria-label", "Reset zoom");
-		this.zoomLabelEl.addEventListener("click", () => this.setCustomZoom(1));
+		this.zoomLabelEl.addEventListener("click", () => this.setCanvasZoom(1));
 		const zoomIn = zoomBar.createEl("button", { text: "+" });
 		zoomIn.setAttr("aria-label", "Zoom in");
-		zoomIn.addEventListener("click", () => this.setCustomZoom(this.customZoom + 0.1));
+		zoomIn.addEventListener("click", () => this.setCanvasZoom(this.canvasZoom() + 0.1));
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
 			if (evt.key !== "Escape" || !this.maximized) return;
 			// An open card editor's own Escape handling wins (textarea or live preview).
@@ -2788,9 +2914,9 @@ export class SectionCardsView extends ItemView {
 			{ capture: true },
 		);
 
-		// Middle-click drag pans the Custom Grid canvas.
+		// Middle-click drag pans the canvas layouts (Custom Grid and Images).
 		this.registerDomEvent(this.gridEl, "pointerdown", (evt: PointerEvent) => {
-			if (this.layout !== "custom" || evt.button !== 1) return;
+			if (!this.isCanvasLayout() || evt.button !== 1) return;
 			evt.preventDefault(); // no autoscroll widget, no card handlers
 			const startX = evt.clientX;
 			const startY = evt.clientY;
@@ -2876,7 +3002,7 @@ export class SectionCardsView extends ItemView {
 
 	/** The layout lives as a class on the view root so CSS can restyle grid *and* scrolling. */
 	private applyLayoutClass(): void {
-		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical", "custom", "calendar"]) {
+		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical", "custom", "images", "calendar"]) {
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name);
 		}
 		this.contentEl.toggleClass("is-hier-on", this.hierarchyActive());
@@ -2893,6 +3019,7 @@ export class SectionCardsView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		this.imageLightboxClose?.(); // its Escape listener lives on the document
 		if (this.autosaveTimer !== null) {
 			window.clearInterval(this.autosaveTimer);
 			this.autosaveTimer = null;
@@ -3629,13 +3756,14 @@ export class SectionCardsView extends ItemView {
 		if (typeof ResizeObserver === "undefined") return;
 		this.cardObserver = new ResizeObserver(() => {
 			// Resize feedback must be immediate; the debounced repack settles it after.
-			if (this.layout === "custom") this.previewCustomResize();
+			if (this.isCanvasLayout()) this.previewCanvasResize();
 			this.repack();
 			// A narrower pane wraps the toolbar taller; the sticky band rides below it.
 			this.updateToolbarOffset();
 		});
 		for (const card of Array.from(this.gridEl.children)) {
-			if ((card as HTMLElement).hasClass("section-card")) this.cardObserver.observe(card);
+			const el = card as HTMLElement;
+			if (el.hasClass("section-card") || el.hasClass("sc-image-card")) this.cardObserver.observe(card);
 		}
 		// The grid itself changes width when the pane resizes, which changes column count.
 		this.cardObserver.observe(this.gridEl);
@@ -3865,7 +3993,7 @@ export class SectionCardsView extends ItemView {
 				btn.toggleClass("is-active", isOn());
 				btn.toggleAttribute("disabled", modesOff);
 				if (modesOff) {
-					btn.setAttr("aria-label", "View modes aren't available on the Custom Grid canvas or the Calendar");
+					btn.setAttr("aria-label", "View modes aren't available on the canvas layouts or the Calendar");
 				}
 			}
 		};
@@ -4586,6 +4714,20 @@ export class SectionCardsView extends ItemView {
 		// rebuild would force a synchronous reflow of the whole freshly-touched grid.
 		if (this.layout === "calendar") this.updateToolbarOffset();
 
+		// The Images canvas renders the note's image links, not its sections — the
+		// whole card pipeline below doesn't apply, so it takes over here.
+		if (this.layout === "images") {
+			this.renderImagesLayout(file, content);
+			return;
+		}
+		// Leaving the Images canvas: its preview tiles don't belong to any card layout.
+		if (this.imageEntries.length) {
+			this.imageLightboxClose?.();
+			for (const entry of this.imageEntries) entry.el.remove();
+			this.imageEntries = [];
+			this.imagesByKey.clear();
+		}
+
 		const sections = parseCards(lines, this.headingLevel, this.plugin.unfiledTitle());
 
 		// Does this note deal in dates? The checkbox rules when the user has set it;
@@ -4856,7 +4998,7 @@ export class SectionCardsView extends ItemView {
 				if (spot.x !== rect.x || spot.y !== rect.y || spot.w !== rect.w || spot.h !== rect.h) normalised = true;
 				this.customPlacements[key] = spot;
 			}
-			if (normalised) this.persistCustom();
+			if (normalised) this.persistCanvas();
 		}
 		this.applyCustomLayout();
 		this.observeCards();
@@ -4897,7 +5039,7 @@ export class SectionCardsView extends ItemView {
 						CUSTOM_GAP,
 						CUSTOM_SNAP,
 					);
-					this.persistCustom();
+					this.persistCanvas();
 					this.applyCustomLayout();
 				}
 				// A card created on another branch: drill the columns down to it first.
@@ -5553,10 +5695,15 @@ export class SectionCardsView extends ItemView {
 		this.snapPreviewEl = null;
 	}
 
-	/** Visible placed rects except the one being moved (hidden-level keys don't collide). */
+	/** Visible placed rects except the one being moved (hidden-level keys don't collide).
+	 * On the Images canvas "visible" means the image is still linked by the note. */
 	private otherPlacements(except: string): CardRect[] {
-		return Object.entries(this.customPlacements)
-			.filter(([key]) => key !== except && (this.cardsByHeading.size === 0 || this.cardsByHeading.has(key)))
+		const present =
+			this.layout === "images"
+				? (key: string) => this.imagesByKey.size === 0 || this.imagesByKey.has(key)
+				: (key: string) => this.cardsByHeading.size === 0 || this.cardsByHeading.has(key);
+		return Object.entries(this.activePlacements())
+			.filter(([key]) => key !== except && present(key))
 			.map(([, rect]) => rect);
 	}
 
@@ -5580,8 +5727,8 @@ export class SectionCardsView extends ItemView {
 			w: size.w,
 			h: size.h,
 			// Grab offsets in content px: placed cards render zoomed, tray tiles don't.
-			offX: Math.min((evt.clientX - grabbed.left) / (kind === "card" ? this.customZoom : 1), size.w - 24),
-			offY: Math.min((evt.clientY - grabbed.top) / (kind === "card" ? this.customZoom : 1), size.h - 24),
+			offX: Math.min((evt.clientX - grabbed.left) / (kind === "card" ? this.canvasZoom() : 1), size.w - 24),
+			offY: Math.min((evt.clientY - grabbed.top) / (kind === "card" ? this.canvasZoom() : 1), size.h - 24),
 			startX: evt.clientX,
 			startY: evt.clientY,
 			active: false,
@@ -5620,13 +5767,14 @@ export class SectionCardsView extends ItemView {
 
 		// Show exactly where the card will land — the same math the drop uses.
 		if (overCanvas) {
-			const px = (evt.clientX - canvas.left + this.gridEl.scrollLeft) / this.customZoom;
-			const py = (evt.clientY - canvas.top + this.gridEl.scrollTop) / this.customZoom;
+			const px = (evt.clientX - canvas.left + this.gridEl.scrollLeft) / this.canvasZoom();
+			const py = (evt.clientY - canvas.top + this.gridEl.scrollTop) / this.canvasZoom();
+			const mins = this.canvasMins();
 			const want = snapRect(
 				{ x: px - Math.min(drag.offX, 140), y: py - Math.min(drag.offY, 20), w: drag.w, h: drag.h },
 				CUSTOM_SNAP,
-				CUSTOM_MIN_W,
-				CUSTOM_MIN_H,
+				mins.w,
+				mins.h,
 			);
 			const spot = findFreeSpot(want, drag.obstacles, CUSTOM_GAP, CUSTOM_SNAP);
 			this.showSnapPreview(spot, spot.x !== want.x || spot.y !== want.y);
@@ -5655,17 +5803,18 @@ export class SectionCardsView extends ItemView {
 			evt.clientX >= canvas.left && evt.clientX <= canvas.right && evt.clientY >= canvas.top && evt.clientY <= canvas.bottom;
 
 		if (overCanvas) {
-			const px = (evt.clientX - canvas.left + this.gridEl.scrollLeft) / this.customZoom;
-			const py = (evt.clientY - canvas.top + this.gridEl.scrollTop) / this.customZoom;
+			const px = (evt.clientX - canvas.left + this.gridEl.scrollLeft) / this.canvasZoom();
+			const py = (evt.clientY - canvas.top + this.gridEl.scrollTop) / this.canvasZoom();
+			const mins = this.canvasMins();
 			const want = snapRect(
 				{ x: px - Math.min(drag.offX, 140), y: py - Math.min(drag.offY, 20), w: drag.w, h: drag.h },
 				CUSTOM_SNAP,
-				CUSTOM_MIN_W,
-				CUSTOM_MIN_H,
+				mins.w,
+				mins.h,
 			);
-			this.customPlacements[drag.key] = findFreeSpot(want, drag.obstacles, CUSTOM_GAP, CUSTOM_SNAP);
-			this.persistCustom();
-			this.applyCustomLayout();
+			this.activePlacements()[drag.key] = findFreeSpot(want, drag.obstacles, CUSTOM_GAP, CUSTOM_SNAP);
+			this.persistCanvas();
+			this.applyCanvasLayout();
 			return;
 		}
 
@@ -5678,21 +5827,22 @@ export class SectionCardsView extends ItemView {
 		}
 	}
 
-	/** Remove every card from the canvas so the tray lists every section again. */
+	/** Remove everything from the canvas so the tray lists every item again. */
 	private clearCanvas(): void {
-		const placed = Object.keys(this.customPlacements).length;
+		const placed = Object.keys(this.activePlacements()).length;
 		if (!placed) return;
-		this.customPlacements = {};
-		this.persistCustom();
-		this.applyCustomLayout();
+		if (this.layout === "images") this.imagePlacements = {};
+		else this.customPlacements = {};
+		this.persistCanvas();
+		this.applyCanvasLayout();
 		new Notice(`Canvas cleared — ${placed} ${placed === 1 ? "placement" : "placements"} returned to the list.`);
 	}
 
-	/** Return a placed card to the tray. */
-	private untrayCard(headingRaw: string): void {
-		delete this.customPlacements[headingRaw];
-		this.persistCustom();
-		this.applyCustomLayout();
+	/** Return a placed card or image to the tray. */
+	private untrayCard(key: string): void {
+		delete this.activePlacements()[key];
+		this.persistCanvas();
+		this.applyCanvasLayout();
 	}
 
 	/** Signature of the tray's last build, so unchanged refreshes skip the DOM churn. */
@@ -5718,7 +5868,7 @@ export class SectionCardsView extends ItemView {
 			return;
 		}
 
-		this.applyCustomZoom();
+		this.applyCanvasZoom();
 		let maxBottom = 0;
 		let maxRight = 0;
 		const owedRenders: CardEntry[] = [];
@@ -5758,25 +5908,373 @@ export class SectionCardsView extends ItemView {
 
 		// The tray only rebuilds when its contents or order actually changed.
 		// Today's date is part of the signature so the highlight rolls over at midnight.
-		const signature = `${this.sortOrder}|${this.todayKeys()?.iso ?? ""}|${unplacedKeys.join("\u0000")}`;
+		const signature = `custom|${this.sortOrder}|${this.todayKeys()?.iso ?? ""}|${unplacedKeys.join("\u0000")}`;
 		if (signature === this.traySignature) return;
 		this.traySignature = signature;
 		this.rebuildTray(unplacedKeys);
 	}
 
-	/** Apply the zoom factor: cards, extent marker, preview and dots all ride the var. */
-	private applyCustomZoom(): void {
-		this.gridEl.setCssProps({ "--sc-zoom": String(this.customZoom) });
-		this.zoomLabelEl?.setText(`${Math.round(this.customZoom * 100)}%`);
+	/**
+	 * Every image and video the note links, resolved and deduped: wiki/markdown/HTML
+	 * embeds become vault resource paths (keyed by the file's vault path, so renames
+	 * and different link styles converge), external URLs stay URLs, and data: URIs
+	 * are keyed by a digest so the placement store never holds the pixels.
+	 */
+	private collectNoteImages(file: TFile, content: string): NoteImage[] {
+		const images: NoteImage[] = [];
+		const seen = new Set<string>();
+		for (const { target, external } of imageLinksIn(content)) {
+			if (external) {
+				if (target.startsWith("data:")) {
+					const key = `data:${shortHash(target)}`;
+					if (seen.has(key)) continue;
+					seen.add(key);
+					const kind = /^data:video\//i.test(target) ? "video" : "image";
+					images.push({ key, src: target, label: `(inline ${kind})`, kind });
+					continue;
+				}
+				if (seen.has(target)) continue;
+				seen.add(target);
+				let label = target;
+				let urlPath = target;
+				try {
+					urlPath = new URL(target).pathname;
+					label = decodeURIComponent(urlPath.split("/").pop() || target);
+				} catch {
+					// not a parseable URL — the raw target is still a usable name
+				}
+				images.push({ key: target, src: target, label, kind: VIDEO_EXT.test(urlPath) ? "video" : "image" });
+				continue;
+			}
+			let linkpath = target.split("#")[0];
+			try {
+				linkpath = decodeURIComponent(linkpath);
+			} catch {
+				// a stray % in a filename — use it as written
+			}
+			const dest = this.app.metadataCache.getFirstLinkpathDest(linkpath, file.path);
+			// Wiki embeds also match notes and PDFs; only image/video files stage previews.
+			if (!dest || seen.has(dest.path)) continue;
+			const kind = IMAGE_EXT.test(dest.path) ? "image" : VIDEO_EXT.test(dest.path) ? "video" : null;
+			if (!kind) continue;
+			seen.add(dest.path);
+			images.push({ key: dest.path, src: this.app.vault.getResourcePath(dest), label: dest.name, kind });
+		}
+		return images;
 	}
 
-	private setCustomZoom(zoom: number): void {
+	/**
+	 * The Images layout's whole render pass — the canvas shows the note's image
+	 * previews instead of section cards, so refresh() hands over to this early.
+	 * Placements load once per note and persist like the Custom Grid's.
+	 */
+	private renderImagesLayout(file: TFile, content: string): void {
+		// The card wall's leftovers don't apply here: cards, hierarchy columns,
+		// dividers, and the date/star toolbar affordances that key off sections.
+		this.clearAllCards();
+		this.clearHierarchy();
+		this.hideSnapPreview();
+		this.imageLightboxClose?.(); // its media may be gone from the note
+		this.jumpDateWrap?.toggleClass("is-hidden", true);
+		this.starBtn?.toggleClass("is-hidden", true);
+		this.pendingEditHeading = null;
+		this.pendingMaximizeHeading = null;
+		// clearAllCards empties the grid wholesale — put the extent marker back.
+		this.gridEl.appendChild(this.canvasExtentEl);
+
+		this.imagesByKey.clear();
+		const images = this.collectNoteImages(file, content);
+		for (const image of images) this.imagesByKey.set(image.key, image);
+
+		// Placements load once per note and are kept in memory from then on (see the
+		// matching Custom Grid block in refresh for why). Keys for images no longer
+		// linked are KEPT, so re-adding a link restores the image's old spot.
+		if (this.imagesLoadedFor !== file.path) {
+			this.imagesLoadedFor = file.path;
+			this.imagesZoom = this.plugin.getImagesZoom(file.path);
+			this.imagePlacements = {};
+			const savedPlacements = Object.entries(this.plugin.getImagesGrid(file.path)).sort(
+				([, a], [, b]) => a.y - b.y || a.x - b.x,
+			);
+			let normalised = false;
+			for (const [key, rect] of savedPlacements) {
+				const snapped = snapRect(rect, CUSTOM_SNAP, IMAGE_MIN_W, IMAGE_MIN_H);
+				const spot = this.otherPlacements(key).some((other) => rectsCollide(snapped, other, CUSTOM_GAP))
+					? findFreeSpot(snapped, this.otherPlacements(key), CUSTOM_GAP, CUSTOM_SNAP)
+					: snapped;
+				if (spot.x !== rect.x || spot.y !== rect.y || spot.w !== rect.w || spot.h !== rect.h) normalised = true;
+				this.imagePlacements[key] = spot;
+			}
+			if (normalised) this.persistCanvas();
+		}
+
+		this.imageEntries = images.map((image) => this.renderImageCard(image));
+		if (!images.length) {
+			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
+			empty.createEl("p", { text: `No images found in ${file.basename}.` });
+			empty.createEl("p", { text: "Embed images in the note — ![[shot.png]] or ![](url) — and they appear here." });
+		}
+
+		this.applyImagesLayout();
+		this.observeCards(); // native-resize snapping rides the same observer as cards
+		this.rememberView();
+		(this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
+	}
+
+	/** One image or video preview on the canvas: the picture, a hover name bar, the
+	 * remove ✕, and the pointer-drag/native-resize behaviour placed cards have.
+	 * Videos stay muted with no native controls (they would fight the drag), showing
+	 * their first frame and a play badge; double-click plays and pauses. */
+	private renderImageCard(image: NoteImage): { key: string; el: HTMLElement; label: string } {
+		const el = this.gridEl.createDiv({ cls: "sc-image-card" });
+		if (image.kind === "video") {
+			const video = el.createEl("video", {
+				cls: "sc-image-card-img",
+				attr: { src: image.src, preload: "metadata", playsinline: "" },
+			});
+			video.muted = true;
+			video.loop = true;
+			const badge = el.createDiv({ cls: "sc-image-play" });
+			setIcon(badge, "play");
+			el.addEventListener("dblclick", () => {
+				if (video.paused) void video.play();
+				else video.pause();
+				el.toggleClass("is-playing", !video.paused);
+			});
+		} else {
+			el.createEl("img", {
+				cls: "sc-image-card-img",
+				attr: { src: image.src, alt: image.label, draggable: "false" },
+			});
+		}
+		el.createDiv({ cls: "sc-image-card-name", text: image.label });
+
+		const untrayBtn = el.createEl("button", { cls: "sc-image-untray" });
+		setIcon(untrayBtn, "x");
+		untrayBtn.setAttr("aria-label", "Remove from the canvas (back to the list)");
+		untrayBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.untrayCard(image.key);
+		});
+
+		// Top-right on hover: the magnifier blows the preview up in place, and the ↗
+		// beside it opens the ORIGINAL file — vault files in the system's default
+		// app, external URLs in the browser. An inline data: URI has no original to
+		// open, so the magnifier takes the corner alone (CSS keys off :last-child).
+		const bigBtn = el.createEl("button", { cls: "sc-image-big" });
+		setIcon(bigBtn, "zoom-in");
+		bigBtn.setAttr("aria-label", `Make this ${image.kind} big`);
+		bigBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.openImageLightbox(image);
+		});
+		// Double-click magnifies images; videos keep double-click for play/pause.
+		if (image.kind !== "video") {
+			el.addEventListener("dblclick", () => this.openImageLightbox(image));
+		}
+
+		if (!image.key.startsWith("data:")) {
+			const external = /^https?:\/\//i.test(image.key);
+			const openBtn = el.createEl("button", { cls: "sc-image-open" });
+			setIcon(openBtn, "external-link");
+			openBtn.setAttr("aria-label", external ? "Open the URL in your browser" : "Open the original file");
+			openBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				if (external) window.open(image.key);
+				// Undocumented but stable API, the same one Obsidian's own
+				// "Open in default app" menu item uses.
+				else (this.app as App & { openWithDefaultApp?: (path: string) => void }).openWithDefaultApp?.(image.key);
+			});
+		}
+
+		el.addEventListener("pointerdown", (evt) => {
+			if (!el.hasClass("is-placed")) return;
+			if ((evt.target as HTMLElement | null)?.closest("button")) return;
+			const rect = el.getBoundingClientRect();
+			// The bottom-right corner belongs to the native resize grip; arm the same
+			// click-swallow the cards use so ending a resize can't count as a click.
+			if (evt.clientX >= rect.right - 28 && evt.clientY >= rect.bottom - 28) {
+				window.addEventListener(
+					"pointerup",
+					() => {
+						this.swallowNextClick = true;
+						window.setTimeout(() => (this.swallowNextClick = false), 300);
+					},
+					{ once: true },
+				);
+				return;
+			}
+			const placement = this.imagePlacements[image.key];
+			if (!placement) return;
+			this.startPointerDrag(evt, "card", image.key, image.label, rect, { w: placement.w, h: placement.h });
+		});
+
+		return { key: image.key, el, label: image.label };
+	}
+
+	/** A vault image was renamed: carry its in-memory placement to the new key (the
+	 * stored copy is remapped by the plugin's rename handler). */
+	renameImageKey(oldPath: string, newPath: string): void {
+		const rect = this.imagePlacements[oldPath];
+		if (!rect) return;
+		this.imagePlacements[newPath] = rect;
+		delete this.imagePlacements[oldPath];
+	}
+
+	/** Closes the open image lightbox, if any. Null while none is showing. */
+	private imageLightboxClose: (() => void) | null = null;
+
+	/** The magnifier: the preview blown up over the whole view. Click away or
+	 * Escape closes it; videos get their native controls here (nothing to drag). */
+	private openImageLightbox(image: NoteImage): void {
+		this.imageLightboxClose?.();
+		const overlay = this.contentEl.createDiv({ cls: "sc-image-lightbox" });
+		let media: HTMLElement;
+		if (image.kind === "video") {
+			const video = overlay.createEl("video", { attr: { src: image.src, controls: "", playsinline: "" } });
+			video.muted = true;
+			void video.play();
+			media = video;
+		} else {
+			media = overlay.createEl("img", { attr: { src: image.src, alt: image.label, draggable: "false" } });
+		}
+		overlay.createDiv({ cls: "sc-image-lightbox-name", text: image.label });
+
+		// Wheel zooms toward the pointer (0.25x–8x); dragging pans a zoomed view;
+		// double-click resets. Transform-based, so the layout underneath never moves.
+		let scale = 1;
+		let tx = 0;
+		let ty = 0;
+		const applyTransform = () => {
+			media.setCssStyles({ transform: `translate(${tx}px, ${ty}px) scale(${scale})` });
+			media.toggleClass("is-zoomed", scale !== 1 || tx !== 0 || ty !== 0);
+		};
+		overlay.addEventListener(
+			"wheel",
+			(evt: WheelEvent) => {
+				evt.preventDefault(); // the canvas behind must not scroll
+				evt.stopPropagation();
+				const next = Math.min(8, Math.max(0.25, scale * (evt.deltaY < 0 ? 1.15 : 1 / 1.15)));
+				if (next === scale) return;
+				// Keep the content under the cursor fixed while the scale changes.
+				const rect = media.getBoundingClientRect();
+				const cx = rect.left + rect.width / 2;
+				const cy = rect.top + rect.height / 2;
+				tx += (evt.clientX - cx) * (1 - next / scale);
+				ty += (evt.clientY - cy) * (1 - next / scale);
+				scale = next;
+				applyTransform();
+			},
+			{ passive: false },
+		);
+		media.addEventListener("pointerdown", (evt: PointerEvent) => {
+			if (evt.button !== 0) return;
+			const startX = evt.clientX;
+			const startY = evt.clientY;
+			const baseX = tx;
+			const baseY = ty;
+			let moved = false;
+			const move = (e: PointerEvent) => {
+				const dx = e.clientX - startX;
+				const dy = e.clientY - startY;
+				// A still pointer stays a click, so video controls keep working.
+				if (!moved && Math.hypot(dx, dy) < 4) return;
+				moved = true;
+				tx = baseX + dx;
+				ty = baseY + dy;
+				applyTransform();
+			};
+			const up = () => {
+				window.removeEventListener("pointermove", move);
+				window.removeEventListener("pointerup", up);
+				window.removeEventListener("pointercancel", up);
+			};
+			window.addEventListener("pointermove", move);
+			window.addEventListener("pointerup", up);
+			window.addEventListener("pointercancel", up);
+		});
+		media.addEventListener("dblclick", () => {
+			scale = 1;
+			tx = 0;
+			ty = 0;
+			applyTransform();
+		});
+
+		const onKey = (evt: KeyboardEvent) => {
+			if (evt.key !== "Escape") return;
+			evt.preventDefault();
+			evt.stopPropagation();
+			close();
+		};
+		const close = () => {
+			overlay.remove();
+			document.removeEventListener("keydown", onKey, true);
+			this.imageLightboxClose = null;
+		};
+		this.imageLightboxClose = close;
+		document.addEventListener("keydown", onKey, true);
+		// Clicks on the media itself (video controls!) stay; the backdrop closes.
+		overlay.addEventListener("click", (evt) => {
+			if (evt.target !== media) close();
+		});
+	}
+
+	/** Position placed images, hide trayed ones, and rebuild the tray when it changed —
+	 * the Images canvas's applyCustomLayout. */
+	private applyImagesLayout(): void {
+		if (this.layout !== "images") return;
+		this.applyCanvasZoom();
+		let maxBottom = 0;
+		let maxRight = 0;
+		const unplaced: { key: string; label: string; index: number }[] = [];
+
+		this.imageEntries.forEach((entry, index) => {
+			const rect = this.imagePlacements[entry.key];
+			if (rect) {
+				entry.el.addClass("is-placed");
+				entry.el.setCssStyles({
+					left: `${rect.x}px`,
+					top: `${rect.y}px`,
+					width: `${rect.w}px`,
+					height: `${rect.h}px`,
+				});
+				maxBottom = Math.max(maxBottom, rect.y + rect.h);
+				maxRight = Math.max(maxRight, rect.x + rect.w);
+			} else {
+				entry.el.removeClass("is-placed");
+				unplaced.push({ key: entry.key, label: entry.label, index });
+			}
+		});
+
+		this.updateCanvasExtent(maxRight, maxBottom);
+
+		// The tray follows the active sort: A→Z/Z→A by file name, Doc by appearance.
+		if (this.sortOrder !== "doc") {
+			const dir = this.sortOrder === "asc" ? 1 : -1;
+			unplaced.sort((a, b) => dir * a.label.localeCompare(b.label, undefined, { numeric: true }));
+		}
+		const unplacedKeys = unplaced.map((u) => u.key);
+
+		const signature = `images|${this.sortOrder}|${unplacedKeys.join("\u0000")}`;
+		if (signature === this.traySignature) return;
+		this.traySignature = signature;
+		this.rebuildImagesTray(unplacedKeys);
+	}
+
+	/** Apply the zoom factor: cards, extent marker, preview and dots all ride the var. */
+	private applyCanvasZoom(): void {
+		this.gridEl.setCssProps({ "--sc-zoom": String(this.canvasZoom()) });
+		this.zoomLabelEl?.setText(`${Math.round(this.canvasZoom() * 100)}%`);
+	}
+
+	private setCanvasZoom(zoom: number): void {
 		const clamped = Math.round(Math.min(1.6, Math.max(0.4, zoom)) * 10) / 10;
-		if (clamped === this.customZoom) return;
-		this.customZoom = clamped;
-		this.applyCustomZoom();
-		this.persistCustom();
-		this.applyCustomLayout(); // recompute the scroll extent for the new scale
+		if (clamped === this.canvasZoom()) return;
+		if (this.layout === "images") this.imagesZoom = clamped;
+		else this.customZoom = clamped;
+		this.applyCanvasZoom();
+		this.persistCanvas();
+		this.applyCanvasLayout(); // recompute the scroll extent for the new scale
 	}
 
 	/**
@@ -5786,28 +6284,26 @@ export class SectionCardsView extends ItemView {
 	 * be what defines the extent.)
 	 */
 	private updateCanvasExtent(maxRight: number, maxBottom: number): void {
-		if (this.layout !== "custom") return;
-		const viewW = this.gridEl.clientWidth / this.customZoom;
-		const viewH = this.gridEl.clientHeight / this.customZoom;
+		if (!this.isCanvasLayout()) return;
+		const viewW = this.gridEl.clientWidth / this.canvasZoom();
+		const viewH = this.gridEl.clientHeight / this.canvasZoom();
 		const w = Math.max(maxRight, viewW) + 400;
 		const h = Math.max(maxBottom, viewH) + 400;
 		this.canvasExtentEl.setCssStyles({ left: `${w - 1}px`, top: `${h - 1}px` });
 	}
 
-	private rebuildTray(unplacedKeys: string[]): void {
-		this.trayEl.empty();
-
-		// Permanent tray controls: Clear (everything back to this list) and the sorts.
+	/** Permanent tray controls, shared by both canvases: Clear, the sorts, the hint. */
+	private buildTrayControls(noun: string, hint: string): void {
 		const actions = this.trayEl.createDiv({ cls: "section-cards-tray-actions" });
 		const clearBtn = actions.createEl("button", { cls: "section-cards-tray-clear", text: "Clear layout" });
-		clearBtn.setAttr("aria-label", "Remove every card from the canvas, back into this list");
+		clearBtn.setAttr("aria-label", `Remove every ${noun} from the canvas, back into this list`);
 		clearBtn.addEventListener("click", () => {
-			const placed = Object.keys(this.customPlacements).length;
+			const placed = Object.keys(this.activePlacements()).length;
 			if (!placed) {
 				new Notice("The canvas is already clear.");
 				return;
 			}
-			new ConfirmClearModal(this.app, placed, () => this.clearCanvas()).open();
+			new ConfirmClearModal(this.app, placed, noun, () => this.clearCanvas()).open();
 		});
 		const sortRow = this.trayEl.createDiv({ cls: "section-cards-tray-sorts" });
 		const sorts: [SortOrder, string][] = [
@@ -5817,7 +6313,7 @@ export class SectionCardsView extends ItemView {
 		];
 		for (const [order, label] of sorts) {
 			const btn = sortRow.createEl("button", { cls: "section-cards-tray-sort", text: label });
-			btn.setAttr("aria-label", `Sort sections ${SORT_LABELS[order]}`);
+			btn.setAttr("aria-label", `Sort ${noun}s ${SORT_LABELS[order]}`);
 			btn.toggleClass("is-active", this.sortOrder === order);
 			btn.addEventListener("click", () => {
 				if (this.sortOrder === order) return;
@@ -5826,8 +6322,12 @@ export class SectionCardsView extends ItemView {
 				void this.syncView().then(() => this.app.workspace.requestSaveLayout());
 			});
 		}
+		this.trayEl.createDiv({ cls: "section-cards-tray-hint", text: hint });
+	}
 
-		this.trayEl.createDiv({ cls: "section-cards-tray-hint", text: "Drag a section onto the canvas" });
+	private rebuildTray(unplacedKeys: string[]): void {
+		this.trayEl.empty();
+		this.buildTrayControls("section", "Drag a section onto the canvas");
 		const today = this.todayKeys();
 		const trayColors = this.plugin.getCardColors(this.filePath);
 		for (const key of unplacedKeys) {
@@ -5857,58 +6357,105 @@ export class SectionCardsView extends ItemView {
 		}
 	}
 
+	/** The Images tray: a thumbnail-and-name tile per unplaced image. */
+	private rebuildImagesTray(unplacedKeys: string[]): void {
+		this.trayEl.empty();
+		this.buildTrayControls("image", "Drag an image onto the canvas");
+		for (const key of unplacedKeys) {
+			const image = this.imagesByKey.get(key);
+			if (!image) continue;
+			const tile = this.trayEl.createDiv({ cls: "section-cards-tray-tile sc-image-tile" });
+			let thumbSize: () => { w: number; h: number };
+			if (image.kind === "video") {
+				const thumb = tile.createEl("video", {
+					cls: "sc-image-thumb",
+					attr: { src: image.src, preload: "metadata", playsinline: "" },
+				});
+				thumb.muted = true;
+				thumbSize = () => ({ w: thumb.videoWidth, h: thumb.videoHeight });
+			} else {
+				const thumb = tile.createEl("img", {
+					cls: "sc-image-thumb",
+					attr: { src: image.src, alt: image.label, draggable: "false" },
+				});
+				thumbSize = () => ({ w: thumb.naturalWidth, h: thumb.naturalHeight });
+			}
+			tile.createDiv({ cls: "sc-image-tile-name", text: image.label });
+			tile.setAttr("aria-label", image.label);
+			tile.addEventListener("pointerdown", (evt) => {
+				// A fresh drop takes the image's own aspect ratio (when the thumbnail
+				// has loaded), snapped to the grid and capped for very tall images.
+				const natural = thumbSize();
+				const ratio =
+					natural.w > 0 && natural.h > 0 ? natural.h / natural.w : CUSTOM_DEFAULT_H / CUSTOM_DEFAULT_W;
+				const h = Math.min(
+					IMAGE_DEFAULT_MAX_H,
+					Math.max(IMAGE_MIN_H, Math.round((IMAGE_DEFAULT_W * ratio) / CUSTOM_SNAP) * CUSTOM_SNAP),
+				);
+				this.startPointerDrag(evt, "tile", key, image.label, tile.getBoundingClientRect(), {
+					w: IMAGE_DEFAULT_W,
+					h,
+				});
+			});
+		}
+		if (!unplacedKeys.length) {
+			this.trayEl.createDiv({ cls: "section-cards-tray-hint", text: "Every image is on the canvas." });
+		}
+	}
+
 
 	/** A backgrounded tab reports 0x0 for everything; size logic must ignore it. */
 	private viewIsHidden(): boolean {
 		return this.gridEl.clientWidth === 0 && this.gridEl.clientHeight === 0;
 	}
 
-	/** While a canvas card is being resized, preview the size it will snap to. */
-	private previewCustomResize(): void {
+	/** While a canvas card or image is being resized, preview the size it will snap to. */
+	private previewCanvasResize(): void {
 		if (this.viewIsHidden()) return;
-		for (const entry of this.cardEntries) {
-			const key = entry.holder.section.headingRaw;
-			const stored = this.customPlacements[key];
-			if (!stored || !entry.el.hasClass("is-placed")) continue;
-			const w = entry.el.offsetWidth;
-			const h = entry.el.offsetHeight;
+		const mins = this.canvasMins();
+		for (const { key, el } of this.canvasItems()) {
+			const stored = this.activePlacements()[key];
+			if (!stored || !el.hasClass("is-placed")) continue;
+			const w = el.offsetWidth;
+			const h = el.offsetHeight;
 			if (Math.abs(w - stored.w) < 2 && Math.abs(h - stored.h) < 2) continue;
-			const proposed = snapRect({ ...stored, w, h }, CUSTOM_SNAP, CUSTOM_MIN_W, CUSTOM_MIN_H);
+			const proposed = snapRect({ ...stored, w, h }, CUSTOM_SNAP, mins.w, mins.h);
 			const colliding = this.otherPlacements(key).some((other) => rectsCollide(proposed, other, CUSTOM_GAP));
 			this.showSnapPreview(proposed, colliding);
-			return; // only one card resizes at a time
+			return; // only one item resizes at a time
 		}
 	}
 
-	/** Custom Grid: snap a card's CSS resize to the grid, or revert it if it would collide. */
-	private validateCustomSizes(): void {
+	/** Canvas: snap an item's CSS resize to the grid, or revert it if it would collide. */
+	private validateCanvasSizes(): void {
 		this.hideSnapPreview();
 		// Switching tabs hides the view: every card then measures 0x0, which used to be
 		// read as a resize-to-minimum and saved, shrinking the whole layout.
 		if (this.viewIsHidden()) return;
+		const placements = this.activePlacements();
+		const mins = this.canvasMins();
 		let changed = false;
-		for (const entry of this.cardEntries) {
-			const key = entry.holder.section.headingRaw;
-			const stored = this.customPlacements[key];
-			if (!stored || !entry.el.hasClass("is-placed")) continue;
-			const w = entry.el.offsetWidth;
-			const h = entry.el.offsetHeight;
+		for (const { key, el } of this.canvasItems()) {
+			const stored = placements[key];
+			if (!stored || !el.hasClass("is-placed")) continue;
+			const w = el.offsetWidth;
+			const h = el.offsetHeight;
 			if (w === 0 && h === 0) continue; // individually hidden (e.g. mid-transition)
 			if (Math.abs(w - stored.w) < 2 && Math.abs(h - stored.h) < 2) continue;
-			const proposed = snapRect({ ...stored, w, h }, CUSTOM_SNAP, CUSTOM_MIN_W, CUSTOM_MIN_H);
+			const proposed = snapRect({ ...stored, w, h }, CUSTOM_SNAP, mins.w, mins.h);
 			if (
 				(proposed.w === stored.w && proposed.h === stored.h) ||
 				this.otherPlacements(key).some((other) => rectsCollide(proposed, other, CUSTOM_GAP))
 			) {
 				// Snapped back to what it was, or the new size would collide: restore.
-				entry.el.setCssStyles({ width: `${stored.w}px`, height: `${stored.h}px` });
+				el.setCssStyles({ width: `${stored.w}px`, height: `${stored.h}px` });
 			} else {
-				this.customPlacements[key] = proposed;
-				entry.el.setCssStyles({ width: `${proposed.w}px`, height: `${proposed.h}px` });
+				placements[key] = proposed;
+				el.setCssStyles({ width: `${proposed.w}px`, height: `${proposed.h}px` });
 				changed = true;
 			}
 		}
-		if (changed) this.persistCustom();
+		if (changed) this.persistCanvas();
 	}
 
 	/** Normalise a source line / DOM text for the drag-start sanity check. */
@@ -7167,11 +7714,14 @@ class MergeCardsModal extends Modal {
 
 class ConfirmClearModal extends Modal {
 	private readonly count: number;
+	/** What the canvas holds: "section" on the Custom Grid, "image" on Images. */
+	private readonly noun: string;
 	private readonly onConfirm: () => void;
 
-	constructor(app: App, count: number, onConfirm: () => void) {
+	constructor(app: App, count: number, noun: string, onConfirm: () => void) {
 		super(app);
 		this.count = count;
+		this.noun = noun;
 		this.onConfirm = onConfirm;
 	}
 
@@ -7179,7 +7729,7 @@ class ConfirmClearModal extends Modal {
 		const { contentEl } = this;
 		contentEl.createEl("h3", { text: "Clear the layout?" });
 		contentEl.createEl("p", {
-			text: `Are you sure? This removes ${this.count === 1 ? "the 1 placed card" : `all ${this.count} placed cards`} from the canvas and returns ${this.count === 1 ? "it" : "them"} to the section list. Your notes are not changed.`,
+			text: `Are you sure? This removes ${this.count === 1 ? `the 1 placed ${this.noun}` : `all ${this.count} placed ${this.noun}s`} from the canvas and returns ${this.count === 1 ? "it" : "them"} to the list. Your notes are not changed.`,
 		});
 
 		new Setting(contentEl)
@@ -8007,18 +8557,33 @@ export default class SectionCardsPlugin extends Plugin {
 			}),
 		);
 
-		// Keep a note's remembered view attached to it when it is renamed or moved.
+		// Keep a note's remembered view attached to it when it is renamed or moved —
+		// and Images-canvas placements attached to a renamed image, on every note.
 		this.registerEvent(
 			this.app.vault.on("rename", (file, oldPath) => {
-				const saved = this.settings.perFile?.[oldPath];
-				if (!saved) return;
-				delete this.settings.perFile[oldPath];
-				this.settings.perFile[file.path] = saved;
-				void this.saveSettings();
-				for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
-					const view = leaf.view;
-					if (view instanceof SectionCardsView && view.filePath === oldPath) view.filePath = file.path;
+				let changed = false;
+				for (const entry of Object.values(this.settings.perFile ?? {})) {
+					const rect = entry.imagesGrid?.[oldPath];
+					if (rect && entry.imagesGrid) {
+						entry.imagesGrid[file.path] = rect;
+						delete entry.imagesGrid[oldPath];
+						changed = true;
+					}
 				}
+				for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
+					if (leaf.view instanceof SectionCardsView) leaf.view.renameImageKey(oldPath, file.path);
+				}
+				const saved = this.settings.perFile?.[oldPath];
+				if (saved) {
+					delete this.settings.perFile[oldPath];
+					this.settings.perFile[file.path] = saved;
+					changed = true;
+					for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
+						const view = leaf.view;
+						if (view instanceof SectionCardsView && view.filePath === oldPath) view.filePath = file.path;
+					}
+				}
+				if (changed) void this.saveSettings();
 			}),
 		);
 
@@ -8437,6 +9002,30 @@ export default class SectionCardsPlugin extends Plugin {
 		const current = this.settings.perFile[path] ?? { ...base };
 		current.customGrid = placements;
 		if (zoom !== undefined) current.customZoom = zoom;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
+	/** The Images canvas's placements and zoom, stored beside the Custom Grid's. */
+	getImagesGrid(path: string): Record<string, CardRect> {
+		return this.settings.perFile?.[path]?.imagesGrid ?? {};
+	}
+
+	getImagesZoom(path: string): number {
+		return this.settings.perFile?.[path]?.imagesZoom ?? 1;
+	}
+
+	async saveImagesGrid(
+		path: string,
+		placements: Record<string, CardRect>,
+		base: ViewSettings,
+		zoom?: number,
+	): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		current.imagesGrid = placements;
+		if (zoom !== undefined) current.imagesZoom = zoom;
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
 	}
