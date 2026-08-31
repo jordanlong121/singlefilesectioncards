@@ -119,9 +119,10 @@ const TEMPLATE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height
 function toolbarHtml(layout, mode = "default") {
 	const seg = (label, key) =>
 		`<button${mode === key ? ' class="is-active"' : ""}${layout === "custom" || layout === "images" ? " disabled" : ""}>${label}</button>`;
-	// The Calendar hides the dates checkbox (redundant there) and, via the layout
-	// class in styles.css, the Card level and View mode controls.
-	const datesHidden = layout === "calendar" ? " is-hidden" : "";
+	// The Calendar hides the dates checkbox (redundant there), as does the Images
+	// canvas (dates mean nothing to pictures); styles.css hides the Card level and
+	// filter controls via the layout class.
+	const datesHidden = layout === "calendar" || layout === "images" ? " is-hidden" : "";
 	return `<div class="section-cards-toolbar">
 	<button class="section-cards-icon-btn section-cards-menu-btn">${MENU_ICON}</button>
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
