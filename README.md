@@ -35,7 +35,7 @@ If this plugin is useful to you, you can support its development:
 - **Templates and dates.** New cards can start from a template note.
 - **Make it yours.** Apply custom card colors and background images (remembered per note),
   and tune the look with the [Style Settings](https://github.com/mgmeyers/obsidian-style-settings) plugin.
-- **Navigate as cards.** Wikilinks open the linked note's card wall, ↗ opens the section in a
+- **Navigate as cards.** Wikilinks open the linked note's card wall, the ↗ button opens the section in a
   normal editor.
 - **Keyboard shortcuts.** `1`–`6` heading level, `L` layouts, `H`/`D` hierarchy/dividers,
   `,`/`.` previous/next heading, `N` new card, `S` starred lines only, `Ctrl/⌘+F` filter — the toolbar's `?` button
@@ -129,7 +129,12 @@ Right-click a task or paragraph on a card (long-press on mobile) for a menu.
   current sort order
 - **Move line to today** — on a dated note, sends the block to today's card, creating it first
   if the note doesn't have one yet
+- **Edit line…** — opens the block in a small edit window, in the same live-preview (or
+  source/plain) editor mode cards use; double-clicking the line opens it too
 - **Mark done / Mark undone** — ticks or unticks the task where it sits
+- **Copy / Cut line** — puts the block on the clipboard; Cut also removes it from the section
+- **Paste below** — inserts the clipboard contents after the block (from a card's empty space,
+  **Paste at end** appends to the card instead)
 - **Add star / Remove star** — marks the line with the star emoji, for the toolbar's
   starred-only view (see [Filter and starred lines](#filter-and-starred-lines))
 - **Delete line** — removes the block (and sub-items) from the section

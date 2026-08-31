@@ -2067,6 +2067,41 @@ async function pasteAtSectionEnd(
 	return ok;
 }
 
+/** Replace one movable block's lines at write time, re-locating the section and
+ * verifying the block's text the same way delete and move do. */
+async function replaceBlockInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	from: Section,
+	blockIndex: number,
+	expectedBlockText: string,
+	newText: string,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, from);
+		if (!target) {
+			ok = false;
+			return data;
+		}
+		const bodyStart = bodyStartLine(target);
+		const body = lines.slice(bodyStart, target.endLine);
+		const block = movableBlocks(body)[blockIndex];
+		if (!block || body.slice(block.start, block.end).join("\n") !== expectedBlockText) {
+			ok = false; // the block moved or changed since the menu opened — refuse
+			return data;
+		}
+		lines.splice(bodyStart + block.start, block.end - block.start, ...newText.replace(/\s+$/, "").split(/\r?\n/));
+		return lines.join(eol);
+	});
+
+	return ok;
+}
+
 /** Insert text right after a given movable block, verifying the block's text first. */
 async function insertAfterBlockInFile(
 	app: App,
@@ -2988,6 +3023,24 @@ export class SectionCardsView extends ItemView {
 		return Array.from(
 			bodyEl.querySelectorAll<HTMLElement>(":scope > p, :scope > ul > li, :scope > ol > li"),
 		);
+	}
+
+	/** The movable block under `target`, verified against the parsed body — the same
+	 * DOM↔source agreement every block action requires before touching the file. */
+	private blockAt(
+		bodyEl: HTMLElement,
+		target: HTMLElement | null,
+		section: Section,
+	): { blockIndex: number; blockText: string; el: HTMLElement } | null {
+		const el = target?.closest<HTMLElement>(".sc-block");
+		if (!el || !bodyEl.contains(el)) return null;
+		const domIndex = this.eligibleBlockEls(bodyEl).indexOf(el);
+		const body = section.body.split("\n");
+		const block = movableBlocks(body)[domIndex];
+		if (domIndex < 0 || !block || !SectionCardsView.blockTextsAgree(el, body.slice(block.start, block.end))) {
+			return null;
+		}
+		return { blockIndex: domIndex, blockText: body.slice(block.start, block.end).join("\n"), el };
 	}
 
 	/**
@@ -5027,7 +5080,7 @@ export class SectionCardsView extends ItemView {
 		});
 
 		const openBtn = actions.createEl("button", { cls: "section-card-open" });
-		setIcon(openBtn, "arrow-up-right");
+		setIcon(openBtn, "external-link");
 		openBtn.setAttr("aria-label", "Open this section in the note");
 		openBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -5095,6 +5148,10 @@ export class SectionCardsView extends ItemView {
 			window.addEventListener("pointerup", arm, { once: true });
 		});
 
+		// A click on a block arms this before opening the card editor, so the second
+		// click of a double can cancel it and open the Edit line window instead.
+		let pendingEdit: number | null = null;
+
 		card.addEventListener("click", (evt) => {
 			const target = evt.target as HTMLElement;
 			// Let links and internal-link clicks behave normally.
@@ -5118,7 +5175,35 @@ export class SectionCardsView extends ItemView {
 				void open.finish(true).then(() => this.startEditing(card, file, holder.section));
 				return;
 			}
+			// On a block, the card editor waits a beat so a double-click can claim the
+			// click pair for the Edit line window instead. Elsewhere it opens at once.
+			if (this.blockAt(bodyEl, target, holder.section)) {
+				if (evt.detail > 1) return; // second click of a double — dblclick handles it
+				if (pendingEdit !== null) window.clearTimeout(pendingEdit);
+				pendingEdit = window.setTimeout(() => {
+					pendingEdit = null;
+					if (!card.hasClass("is-editing")) this.startEditing(card, file, holder.section);
+				}, 280);
+				return;
+			}
 			this.startEditing(card, file, holder.section);
+		});
+
+		// Double-click a task or paragraph: open it in the Edit line window.
+		bodyEl.addEventListener("dblclick", (evt) => {
+			if (card.hasClass("is-editing")) return;
+			const target = evt.target as HTMLElement | null;
+			if (target?.closest("a") || target?.closest("input[type=checkbox]")) return;
+			if (this.layout === "calendar" && !card.hasClass("is-maximized")) return;
+			const found = this.blockAt(bodyEl, target, holder.section);
+			if (!found) return;
+			if (pendingEdit !== null) {
+				window.clearTimeout(pendingEdit);
+				pendingEdit = null;
+			}
+			evt.preventDefault();
+			evt.stopPropagation();
+			this.openEditBlockModal(file, holder.section, found.blockIndex, found.blockText);
 		});
 
 		// Right-click a task or paragraph: send it to a neighbouring card without dragging.
@@ -5908,6 +5993,17 @@ export class SectionCardsView extends ItemView {
 	 * wall is displayed — pins and the current sort included, always at the view's
 	 * heading level), toggle it done when it's a task, or delete it.
 	 */
+	/** The Edit line window — from the block menu or a double-click on the block. */
+	private openEditBlockModal(file: TFile, section: Section, blockIndex: number, blockText: string): void {
+		new EditBlockModal(this.plugin, blockText, async (text) => {
+			const ok = await replaceBlockInFile(this.app, file, this.headingLevel, section, blockIndex, blockText, text);
+			if (!ok) {
+				new Notice("Single File Section Cards: couldn't find that line — the file changed on disk.");
+			}
+			await this.refresh();
+		}).open();
+	}
+
 	private openBlockMenu(
 		evt: MouseEvent,
 		file: TFile,
@@ -5974,6 +6070,13 @@ export class SectionCardsView extends ItemView {
 			);
 		}
 		if (prev || next || showToday) menu.addSeparator();
+
+		menu.addItem((item) =>
+			item
+				.setTitle("Edit line…")
+				.setIcon("pencil-line")
+				.onClick(() => this.openEditBlockModal(file, section, blockIndex, blockText)),
+		);
 
 		// Only the block's own checkbox counts — a plain item with task children isn't a task.
 		const isTask = TASK_RE.test(blockText.split("\n")[0]);
@@ -7432,6 +7535,80 @@ class QuickAddModal extends Modal {
 	}
 }
 
+/**
+ * Edit one block — a task with its sub-items, or a paragraph — in the card editor's own
+ * flavour: the live-preview embed (or source) per the editor-mode setting, falling back
+ * to a plain textarea. Ctrl/⌘+Enter saves; Escape cancels.
+ */
+class EditBlockModal extends Modal {
+	private readonly plugin: SectionCardsPlugin;
+	private readonly initial: string;
+	private readonly onSubmit: (text: string) => void | Promise<void>;
+	private editor: EmbeddedEditor | null = null;
+	private box: HTMLTextAreaElement | null = null;
+
+	constructor(plugin: SectionCardsPlugin, initial: string, onSubmit: (text: string) => void | Promise<void>) {
+		super(plugin.app);
+		this.plugin = plugin;
+		this.initial = initial;
+		this.onSubmit = onSubmit;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.addClass("section-cards-quickadd-modal");
+		contentEl.createEl("h3", { text: "Edit line" });
+
+		const mode = this.plugin.settings.editorMode;
+		if (mode !== "plain") {
+			const host = contentEl.createDiv({ cls: "section-card-editor-embed section-cards-quickadd-editor" });
+			this.editor = createEmbeddedEditor(this.plugin.app, host, {
+				value: this.initial,
+				mode: mode === "source" ? "source" : "live",
+				onSave: () => this.submit(),
+				onCancel: () => this.close(),
+				onChange: () => {},
+			});
+			if (!this.editor) host.remove();
+		}
+		if (!this.editor) {
+			this.box = contentEl.createEl("textarea", { cls: "section-cards-quickadd-input" });
+			this.box.value = this.initial;
+			this.box.rows = Math.min(10, this.initial.split("\n").length + 1);
+			// Enter makes a new line; Ctrl/⌘+Enter saves.
+			this.box.addEventListener("keydown", (e) => {
+				if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+					e.preventDefault();
+					this.submit();
+				}
+			});
+		}
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => b.setButtonText("Save").setCta().onClick(() => this.submit()));
+
+		if (this.editor) this.editor.focusEnd();
+		else this.box?.focus();
+	}
+
+	private submit(): void {
+		const text = (this.editor ? this.editor.value : (this.box?.value ?? "")).replace(/\s+$/, "");
+		if (!text.trim()) {
+			new Notice("The line can't be empty — cancel and delete it instead.");
+			return;
+		}
+		this.close();
+		void this.onSubmit(text);
+	}
+
+	onClose(): void {
+		this.editor?.destroy();
+		this.editor = null;
+		this.contentEl.empty();
+	}
+}
+
 class SectionCardsSettingTab extends PluginSettingTab {
 	plugin: SectionCardsPlugin;
 
@@ -7848,7 +8025,7 @@ export default class SectionCardsPlugin extends Plugin {
 		// With the setting on, a note that has a remembered cards view opens as cards:
 		// the markdown leaf that just opened it is swapped to this plugin's view. The
 		// swap is deferred a tick — replacing the view from inside file-open re-enters
-		// the workspace mid-open. revealSection sets skipAutoOpen so the ↗ button's
+		// the workspace mid-open. revealSection sets skipAutoOpen so the link button's
 		// deliberate trip to the editor isn't hijacked straight back.
 		this.registerEvent(
 			this.app.workspace.on("file-open", (file) => {
@@ -8283,7 +8460,7 @@ export default class SectionCardsPlugin extends Plugin {
 		}
 	}
 
-	/** The one note whose next markdown open must NOT be swapped back to cards (the ↗
+	/** The one note whose next markdown open must NOT be swapped back to cards (the link
 	 * button's deliberate editor trip); time-boxed so a stale flag can't linger. */
 	private skipAutoOpen: { path: string; until: number } | null = null;
 
