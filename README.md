@@ -131,6 +131,15 @@ selected column row in Hierarchy, scrolling the previous/next bar to the top in 
 
 ![Dividers](screenshots/dividers.png)
 
+## On mobile
+
+The plugin works reasonably well on iOS devices, though it isn't fully tested there
+yet. The **Horizontal** layout in particular makes an excellent way to input data
+while on the go: one full-width card per section, with quick add, checkboxes, and
+in-place editing a thumb-tap away.
+
+<img src="screenshots/mobile-horizontal.png" alt="The Horizontal layout on an iPhone" width="320">
+
 ## Brainstorming with cards
 
 A single note makes a whole brainstorm: one `###` heading per theme, and the wall becomes your
