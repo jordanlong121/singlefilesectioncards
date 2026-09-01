@@ -8,6 +8,7 @@ import {
 	MarkdownRenderer,
 	MarkdownView,
 	Menu,
+	MenuItem,
 	Modal,
 	Notice,
 	Platform,
@@ -70,7 +71,16 @@ export type Placement = "top" | "logical" | "bottom";
  * heading columns on the left, with the selected branch's cards rendered in whichever
  * of these layouts is active.
  */
-export type Layout = "grid" | "aligned" | "tight" | "horizontal" | "vertical" | "custom" | "images" | "calendar";
+export type Layout =
+	| "grid"
+	| "aligned"
+	| "tight"
+	| "horizontal"
+	| "vertical"
+	| "custom"
+	| "images"
+	| "links"
+	| "calendar";
 
 const SORT_LABELS: Record<SortOrder, string> = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 
@@ -83,6 +93,7 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["vertical", "Vertical", "Full-height cards side by side, scrolling sideways"],
 	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
 	["images", "Images", "Freeform canvas of the note's images: drag previews on from the tray, place and resize them"],
+	["links", "Links", "Freeform canvas of the note's web links: drag page previews on from the tray, place and resize them"],
 	["calendar", "Calendar", "Date cards on a monthly calendar grid — needs the Dates checkbox"],
 ];
 
@@ -153,6 +164,11 @@ interface SectionCardsSettings {
 	hierTaskCounts: boolean;
 	/** The nine card colors as configured (label + hex per slot); see CARD_COLORS. */
 	palette: PaletteColor[];
+	/** Notes recently opened in the cards view, newest first — the right-click menu's
+	 * quick-switch section shows the top of this list. */
+	recentFiles: string[];
+	/** Quick-switch entries pinned in place; only unpinned slots rotate with history. */
+	pinnedRecentFiles: string[];
 	/** Remembered view per note, keyed by vault path. Lives here, never in the note. */
 	perFile: Record<string, PerFileView>;
 }
@@ -164,6 +180,8 @@ export interface PerFileView extends ViewSettings {
 	customZoom?: number;
 	imagesGrid?: Record<string, CardRect>;
 	imagesZoom?: number;
+	linksGrid?: Record<string, CardRect>;
+	linksZoom?: number;
 	/** Headings pinned to the top of the card wall, in the order they were pinned. */
 	pinned?: string[];
 	/** Whether this note's headings name dates (today highlight, jump-to-date). Unset
@@ -388,6 +406,8 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	layout: "grid",
 	hierTaskCounts: true,
 	palette: CARD_COLORS.map(([, label, hex]) => ({ label, hex })),
+	recentFiles: [],
+	pinnedRecentFiles: [],
 	perFile: {},
 };
 
@@ -1681,6 +1701,12 @@ export interface ImageLink {
 	external: boolean;
 }
 
+/** An image link plus where its full markup sits in the note, for surgical removal. */
+export interface ImageLinkSpan extends ImageLink {
+	start: number;
+	end: number;
+}
+
 /** External here means "renderable as-is, no vault resolution": a URL or data: URI. */
 const EXTERNAL_SRC = /^(https?:\/\/|data:)/i;
 
@@ -1692,30 +1718,84 @@ const EXTERNAL_SRC = /^(https?:\/\/|data:)/i;
  * only markdown/HTML paths are screened, because an unresolvable URL never gets
  * another chance.
  */
-export function imageLinksIn(content: string): ImageLink[] {
-	const found: { index: number; link: ImageLink }[] = [];
+export function imageLinkSpans(content: string): ImageLinkSpan[] {
+	const found: ImageLinkSpan[] = [];
 	// exec loops rather than matchAll: the tsconfig's ES2019 lib has no matchAll,
 	// whose any-typed matches tripped the plugin review's no-unsafe-* lints.
 	const wiki = /!\[\[([^\][|#\n]+)(?:#[^\][|\n]*)?(?:\|[^\][\n]*)?\]\]/g;
 	const md = /!\[[^\]\n]*\]\(\s*(?:<([^<>\n]+)>|([^)\s]+))(?:\s+"[^"\n]*")?\s*\)/g;
 	const htmlImg = /<img\s[^>]*?src\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)'|([^\s>'"]+))[^>]*>/gi;
 	for (let m = wiki.exec(content); m !== null; m = wiki.exec(content)) {
-		found.push({ index: m.index, link: { target: m[1].trim(), external: false } });
+		found.push({ start: m.index, end: m.index + m[0].length, target: m[1].trim(), external: false });
 	}
-	const pathLike = (index: number, target: string) => {
+	const pathLike = (m: { index: number; 0: string }, target: string) => {
 		if (!target) return;
 		const external = EXTERNAL_SRC.test(target);
 		const path = target.split("#")[0];
 		if (!external && !IMAGE_EXT.test(path) && !VIDEO_EXT.test(path)) return;
-		found.push({ index, link: { target, external } });
+		found.push({ start: m.index, end: m.index + m[0].length, target, external });
 	};
 	for (let m = md.exec(content); m !== null; m = md.exec(content)) {
-		pathLike(m.index, (m[1] ?? m[2] ?? "").trim());
+		pathLike(m, (m[1] ?? m[2] ?? "").trim());
 	}
 	for (let m = htmlImg.exec(content); m !== null; m = htmlImg.exec(content)) {
-		pathLike(m.index, (m[1] ?? m[2] ?? m[3] ?? "").trim());
+		pathLike(m, (m[1] ?? m[2] ?? m[3] ?? "").trim());
 	}
-	return found.sort((a, b) => a.index - b.index).map((f) => f.link);
+	return found.sort((a, b) => a.start - b.start);
+}
+
+export function imageLinksIn(content: string): ImageLink[] {
+	return imageLinkSpans(content).map(({ target, external }) => ({ target, external }));
+}
+
+/** Links canvas: page previews start portrait-ish, like a browser window. */
+const LINK_DEFAULT_W = 288;
+const LINK_DEFAULT_H = 336;
+
+/** One web link found in the note: the URL and the best display name for it. */
+export interface UrlLink {
+	url: string;
+	label: string;
+}
+
+/** Punctuation a sentence hangs on a bare URL's tail without belonging to it. */
+const URL_TRAILING = /[)\],.;:!?'"<>]+$/;
+
+/**
+ * Every http(s) link the note carries, in order of first appearance and deduped by
+ * URL: markdown links (`[label](url)` — their label wins) and bare/autolinked URLs.
+ * URLs already embedded as media (`![](url)`, `<img src>`) belong to the Images
+ * canvas and are skipped here.
+ */
+export function urlLinksIn(content: string): UrlLink[] {
+	const media = new Set(imageLinkSpans(content).flatMap((s) => (s.external ? [s.target] : [])));
+	const found: { index: number; url: string; label: string }[] = [];
+	const seen = new Set<string>();
+	const push = (index: number, rawUrl: string, label: string) => {
+		const url = rawUrl.replace(URL_TRAILING, "");
+		if (!url || seen.has(url) || media.has(url)) return;
+		seen.add(url);
+		let name = label.trim();
+		if (!name) {
+			try {
+				const parsed = new URL(url);
+				name = parsed.host + (parsed.pathname === "/" ? "" : parsed.pathname);
+			} catch {
+				name = url;
+			}
+		}
+		found.push({ index, url, label: name });
+	};
+	// Markdown links first, so their labels win over the bare-URL sweep below.
+	const md = /(^|[^!])\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)[^)\n]*\)/g;
+	for (let m = md.exec(content); m !== null; m = md.exec(content)) {
+		push(m.index, m[3], m[2]);
+	}
+	const bare = /https?:\/\/[^\s<>()[\]"']+/g;
+	for (let m = bare.exec(content); m !== null; m = bare.exec(content)) {
+		push(m.index, m[0], "");
+	}
+	return found.sort((a, b) => a.index - b.index).map(({ url, label }) => ({ url, label }));
 }
 
 /** A short stable digest for keying data: URIs — storing the URI itself as a
@@ -2405,6 +2485,14 @@ export class SectionCardsView extends ItemView {
 	private imageEntries: { key: string; el: HTMLElement; label: string }[] = [];
 	/** The current note's images by placement key, for tray tiles and collision checks. */
 	private imagesByKey = new Map<string, NoteImage>();
+	/** Links canvas: placements for the current note, keyed by URL. */
+	private linkPlacements: Record<string, CardRect> = {};
+	/** Which note's link placements are loaded (like placementsLoadedFor for cards). */
+	private linksLoadedFor: string | null = null;
+	/** The Links canvas's preview tiles, in document order. Rebuilt every render. */
+	private linkEntries: { key: string; el: HTMLElement; label: string }[] = [];
+	/** The current note's links by URL, for tray tiles and collision checks. */
+	private linksByKey = new Map<string, UrlLink>();
 	private trayEl!: HTMLElement;
 	/** Invisible marker that gives the canvas its scrollable size in every direction. */
 	private canvasExtentEl!: HTMLElement;
@@ -2412,6 +2500,8 @@ export class SectionCardsView extends ItemView {
 	private customZoom = 1;
 	/** Images canvas zoom factor, persisted per note separately from the card canvas. */
 	private imagesZoom = 1;
+	/** Links canvas zoom factor, persisted per note like the other canvases'. */
+	private linksZoom = 1;
 	private zoomLabelEl: HTMLElement | null = null;
 	/** Which note's placements are loaded; reloading on every refresh caused revert races. */
 	private placementsLoadedFor: string | null = null;
@@ -2453,6 +2543,8 @@ export class SectionCardsView extends ItemView {
 				this.viewSettings(),
 				this.imagesZoom,
 			);
+		} else if (this.layout === "links") {
+			void this.plugin.saveLinksGrid(file.path, { ...this.linkPlacements }, this.viewSettings(), this.linksZoom);
 		} else {
 			void this.plugin.saveCustomGrid(
 				file.path,
@@ -2624,30 +2716,39 @@ export class SectionCardsView extends ItemView {
 	 * share the tray, zoom, pointer-drag, and snap machinery. These helpers pick the
 	 * active canvas's state so that machinery never has to know which one it serves. */
 	private isCanvasLayout(): boolean {
-		return this.layout === "custom" || this.layout === "images";
+		return this.layout === "custom" || this.layout === "images" || this.layout === "links";
 	}
 
 	private activePlacements(): Record<string, CardRect> {
-		return this.layout === "images" ? this.imagePlacements : this.customPlacements;
+		if (this.layout === "images") return this.imagePlacements;
+		if (this.layout === "links") return this.linkPlacements;
+		return this.customPlacements;
 	}
 
 	private canvasZoom(): number {
-		return this.layout === "images" ? this.imagesZoom : this.customZoom;
+		if (this.layout === "images") return this.imagesZoom;
+		if (this.layout === "links") return this.linksZoom;
+		return this.customZoom;
 	}
 
 	private canvasMins(): { w: number; h: number } {
-		return this.layout === "images" ? { w: IMAGE_MIN_W, h: IMAGE_MIN_H } : { w: CUSTOM_MIN_W, h: CUSTOM_MIN_H };
+		// The preview canvases share the small minimum; only cards need reading room.
+		return this.layout === "images" || this.layout === "links"
+			? { w: IMAGE_MIN_W, h: IMAGE_MIN_H }
+			: { w: CUSTOM_MIN_W, h: CUSTOM_MIN_H };
 	}
 
 	/** The active canvas's placeable elements and their placement keys. */
 	private canvasItems(): { key: string; el: HTMLElement }[] {
 		if (this.layout === "images") return this.imageEntries;
+		if (this.layout === "links") return this.linkEntries;
 		return this.cardEntries.map((entry) => ({ key: entry.holder.section.headingRaw, el: entry.el }));
 	}
 
 	/** Re-place the active canvas after a placement change (drop, untray, clear, zoom). */
 	private applyCanvasLayout(): void {
 		if (this.layout === "images") this.applyImagesLayout();
+		else if (this.layout === "links") this.applyLinksLayout();
 		else this.applyCustomLayout();
 	}
 
@@ -2679,7 +2780,7 @@ export class SectionCardsView extends ItemView {
 	private syncDatesLabel(): void {
 		this.datesLabelEl?.toggleClass(
 			"is-hidden",
-			(this.layout === "calendar" && this.containsDates) || this.layout === "images",
+			(this.layout === "calendar" && this.containsDates) || this.layout === "images" || this.layout === "links",
 		);
 	}
 
@@ -2737,7 +2838,7 @@ export class SectionCardsView extends ItemView {
 		// in the Hierarchy view mode.
 		const backgroundMenu = (evt: MouseEvent) => {
 			const target = evt.target as HTMLElement | null;
-			if (target?.closest(".section-card, button")) return;
+			if (target?.closest(".section-card, .sc-image-card, button")) return;
 			evt.preventDefault();
 			const menu = new Menu();
 			menu.addItem((item) =>
@@ -2746,10 +2847,16 @@ export class SectionCardsView extends ItemView {
 					.setIcon("plus")
 					.onClick(() => this.promptNewCard()),
 			);
-			menu.addSeparator();
-			this.addLayoutItems(menu);
-			menu.addSeparator();
-			this.addBackgroundItems(menu, this.viewSettings());
+			// On the Images canvas, empty space also takes a clipboard image.
+			if (this.layout === "images") {
+				menu.addItem((item) =>
+					item
+						.setTitle("Paste image…")
+						.setIcon("clipboard-paste")
+						.onClick(() => void this.pasteImageFromClipboard()),
+				);
+			}
+			this.addCommonMenuItems(menu);
 			menu.showAtMouseEvent(evt);
 		};
 		this.registerDomEvent(this.gridEl, "contextmenu", backgroundMenu);
@@ -3008,7 +3115,7 @@ export class SectionCardsView extends ItemView {
 
 	/** The layout lives as a class on the view root so CSS can restyle grid *and* scrolling. */
 	private applyLayoutClass(): void {
-		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical", "custom", "images", "calendar"]) {
+		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical", "custom", "images", "links", "calendar"]) {
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name);
 		}
 		this.contentEl.toggleClass("is-hier-on", this.hierarchyActive());
@@ -3806,6 +3913,7 @@ export class SectionCardsView extends ItemView {
 					}),
 			);
 		}
+		this.addCommonMenuItems(menu);
 		menu.showAtMouseEvent(evt);
 	}
 
@@ -4254,7 +4362,6 @@ export class SectionCardsView extends ItemView {
 		}
 
 		menu.addSeparator();
-		addHeading("Background");
 		this.addBackgroundItems(menu, base);
 
 		menu.addSeparator();
@@ -4268,32 +4375,126 @@ export class SectionCardsView extends ItemView {
 		menu.showAtMouseEvent(evt);
 	}
 
-	/**
-	 * The Layout group — heading plus the seven layout views, mirroring the toolbar
-	 * dropdown; shared by the hamburger menu and the wall's right-click menu. The
-	 * current one is checked, and Calendar greys out in notes with no date headings.
-	 */
-	private addLayoutItems(menu: Menu): void {
+	/** A disabled heading row, the flat-menu fallback's group label. */
+	private static addMenuHeading(menu: Menu, text: string): void {
 		menu.addItem((item) =>
 			item
-				.setTitle(createFragment((frag) => frag.createSpan({ cls: "sfsc-menu-heading", text: "Layout" })))
+				.setTitle(createFragment((frag) => frag.createSpan({ cls: "sfsc-menu-heading", text })))
 				.setDisabled(true),
 		);
-		for (const [value, label] of LAYOUT_OPTIONS) {
+	}
+
+	/** Hover-open submenus keep the menus short, but setSubmenu is an undocumented
+	 * (stable, widely used) MenuItem API — where it's missing, groups render flat
+	 * under a heading like they used to. */
+	private static submenuSupported(): boolean {
+		return typeof (MenuItem.prototype as unknown as { setSubmenu?: unknown }).setSubmenu === "function";
+	}
+
+	/**
+	 * The Layout group — the layout views, mirroring the toolbar dropdown; shared by
+	 * the hamburger menu and the wall's right-click menu. A single "Layouts" row whose
+	 * submenu opens on hover (flat list under a heading where submenus don't exist).
+	 * The current one is checked; Calendar greys out in notes with no date headings.
+	 */
+	private addLayoutItems(menu: Menu): void {
+		const addOptions = (target: Menu) => {
+			for (const [value, label] of LAYOUT_OPTIONS) {
+				target.addItem((item) =>
+					item
+						.setTitle(label)
+						.setChecked(this.layout === value)
+						.setDisabled(value === "calendar" && this.layout !== "calendar" && !this.calendarSelectable())
+						.onClick(() => {
+							if (this.layout !== value) this.setLayout(value);
+						}),
+				);
+			}
+		};
+		if (!SectionCardsView.submenuSupported()) {
+			SectionCardsView.addMenuHeading(menu, "Layout");
+			addOptions(menu);
+			return;
+		}
+		menu.addItem((item) => {
+			item.setTitle("Layouts").setIcon("layout-grid");
+			addOptions((item as MenuItem & { setSubmenu: () => Menu }).setSubmenu());
+		});
+	}
+
+	/** The shared tail every right-click menu carries beneath its context-specific
+	 * commands: the layout and background groups, then the recent-notes switcher. */
+	private addCommonMenuItems(menu: Menu): void {
+		menu.addSeparator();
+		this.addLayoutItems(menu);
+		this.addBackgroundItems(menu, this.viewSettings());
+		this.addRecentFileItems(menu);
+	}
+
+	/** The quick-switch section at the menu's bottom: the last opened card notes,
+	 * pinned ones held in place so only the unpinned slots rotate with history.
+	 * "Pin notes" (hover submenu; flat under a heading without submenu support)
+	 * toggles which of them — the open note included — stay put. */
+	private addRecentFileItems(menu: Menu): void {
+		const entries = this.plugin.recentFileEntries(this.filePath);
+		if (!entries.length) return;
+		menu.addSeparator();
+		SectionCardsView.addMenuHeading(menu, "Recent notes");
+		for (const entry of entries) {
 			menu.addItem((item) =>
 				item
-					.setTitle(label)
-					.setChecked(this.layout === value)
-					.setDisabled(value === "calendar" && this.layout !== "calendar" && !this.calendarSelectable())
-					.onClick(() => {
-						if (this.layout !== value) this.setLayout(value);
-					}),
+					.setTitle(entry.name)
+					.setIcon(entry.pinned ? "pin" : "file-text")
+					.setDisabled(entry.path === this.filePath)
+					.onClick(() => void this.navigateTo(entry.path)),
 			);
+		}
+
+		// Pin candidates: the open note leads (pinning what you're in is the common
+		// wish), then every listed entry. Checked = pinned; a click toggles.
+		const candidates: { path: string; name: string; pinned: boolean }[] = [];
+		const file = this.getFile();
+		if (file) candidates.push({ path: file.path, name: file.basename, pinned: this.plugin.isRecentPinned(file.path) });
+		for (const entry of entries) {
+			if (!candidates.some((c) => c.path === entry.path)) candidates.push(entry);
+		}
+		const addToggles = (target: Menu) => {
+			for (const candidate of candidates) {
+				target.addItem((item) =>
+					item
+						.setTitle(candidate.name)
+						.setChecked(candidate.pinned)
+						.onClick(() => void this.plugin.toggleRecentPin(candidate.path)),
+				);
+			}
+		};
+		if (SectionCardsView.submenuSupported()) {
+			menu.addItem((item) => {
+				item.setTitle("Pin notes").setIcon("pin");
+				addToggles((item as MenuItem & { setSubmenu: () => Menu }).setSubmenu());
+			});
+		} else {
+			SectionCardsView.addMenuHeading(menu, "Pin notes");
+			addToggles(menu);
 		}
 	}
 
-	/** The Background items — shared by the hamburger menu and the wall's right-click menu. */
+	/** The Background group — a hover-open "Background" submenu (flat under a heading
+	 * where submenus don't exist); shared by the hamburger and right-click menus. */
 	private addBackgroundItems(menu: Menu, base: ViewSettings): void {
+		if (!SectionCardsView.submenuSupported()) {
+			SectionCardsView.addMenuHeading(menu, "Background");
+			this.addBackgroundOptions(menu, base);
+			return;
+		}
+		menu.addItem((item) => {
+			item.setTitle("Background").setIcon("image");
+			this.addBackgroundOptions((item as MenuItem & { setSubmenu: () => Menu }).setSubmenu(), base);
+		});
+	}
+
+	/** The Background actions themselves: picker, live sliders, remove. */
+	private addBackgroundOptions(menu: Menu, base: ViewSettings): void {
 		menu.addItem((item) =>
 			item
 				.setTitle("Select background…")
@@ -4671,6 +4872,7 @@ export class SectionCardsView extends ItemView {
 
 		this.filePath = file.path;
 		this.applyBackground();
+		this.plugin.recordRecentFile(file.path);
 		const content = await this.app.vault.cachedRead(file);
 		if (gen !== this.renderGeneration) return;
 		const lines = content.split(/\r?\n/);
@@ -4720,19 +4922,17 @@ export class SectionCardsView extends ItemView {
 		// rebuild would force a synchronous reflow of the whole freshly-touched grid.
 		if (this.layout === "calendar") this.updateToolbarOffset();
 
-		// The Images canvas renders the note's image links, not its sections — the
-		// whole card pipeline below doesn't apply, so it takes over here.
-		if (this.layout === "images") {
-			this.renderImagesLayout(file, content);
+		// The Images and Links canvases render the note's links, not its sections —
+		// the whole card pipeline below doesn't apply, so they take over here.
+		if (this.layout === "images" || this.layout === "links") {
+			this.clearPreviewTiles(this.layout === "images" ? "links" : "images");
+			if (this.layout === "images") this.renderImagesLayout(file, content);
+			else this.renderLinksLayout(file, content);
 			return;
 		}
-		// Leaving the Images canvas: its preview tiles don't belong to any card layout.
-		if (this.imageEntries.length) {
-			this.imageLightboxClose?.();
-			for (const entry of this.imageEntries) entry.el.remove();
-			this.imageEntries = [];
-			this.imagesByKey.clear();
-		}
+		// Leaving a preview canvas: its tiles don't belong to any card layout.
+		this.clearPreviewTiles("images");
+		this.clearPreviewTiles("links");
 
 		const sections = parseCards(lines, this.headingLevel, this.plugin.unfiledTitle());
 
@@ -5124,6 +5324,7 @@ export class SectionCardsView extends ItemView {
 					}),
 			);
 			menu.addItem((item) => item.setTitle("Delete card").setIcon("trash-2").onClick(confirmDeleteCard));
+			this.addCommonMenuItems(menu);
 			menu.showAtMouseEvent(evt);
 		});
 
@@ -5399,6 +5600,7 @@ export class SectionCardsView extends ItemView {
 							await this.refresh();
 						}),
 				);
+				this.addCommonMenuItems(menu);
 				menu.showAtMouseEvent(evt);
 				return;
 			}
@@ -5707,7 +5909,9 @@ export class SectionCardsView extends ItemView {
 		const present =
 			this.layout === "images"
 				? (key: string) => this.imagesByKey.size === 0 || this.imagesByKey.has(key)
-				: (key: string) => this.cardsByHeading.size === 0 || this.cardsByHeading.has(key);
+				: this.layout === "links"
+					? (key: string) => this.linksByKey.size === 0 || this.linksByKey.has(key)
+					: (key: string) => this.cardsByHeading.size === 0 || this.cardsByHeading.has(key);
 		return Object.entries(this.activePlacements())
 			.filter(([key]) => key !== except && present(key))
 			.map(([, rect]) => rect);
@@ -5838,6 +6042,7 @@ export class SectionCardsView extends ItemView {
 		const placed = Object.keys(this.activePlacements()).length;
 		if (!placed) return;
 		if (this.layout === "images") this.imagePlacements = {};
+		else if (this.layout === "links") this.linkPlacements = {};
 		else this.customPlacements = {};
 		this.persistCanvas();
 		this.applyCanvasLayout();
@@ -6054,6 +6259,7 @@ export class SectionCardsView extends ItemView {
 			});
 		}
 		el.createDiv({ cls: "sc-image-card-name", text: image.label });
+		el.addEventListener("contextmenu", (evt) => this.openImageMenu(evt, image));
 
 		const untrayBtn = el.createEl("button", { cls: "sc-image-untray" });
 		setIcon(untrayBtn, "x");
@@ -6225,6 +6431,226 @@ export class SectionCardsView extends ItemView {
 		});
 	}
 
+	/** Drop one preview canvas's tiles — switching layouts, or re-rendering the other
+	 * canvas, must not leave the old tiles in the grid. */
+	private clearPreviewTiles(kind: "images" | "links"): void {
+		const entries = kind === "images" ? this.imageEntries : this.linkEntries;
+		if (!entries.length) return;
+		this.imageLightboxClose?.();
+		for (const entry of entries) entry.el.remove();
+		if (kind === "images") {
+			this.imageEntries = [];
+			this.imagesByKey.clear();
+		} else {
+			this.linkEntries = [];
+			this.linksByKey.clear();
+		}
+	}
+
+	/** The placement key a raw link target resolves to, or null when it isn't this
+	 * layout's media — the removal pass matches spans against a tile with this. */
+	private imageLinkKey(target: string, external: boolean, sourcePath: string): string | null {
+		if (external) return target.startsWith("data:") ? `data:${shortHash(target)}` : target;
+		let linkpath = target.split("#")[0];
+		try {
+			linkpath = decodeURIComponent(linkpath);
+		} catch {
+			// a stray % in a filename — use it as written
+		}
+		const dest = this.app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath);
+		if (!dest || (!IMAGE_EXT.test(dest.path) && !VIDEO_EXT.test(dest.path))) return null;
+		return dest.path;
+	}
+
+	/** Right-click on an image tile (canvas or tray): clipboard and delete commands. */
+	private openImageMenu(evt: MouseEvent, image: NoteImage): void {
+		evt.preventDefault();
+		evt.stopPropagation();
+		const menu = new Menu();
+		if (image.kind === "image") {
+			menu.addItem((item) =>
+				item
+					.setTitle("Copy image")
+					.setIcon("copy")
+					.onClick(() => void this.copyImageToClipboard(image)),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Cut image…")
+					.setIcon("scissors")
+					.onClick(async () => {
+						// Copy first; a cut that couldn't copy must not delete anything.
+						if (await this.copyImageToClipboard(image, true)) this.promptDeleteImage(image);
+					}),
+			);
+		}
+		menu.addItem((item) =>
+			item
+				.setTitle("Paste image…")
+				.setIcon("clipboard-paste")
+				.onClick(() => void this.pasteImageFromClipboard()),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle(`Delete ${image.kind}…`)
+				.setIcon("trash-2")
+				.onClick(() => this.promptDeleteImage(image)),
+		);
+		this.addCommonMenuItems(menu);
+		menu.showAtMouseEvent(evt);
+	}
+
+	/** The tile's bytes: vault files read directly, URLs fetched through Obsidian
+	 * (no CORS taint), data: URIs decoded in place. */
+	private async imageBlob(image: NoteImage): Promise<Blob> {
+		if (image.key.startsWith("data:")) {
+			const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/.exec(image.src);
+			if (!m) throw new Error("malformed data: URI");
+			if (m[2]) {
+				const binary = window.atob(m[3]);
+				const bytes = new Uint8Array(binary.length);
+				for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+				return new Blob([bytes], { type: m[1] || "image/png" });
+			}
+			return new Blob([decodeURIComponent(m[3])], { type: m[1] || "image/svg+xml" });
+		}
+		if (/^https?:\/\//i.test(image.key)) {
+			const res = await requestUrl({ url: image.key });
+			return new Blob([res.arrayBuffer], { type: res.headers["content-type"] ?? "" });
+		}
+		const tfile = this.app.vault.getFileByPath(image.key);
+		if (!tfile) throw new Error(`missing file: ${image.key}`);
+		const mime =
+			{ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", bmp: "image/bmp", avif: "image/avif", svg: "image/svg+xml" }[
+				tfile.extension.toLowerCase()
+			] ?? "application/octet-stream";
+		return new Blob([await this.app.vault.readBinary(tfile)], { type: mime });
+	}
+
+	/** Copy the full image to the system clipboard. The clipboard only takes PNG, so
+	 * every other format is redrawn losslessly-at-full-size through a canvas. */
+	private async copyImageToClipboard(image: NoteImage, silent = false): Promise<boolean> {
+		try {
+			let blob = await this.imageBlob(image);
+			if (blob.type !== "image/png") {
+				const url = URL.createObjectURL(blob);
+				try {
+					const img = new window.Image();
+					await new Promise<void>((resolve, reject) => {
+						img.onload = () => resolve();
+						img.onerror = () => reject(new Error("image failed to decode"));
+						img.src = url;
+					});
+					const canvas = createEl("canvas");
+					canvas.width = img.naturalWidth || 800;
+					canvas.height = img.naturalHeight || 600;
+					const ctx = canvas.getContext("2d");
+					if (!ctx) throw new Error("no canvas context");
+					ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+					blob = await new Promise<Blob>((resolve, reject) => {
+						canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("PNG encode failed"))), "image/png");
+					});
+				} finally {
+					URL.revokeObjectURL(url);
+				}
+			}
+			await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+			if (!silent) new Notice("Image copied to the clipboard.");
+			return true;
+		} catch (err) {
+			console.error("Single File Section Cards: copy image failed", err);
+			new Notice("Couldn't copy the image to the clipboard.");
+			return false;
+		}
+	}
+
+	/** Paste the clipboard's image: saved as an attachment (Obsidian's attachment
+	 * folder rules), embedded at the start or end of the note — the modal asks which. */
+	private async pasteImageFromClipboard(): Promise<void> {
+		const file = this.getFile();
+		if (!file) return;
+		let blob: Blob | null = null;
+		try {
+			for (const item of await navigator.clipboard.read()) {
+				const type = item.types.find((t) => t.startsWith("image/"));
+				if (type) {
+					blob = await item.getType(type);
+					break;
+				}
+			}
+		} catch (err) {
+			console.error("Single File Section Cards: clipboard read failed", err);
+		}
+		if (!blob) {
+			new Notice("No image on the clipboard.");
+			return;
+		}
+		const pasted = blob;
+		new PasteImageModal(this.app, (where) => {
+			void (async () => {
+				const ext = pasted.type === "image/jpeg" ? "jpg" : (pasted.type.split("/")[1]?.split("+")[0] ?? "png");
+				const path = await this.app.fileManager.getAvailablePathForAttachment(
+					`Pasted image ${mo().format("YYYYMMDDHHmmss")}.${ext}`,
+					file.path,
+				);
+				const created = await this.app.vault.createBinary(path, await pasted.arrayBuffer());
+				const link = this.app.fileManager.generateMarkdownLink(created, file.path);
+				const embed = link.startsWith("!") ? link : `!${link}`;
+				await this.app.vault.process(file, (data) => {
+					const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+					if (where === "end") return data.replace(/\s*$/, "") + eol + eol + embed + eol;
+					const lines = data.split(/\r?\n/);
+					lines.splice(firstContentLine(lines), 0, embed, "");
+					return lines.join(eol);
+				});
+				new Notice(`Pasted image added to the ${where} of ${file.basename}.`);
+				await this.refresh();
+			})();
+		}).open();
+	}
+
+	/** Excise every link markup in the note that resolves to this tile. */
+	private async removeImageLinks(file: TFile, image: NoteImage): Promise<number> {
+		let removed = 0;
+		await this.app.vault.process(file, (data) => {
+			const spans = imageLinkSpans(data).filter(
+				(span) => this.imageLinkKey(span.target, span.external, file.path) === image.key,
+			);
+			if (!spans.length) return data;
+			removed = spans.length;
+			let out = data;
+			for (const span of [...spans].reverse()) out = out.slice(0, span.start) + out.slice(span.end);
+			return out;
+		});
+		return removed;
+	}
+
+	/** Delete: remove the tile's link(s) from the note, and — for a vault file —
+	 * offer to trash the file itself too. */
+	private promptDeleteImage(image: NoteImage): void {
+		const file = this.getFile();
+		if (!file) return;
+		const isVaultFile = !image.key.startsWith("data:") && !/^https?:\/\//i.test(image.key);
+		const tfile = isVaultFile ? this.app.vault.getFileByPath(image.key) : null;
+		new DeleteImageModal(this.app, image.label, image.kind, !!tfile, (deleteFile) => {
+			void (async () => {
+				const removed = await this.removeImageLinks(file, image);
+				if (!removed) {
+					new Notice("Couldn't find that link — the note changed on disk.");
+					await this.refresh();
+					return;
+				}
+				if (deleteFile && tfile) await this.app.fileManager.trashFile(tfile);
+				new Notice(
+					`Removed ${removed === 1 ? "the link" : `${removed} links`} from ${file.basename}` +
+						(deleteFile && tfile ? ` and moved “${image.label}” to the trash.` : "."),
+				);
+				await this.refresh();
+			})();
+		}).open();
+	}
+
 	/** Position placed images, hide trayed ones, and rebuild the tray when it changed —
 	 * the Images canvas's applyCustomLayout. */
 	private applyImagesLayout(): void {
@@ -6267,6 +6693,249 @@ export class SectionCardsView extends ItemView {
 		this.rebuildImagesTray(unplacedKeys);
 	}
 
+	/**
+	 * The Links layout's whole render pass — the canvas shows live page previews of
+	 * the note's web links instead of section cards; refresh() hands over to this
+	 * early. Placements load once per note and persist like the other canvases'.
+	 */
+	private renderLinksLayout(file: TFile, content: string): void {
+		this.clearAllCards();
+		this.clearHierarchy();
+		this.hideSnapPreview();
+		this.imageLightboxClose?.();
+		this.jumpDateWrap?.toggleClass("is-hidden", true);
+		this.starBtn?.toggleClass("is-hidden", true);
+		this.pendingEditHeading = null;
+		this.pendingMaximizeHeading = null;
+		// clearAllCards empties the grid wholesale — put the extent marker back.
+		this.gridEl.appendChild(this.canvasExtentEl);
+
+		this.linksByKey.clear();
+		const links = urlLinksIn(content);
+		for (const link of links) this.linksByKey.set(link.url, link);
+
+		if (this.linksLoadedFor !== file.path) {
+			this.linksLoadedFor = file.path;
+			this.linksZoom = this.plugin.getLinksZoom(file.path);
+			this.linkPlacements = {};
+			const savedPlacements = Object.entries(this.plugin.getLinksGrid(file.path)).sort(
+				([, a], [, b]) => a.y - b.y || a.x - b.x,
+			);
+			let normalised = false;
+			for (const [key, rect] of savedPlacements) {
+				const snapped = snapRect(rect, CUSTOM_SNAP, IMAGE_MIN_W, IMAGE_MIN_H);
+				const spot = this.otherPlacements(key).some((other) => rectsCollide(snapped, other, CUSTOM_GAP))
+					? findFreeSpot(snapped, this.otherPlacements(key), CUSTOM_GAP, CUSTOM_SNAP)
+					: snapped;
+				if (spot.x !== rect.x || spot.y !== rect.y || spot.w !== rect.w || spot.h !== rect.h) normalised = true;
+				this.linkPlacements[key] = spot;
+			}
+			if (normalised) this.persistCanvas();
+		}
+
+		this.linkEntries = links.map((link) => this.renderLinkCard(link));
+		if (!links.length) {
+			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
+			empty.createEl("p", { text: `No web links found in ${file.basename}.` });
+			empty.createEl("p", { text: "Add links to the note — [name](URL) or a bare web address — and they appear here." });
+		}
+
+		this.applyLinksLayout();
+		this.observeCards();
+		this.rememberView();
+		(this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
+	}
+
+	/** One page preview on the canvas: a title bar naming the page, the live iframe
+	 * beneath it (inert, so the tile drags and resizes like an image), and the same
+	 * hover buttons — magnify to an interactive lightbox, ↗ to the browser, ✕ away. */
+	private renderLinkCard(link: UrlLink): { key: string; el: HTMLElement; label: string } {
+		const el = this.gridEl.createDiv({ cls: "sc-image-card sc-link-card" });
+		const bar = el.createDiv({ cls: "sc-link-card-bar" });
+		setIcon(bar.createSpan({ cls: "sc-link-card-icon" }), "globe");
+		bar.createSpan({ cls: "sc-link-card-title", text: link.label });
+		el.createEl("iframe", {
+			cls: "sc-link-card-frame",
+			attr: {
+				src: link.url,
+				sandbox: "allow-scripts allow-same-origin allow-forms allow-popups",
+				loading: "lazy",
+				tabindex: "-1",
+				// The canvas copy is inert (pointer-events: none), so its scrollbars
+				// would be dead weight; the lightbox copy scrolls instead.
+				scrolling: "no",
+			},
+		});
+		el.addEventListener("contextmenu", (evt) => this.openLinkMenu(evt, link));
+
+		const untrayBtn = el.createEl("button", { cls: "sc-image-untray" });
+		setIcon(untrayBtn, "x");
+		untrayBtn.setAttr("aria-label", "Remove from the canvas (back to the list)");
+		untrayBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.untrayCard(link.url);
+		});
+
+		const bigBtn = el.createEl("button", { cls: "sc-image-big" });
+		setIcon(bigBtn, "zoom-in");
+		bigBtn.setAttr("aria-label", "Make this page big (interactive)");
+		bigBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.openLinkLightbox(link);
+		});
+		el.addEventListener("dblclick", () => this.openLinkLightbox(link));
+
+		const openBtn = el.createEl("button", { cls: "sc-image-open" });
+		setIcon(openBtn, "external-link");
+		openBtn.setAttr("aria-label", "Open the URL in your browser");
+		openBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			window.open(link.url);
+		});
+
+		el.addEventListener("pointerdown", (evt) => {
+			if (!el.hasClass("is-placed")) return;
+			if ((evt.target as HTMLElement | null)?.closest("button")) return;
+			const rect = el.getBoundingClientRect();
+			if (evt.clientX >= rect.right - 28 && evt.clientY >= rect.bottom - 28) {
+				window.addEventListener(
+					"pointerup",
+					() => {
+						this.swallowNextClick = true;
+						window.setTimeout(() => (this.swallowNextClick = false), 300);
+					},
+					{ once: true },
+				);
+				return;
+			}
+			const placement = this.linkPlacements[link.url];
+			if (!placement) return;
+			this.startPointerDrag(evt, "card", link.url, link.label, rect, { w: placement.w, h: placement.h });
+		});
+
+		return { key: link.url, el, label: link.label };
+	}
+
+	/** Right-click on a link tile: URL commands, then the shared menu tail. */
+	private openLinkMenu(evt: MouseEvent, link: UrlLink): void {
+		evt.preventDefault();
+		evt.stopPropagation();
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item
+				.setTitle("Open in browser")
+				.setIcon("external-link")
+				.onClick(() => window.open(link.url)),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Copy URL")
+				.setIcon("copy")
+				.onClick(() => {
+					void navigator.clipboard.writeText(link.url).then(() => new Notice("URL copied to the clipboard."));
+				}),
+		);
+		this.addCommonMenuItems(menu);
+		menu.showAtMouseEvent(evt);
+	}
+
+	/** The magnifier for links: the page blown up over the view, fully interactive
+	 * (the canvas tiles keep their iframes inert so dragging works). */
+	private openLinkLightbox(link: UrlLink): void {
+		this.imageLightboxClose?.();
+		const overlay = this.contentEl.createDiv({ cls: "sc-image-lightbox sc-link-lightbox" });
+		const frame = overlay.createEl("iframe", {
+			cls: "sc-link-lightbox-frame",
+			attr: { src: link.url, sandbox: "allow-scripts allow-same-origin allow-forms allow-popups" },
+		});
+		overlay.createDiv({ cls: "sc-image-lightbox-name", text: link.label });
+		const onKey = (evt: KeyboardEvent) => {
+			if (evt.key !== "Escape") return;
+			evt.preventDefault();
+			evt.stopPropagation();
+			close();
+		};
+		const close = () => {
+			overlay.remove();
+			document.removeEventListener("keydown", onKey, true);
+			this.imageLightboxClose = null;
+		};
+		this.imageLightboxClose = close;
+		document.addEventListener("keydown", onKey, true);
+		overlay.addEventListener("click", (evt) => {
+			if (evt.target !== frame) close();
+		});
+	}
+
+	/** Position placed link previews, hide trayed ones, and rebuild the tray when it
+	 * changed — the Links canvas's applyCustomLayout. */
+	private applyLinksLayout(): void {
+		if (this.layout !== "links") return;
+		this.applyCanvasZoom();
+		let maxBottom = 0;
+		let maxRight = 0;
+		const unplaced: { key: string; label: string }[] = [];
+
+		for (const entry of this.linkEntries) {
+			const rect = this.linkPlacements[entry.key];
+			if (rect) {
+				entry.el.addClass("is-placed");
+				entry.el.setCssStyles({
+					left: `${rect.x}px`,
+					top: `${rect.y}px`,
+					width: `${rect.w}px`,
+					height: `${rect.h}px`,
+				});
+				maxBottom = Math.max(maxBottom, rect.y + rect.h);
+				maxRight = Math.max(maxRight, rect.x + rect.w);
+			} else {
+				entry.el.removeClass("is-placed");
+				unplaced.push({ key: entry.key, label: entry.label });
+			}
+		}
+
+		this.updateCanvasExtent(maxRight, maxBottom);
+
+		// The tray follows the active sort: A→Z/Z→A by label, Doc by appearance.
+		if (this.sortOrder !== "doc") {
+			const dir = this.sortOrder === "asc" ? 1 : -1;
+			unplaced.sort((a, b) => dir * a.label.localeCompare(b.label, undefined, { numeric: true }));
+		}
+		const unplacedKeys = unplaced.map((u) => u.key);
+
+		const signature = `links|${this.sortOrder}|${unplacedKeys.join(" ")}`;
+		if (signature === this.traySignature) return;
+		this.traySignature = signature;
+		this.rebuildLinksTray(unplacedKeys);
+	}
+
+	/** The Links tray: a name-and-URL tile per unplaced link (no live iframes here —
+	 * a tray full of loading pages would be pure weight). */
+	private rebuildLinksTray(unplacedKeys: string[]): void {
+		this.trayEl.empty();
+		this.buildTrayControls("link", "Drag a link onto the canvas");
+		for (const key of unplacedKeys) {
+			const link = this.linksByKey.get(key);
+			if (!link) continue;
+			const tile = this.trayEl.createDiv({ cls: "section-cards-tray-tile sc-link-tile" });
+			const row = tile.createDiv({ cls: "sc-link-tile-row" });
+			setIcon(row.createSpan({ cls: "sc-link-card-icon" }), "globe");
+			row.createSpan({ cls: "sc-link-tile-name", text: link.label });
+			tile.createDiv({ cls: "sc-link-tile-url", text: link.url });
+			tile.setAttr("aria-label", link.url);
+			tile.addEventListener("contextmenu", (evt) => this.openLinkMenu(evt, link));
+			tile.addEventListener("pointerdown", (evt) => {
+				this.startPointerDrag(evt, "tile", key, link.label, tile.getBoundingClientRect(), {
+					w: LINK_DEFAULT_W,
+					h: LINK_DEFAULT_H,
+				});
+			});
+		}
+		if (!unplacedKeys.length) {
+			this.trayEl.createDiv({ cls: "section-cards-tray-hint", text: "Every link is on the canvas." });
+		}
+	}
+
 	/** Apply the zoom factor: cards, extent marker, preview and dots all ride the var. */
 	private applyCanvasZoom(): void {
 		this.gridEl.setCssProps({ "--sc-zoom": String(this.canvasZoom()) });
@@ -6277,6 +6946,7 @@ export class SectionCardsView extends ItemView {
 		const clamped = Math.round(Math.min(1.6, Math.max(0.4, zoom)) * 10) / 10;
 		if (clamped === this.canvasZoom()) return;
 		if (this.layout === "images") this.imagesZoom = clamped;
+		else if (this.layout === "links") this.linksZoom = clamped;
 		else this.customZoom = clamped;
 		this.applyCanvasZoom();
 		this.persistCanvas();
@@ -6388,6 +7058,7 @@ export class SectionCardsView extends ItemView {
 			}
 			tile.createDiv({ cls: "sc-image-tile-name", text: image.label });
 			tile.setAttr("aria-label", image.label);
+			tile.addEventListener("contextmenu", (evt) => this.openImageMenu(evt, image));
 			tile.addEventListener("pointerdown", (evt) => {
 				// A fresh drop takes the image's own aspect ratio (when the thumbnail
 				// has loaded), snapped to the grid and capped for very tall images.
@@ -6774,6 +7445,7 @@ export class SectionCardsView extends ItemView {
 				}),
 		);
 
+		this.addCommonMenuItems(menu);
 		menu.showAtMouseEvent(evt);
 	}
 
@@ -7718,6 +8390,101 @@ class MergeCardsModal extends Modal {
 	}
 }
 
+/** Images canvas: confirm removing a tile's link(s), optionally trashing the file. */
+class DeleteImageModal extends Modal {
+	private readonly label: string;
+	private readonly kind: "image" | "video";
+	/** Whether the tile is a vault file that could also be trashed. */
+	private readonly hasFile: boolean;
+	private readonly onConfirm: (deleteFile: boolean) => void;
+
+	constructor(app: App, label: string, kind: "image" | "video", hasFile: boolean, onConfirm: (deleteFile: boolean) => void) {
+		super(app);
+		this.label = label;
+		this.kind = kind;
+		this.hasFile = hasFile;
+		this.onConfirm = onConfirm;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: `Delete ${this.kind}?` });
+		contentEl.createEl("p", {
+			text:
+				`This removes every link to “${this.label}” from the note.` +
+				(this.hasFile ? ` The ${this.kind} file itself can stay in the vault, or go to the trash with it.` : ""),
+		});
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => {
+				b.setButtonText("Remove link")
+					.setCta()
+					.onClick(() => {
+						this.close();
+						this.onConfirm(false);
+					});
+				b.buttonEl.focus();
+			})
+			.addButton((b) => {
+				if (!this.hasFile) {
+					b.buttonEl.remove();
+					return;
+				}
+				b.setButtonText("Remove link and trash file")
+					.setDestructive()
+					.onClick(() => {
+						this.close();
+						this.onConfirm(true);
+					});
+			});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/** Images canvas: where in the note the pasted image's embed should land. */
+class PasteImageModal extends Modal {
+	private readonly onPick: (where: "start" | "end") => void;
+
+	constructor(app: App, onPick: (where: "start" | "end") => void) {
+		super(app);
+		this.onPick = onPick;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Paste image" });
+		contentEl.createEl("p", {
+			text: "The clipboard image is saved to your attachment folder and embedded in this note. Where should the link go?",
+		});
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) =>
+				b.setButtonText("Start of note").onClick(() => {
+					this.close();
+					this.onPick("start");
+				}),
+			)
+			.addButton((b) => {
+				b.setButtonText("End of note")
+					.setCta()
+					.onClick(() => {
+						this.close();
+						this.onPick("end");
+					});
+				b.buttonEl.focus();
+			});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
 class ConfirmClearModal extends Modal {
 	private readonly count: number;
 	/** What the canvas holds: "section" on the Custom Grid, "image" on Images. */
@@ -8579,6 +9346,13 @@ export default class SectionCardsPlugin extends Plugin {
 				for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
 					if (leaf.view instanceof SectionCardsView) leaf.view.renameImageKey(oldPath, file.path);
 				}
+				for (const list of [this.settings.recentFiles, this.settings.pinnedRecentFiles]) {
+					const at = list.indexOf(oldPath);
+					if (at >= 0) {
+						list[at] = file.path;
+						changed = true;
+					}
+				}
 				const saved = this.settings.perFile?.[oldPath];
 				if (saved) {
 					delete this.settings.perFile[oldPath];
@@ -9034,6 +9808,71 @@ export default class SectionCardsPlugin extends Plugin {
 		if (zoom !== undefined) current.imagesZoom = zoom;
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
+	}
+
+	/** The Links canvas's placements and zoom, stored beside the other canvases'. */
+	getLinksGrid(path: string): Record<string, CardRect> {
+		return this.settings.perFile?.[path]?.linksGrid ?? {};
+	}
+
+	getLinksZoom(path: string): number {
+		return this.settings.perFile?.[path]?.linksZoom ?? 1;
+	}
+
+	async saveLinksGrid(
+		path: string,
+		placements: Record<string, CardRect>,
+		base: ViewSettings,
+		zoom?: number,
+	): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		current.linksGrid = placements;
+		if (zoom !== undefined) current.linksZoom = zoom;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
+	/** A note rendered in the cards view moves to the front of the quick-switch
+	 * history. No-ops when it's already there, so refreshes don't write to disk. */
+	recordRecentFile(path: string): void {
+		const list = this.settings.recentFiles;
+		if (!path || list[0] === path) return;
+		const at = list.indexOf(path);
+		if (at >= 0) list.splice(at, 1);
+		list.unshift(path);
+		if (list.length > 15) list.length = 15;
+		void this.saveSettings();
+	}
+
+	isRecentPinned(path: string): boolean {
+		return this.settings.pinnedRecentFiles.includes(path);
+	}
+
+	async toggleRecentPin(path: string): Promise<void> {
+		const pins = this.settings.pinnedRecentFiles;
+		const at = pins.indexOf(path);
+		if (at >= 0) pins.splice(at, 1);
+		else pins.push(path);
+		await this.saveSettings();
+	}
+
+	/** The quick-switch section's rows: pinned notes first (in pin order), then the
+	 * newest unpinned history, five rows in all. Deleted notes are skipped; the open
+	 * note claims no history slot (its pinned row still shows, disabled). */
+	recentFileEntries(currentPath: string): { path: string; name: string; pinned: boolean }[] {
+		const exists = (path: string) => this.app.vault.getFileByPath(path) !== null;
+		const pinned = this.settings.pinnedRecentFiles.filter(exists);
+		const slots = Math.max(0, 5 - pinned.length);
+		const recents = this.settings.recentFiles
+			.filter((path) => path !== currentPath && !pinned.includes(path) && exists(path))
+			.slice(0, slots);
+		return [...pinned, ...recents].map((path) => ({
+			path,
+			name: path.replace(/\.md$/, "").split("/").pop() ?? path,
+			pinned: this.settings.pinnedRecentFiles.includes(path),
+		}));
 	}
 
 	/** Re-render every open cards view, e.g. after a setting changes what they draw. */

@@ -104,7 +104,7 @@ function cardHtml(s, { maxHeight = null, placed = null, hierHidden = false } = {
 
 const DECK_ICON = `<svg viewBox="0 0 100 100" class="svg-icon" width="16" height="16"><g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="9" width="12" height="12.5" rx="2"/><path d="M5.5 6h10a2 2 0 0 1 2 2v10"/><path d="M8.5 3h10a2 2 0 0 1 2 2v10"/></g></svg>`;
 
-const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid", images: "Images", calendar: "Calendar" };
+const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid", images: "Images", links: "Links", calendar: "Calendar" };
 const SORT_LABELS = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 /* On the Calendar the sort control orders the months instead of the cards. */
 const CAL_SORT_LABELS = { asc: "Ascending", desc: "Descending", doc: "Ascending" };
@@ -118,11 +118,11 @@ const TEMPLATE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height
  * mode: "default" | "hier" | "sections" — which View mode segment is active. */
 function toolbarHtml(layout, mode = "default") {
 	const seg = (label, key) =>
-		`<button${mode === key ? ' class="is-active"' : ""}${layout === "custom" || layout === "images" ? " disabled" : ""}>${label}</button>`;
+		`<button${mode === key ? ' class="is-active"' : ""}${["custom", "images", "links"].includes(layout) ? " disabled" : ""}>${label}</button>`;
 	// The Calendar hides the dates checkbox (redundant there), as does the Images
 	// canvas (dates mean nothing to pictures); styles.css hides the Card level and
 	// filter controls via the layout class.
-	const datesHidden = layout === "calendar" || layout === "images" ? " is-hidden" : "";
+	const datesHidden = layout === "calendar" || layout === "images" || layout === "links" ? " is-hidden" : "";
 	return `<div class="section-cards-toolbar">
 	<button class="section-cards-icon-btn section-cards-menu-btn">${MENU_ICON}</button>
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
@@ -238,10 +238,50 @@ ${tiles.join("\n")}
 <div class="section-cards-zoom"><button>−</button><button class="section-cards-zoom-label">100%</button><button>+</button></div>`;
 }
 
+/** Links canvas: page previews staged offline via srcdoc stand-in pages. */
+function linksHtml() {
+	const GLOBE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-globe"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>`;
+	const fakePage = (title, hue) =>
+		`<html><body style="margin:0;font-family:sans-serif;background:#fff"><div style="background:hsl(${hue},60%,45%);color:#fff;padding:14px 16px;font-size:15px;font-weight:700">${title}</div><div style="padding:12px 16px"><div style="height:10px;width:80%;background:#ddd;border-radius:4px;margin:8px 0"></div><div style="height:10px;width:95%;background:#e7e7e7;border-radius:4px;margin:8px 0"></div><div style="height:10px;width:70%;background:#ddd;border-radius:4px;margin:8px 0"></div><div style="height:72px;background:hsl(${hue},45%,88%);border-radius:6px;margin:12px 0"></div><div style="height:10px;width:88%;background:#e7e7e7;border-radius:4px;margin:8px 0"></div><div style="height:10px;width:60%;background:#ddd;border-radius:4px;margin:8px 0"></div></div></body></html>`;
+	const LINKS = [
+		{ label: "Server rack 3D model", url: "https://www.turbosquid.com/3d-models/rack-1372065", hue: 210, spot: { x: 48, y: 48, w: 312, h: 336 } },
+		{ label: "Data center walkthrough", url: "https://www.youtube.com/watch?v=zcwqTkbaZ0o", hue: 0, spot: { x: 384, y: 48, w: 312, h: 240 } },
+		{ label: "LiDAR reference designs", url: "https://example.com/lidar/reference-designs", hue: 150, spot: { x: 384, y: 312, w: 312, h: 264 } },
+		{ label: "Obsidian help", url: "https://help.obsidian.md/", hue: 265 },
+		{ label: "Mermaid diagrams", url: "https://mermaid.js.org/intro/", hue: 330 },
+	];
+	const placed = LINKS.filter((l) => l.spot).map(
+		({ label, hue, spot: r }) =>
+			`<div class="sc-image-card sc-link-card is-placed" style="left: ${r.x}px; top: ${r.y}px; width: ${r.w}px; height: ${r.h}px;">` +
+			`<div class="sc-link-card-bar"><span class="sc-link-card-icon">${GLOBE}</span><span class="sc-link-card-title">${esc(label)}</span></div>` +
+			`<iframe class="sc-link-card-frame" scrolling="no" srcdoc="${esc(fakePage(label, hue)).replace(/"/g, "&quot;")}"></iframe>` +
+			`<button class="sc-image-untray">✕</button></div>`,
+	);
+	const tiles = LINKS.filter((l) => !l.spot).map(
+		({ label, url }) =>
+			`<div class="section-cards-tray-tile sc-link-tile">` +
+			`<div class="sc-link-tile-row"><span class="sc-link-card-icon">${GLOBE}</span><span class="sc-link-tile-name">${esc(label)}</span></div>` +
+			`<div class="sc-link-tile-url">${esc(url)}</div></div>`,
+	);
+	return `<div class="section-cards-pinned"></div>
+<div class="section-cards-grid" style="--sc-zoom: 1;">
+<div class="section-cards-canvas-extent" style="left: 1447px; top: 1049px;"></div>
+${placed.join("\n")}
+</div>
+<div class="section-cards-tray">
+	<div class="section-cards-tray-actions"><button class="section-cards-tray-clear">Clear layout</button></div>
+	<div class="section-cards-tray-sorts"><button class="section-cards-tray-sort${SORT === "asc" ? " is-active" : ""}">A→Z</button><button class="section-cards-tray-sort${SORT === "desc" ? " is-active" : ""}">Z→A</button><button class="section-cards-tray-sort${SORT === "doc" ? " is-active" : ""}">Doc</button></div>
+	<div class="section-cards-tray-hint">Drag a link onto the canvas</div>
+${tiles.join("\n")}
+</div>
+<div class="section-cards-zoom"><button>−</button><button class="section-cards-zoom-label">100%</button><button>+</button></div>`;
+}
+
 function gridHtml(layout, mode = "default") {
 	const hier = mode === "hier";
 	if (layout === "calendar") return calendarHtml();
 	if (layout === "images") return imagesHtml();
+	if (layout === "links") return linksHtml();
 	if (layout === "custom") {
 		const placedCards = sections.slice(0, PLACEMENTS.length).map((s, i) => cardHtml(s, { placed: PLACEMENTS[i] }));
 		const hidden = sections.slice(PLACEMENTS.length).map((s) => cardHtml(s));
@@ -465,6 +505,7 @@ const PAGE_BACKGROUNDS = {
 	vertical: "bg-aurora",
 	custom: "bg-plum",
 	images: null, // the previews are the pictures — a photo background would fight them
+	links: null, // same story: the page frames are the content
 	calendar: "bg-meadow",
 	hierarchy: "bg-aurora",
 	dividers: "bg-dunes",

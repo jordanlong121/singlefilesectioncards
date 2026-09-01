@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -1516,6 +1516,34 @@ t("imageLinksIn: markdown links need a media extension unless external; plain li
   assert.deepEqual(links, [
     { target: "HTTPS://Example.com/x?raw=1", external: true },
     { target: "chart.SVG", external: false },
+  ]);
+});
+
+t("imageLinkSpans reports exact ranges, so removal can excise the markup", () => {
+  const content = "before ![[a.png]] middle ![x](b.jpg) and <img src=\"c.gif\"> after";
+  const spans = imageLinkSpans(content);
+  assert.deepEqual(
+    spans.map((s) => content.slice(s.start, s.end)),
+    ["![[a.png]]", "![x](b.jpg)", '<img src="c.gif">'],
+  );
+});
+
+t("urlLinksIn: markdown labels win, bare URLs dedupe, media embeds are skipped", () => {
+  const links = urlLinksIn(
+    [
+      "# Model Options",
+      "https://example.com/models/rack-model-1372065",
+      "See [the docs](https://docs.example.com/guide) and https://docs.example.com/guide again.",
+      "Autolinked: <https://example.org/page>.",
+      "![preview](https://example.com/hosted.jpg)",
+      "Trailing punctuation (https://example.net/x), stays off.",
+    ].join("\n"),
+  );
+  assert.deepEqual(links, [
+    { url: "https://example.com/models/rack-model-1372065", label: "example.com/models/rack-model-1372065" },
+    { url: "https://docs.example.com/guide", label: "the docs" },
+    { url: "https://example.org/page", label: "example.org/page" },
+    { url: "https://example.net/x", label: "example.net/x" },
   ]);
 });
 

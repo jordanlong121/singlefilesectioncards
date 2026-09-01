@@ -66,10 +66,22 @@ onto the tray) returns one to the list. Layout is remembered per note in the plu
 The same canvas, for the note's pictures: every image and video the note links waits
 in the tray — drag previews on, place and resize them freely, and it becomes a
 reference or idea board built from what the note already holds. Hover a preview to
-magnify it (scroll zooms, drag pans) or open the original file. Arrangements live in
-the plugin's data; the note and its media are never changed.
+magnify it (scroll zooms, drag pans) or open the original file; right-click one to
+copy, cut, or delete it, or to paste a clipboard image into the note. Arrangements
+live in the plugin's data and never touch the note itself.
 
 ![Images](screenshots/images.png)
+
+### Links
+
+And the same canvas for the note's web links: every URL — `[name](url)` markdown links
+and bare addresses — waits in the tray, and placed tiles show a live preview of the
+page under a title bar. Previews are inert so they drag and resize like images; the
+magnifier (or a double-click) opens the page big and fully interactive, ↗ opens it in
+your browser, and right-click offers Copy URL. Sites that refuse to be embedded show
+a blank frame — the title bar still names them.
+
+![Links](screenshots/links.png)
 
 ### Grid
 

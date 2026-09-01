@@ -48,6 +48,7 @@ export const moment = (input, format) => {
 	};
 };
 export class Menu {}
+export class MenuItem {}
 export const addIcon = () => {};
 export const normalizePath = (p) => p;
 export const requestUrl = async () => {
