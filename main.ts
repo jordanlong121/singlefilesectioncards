@@ -901,12 +901,27 @@ export function titleHasDate(title: string, format: string, detect = ""): boolea
 	return titleToIso(title, format, detect) !== null;
 }
 
+/** titleToIso results, memoized: dateHeadingCounts re-asks for every heading on every
+ * refresh, and moment's strict parsing is what a big custom-format note actually pays
+ * (~15ms per refresh at 500 headings). The answer is a pure function of the inputs
+ * (plus moment's locale, which is part of the key), so the cache never goes stale;
+ * it just resets wholesale if it ever fills. */
+const titleIsoCache = new Map<string, string | null>();
+const TITLE_ISO_CACHE_MAX = 8192;
+
 /** The date a heading names, as YYYY-MM-DD: a valid ISO date anywhere in the title wins,
  * then the heading format at the title's start, then the custom detection pattern. */
 export function titleToIso(title: string, format: string, detect = ""): string | null {
 	const iso = ISO_DATE_RE.exec(title)?.[0];
 	if (iso && validIsoDate(iso)) return iso;
-	return (titleFormatDate(title, format) ?? titleDetectSpan(title, detect))?.parsed.format("YYYY-MM-DD") ?? null;
+	const locale = (moment as unknown as { locale?: () => string }).locale?.() ?? "";
+	const key = `${locale}\u0000${format}\u0000${detect}\u0000${title}`;
+	const hit = titleIsoCache.get(key);
+	if (hit !== undefined || titleIsoCache.has(key)) return hit ?? null;
+	const result = (titleFormatDate(title, format) ?? titleDetectSpan(title, detect))?.parsed.format("YYYY-MM-DD") ?? null;
+	if (titleIsoCache.size >= TITLE_ISO_CACHE_MAX) titleIsoCache.clear();
+	titleIsoCache.set(key, result);
+	return result;
 }
 
 /**
@@ -6180,18 +6195,10 @@ export class SectionCardsView extends ItemView {
 	 * Placements load once per note and persist like the Custom Grid's.
 	 */
 	private renderImagesLayout(file: TFile, content: string): void {
-		// The card wall's leftovers don't apply here: cards, hierarchy columns,
-		// dividers, and the date/star toolbar affordances that key off sections.
-		this.clearAllCards();
-		this.clearHierarchy();
-		this.hideSnapPreview();
-		this.imageLightboxClose?.(); // its media may be gone from the note
 		this.jumpDateWrap?.toggleClass("is-hidden", true);
 		this.starBtn?.toggleClass("is-hidden", true);
 		this.pendingEditHeading = null;
 		this.pendingMaximizeHeading = null;
-		// clearAllCards empties the grid wholesale — put the extent marker back.
-		this.gridEl.appendChild(this.canvasExtentEl);
 
 		this.imagesByKey.clear();
 		const images = this.collectNoteImages(file, content);
@@ -6218,6 +6225,26 @@ export class SectionCardsView extends ItemView {
 			}
 			if (normalised) this.persistCanvas();
 		}
+
+		// An unchanged media set keeps its DOM: a note edit elsewhere must not make
+		// every <img> re-decode (and, on the Links twin, every page reload). The src
+		// carries the file's mtime, so an edited image still misses the signature.
+		const signature = images.map((i) => [i.key, i.src, i.label, i.kind].join("\u0001")).join("\u0000");
+		if (signature === this.previewRenderSig && this.imageEntries.length) {
+			this.applyImagesLayout();
+			this.observeCards(); // refresh() disconnected the observer up top
+			return;
+		}
+		this.previewRenderSig = signature;
+
+		// The card wall's leftovers don't apply here: cards, hierarchy columns,
+		// dividers — and clearAllCards empties the grid wholesale, so the extent
+		// marker goes back in after.
+		this.clearAllCards();
+		this.clearHierarchy();
+		this.hideSnapPreview();
+		this.imageLightboxClose?.(); // its media may be gone from the note
+		this.gridEl.appendChild(this.canvasExtentEl);
 
 		this.imageEntries = images.map((image) => this.renderImageCard(image));
 		if (!images.length) {
@@ -6433,10 +6460,16 @@ export class SectionCardsView extends ItemView {
 
 	/** Drop one preview canvas's tiles — switching layouts, or re-rendering the other
 	 * canvas, must not leave the old tiles in the grid. */
+	/** The last-rendered preview set's fingerprint, one per view — matching it lets a
+	 * refresh keep the tile DOM (no image re-decodes, no page reloads). Only one
+	 * preview canvas renders at a time, so images and links share the field. */
+	private previewRenderSig: string | null = null;
+
 	private clearPreviewTiles(kind: "images" | "links"): void {
 		const entries = kind === "images" ? this.imageEntries : this.linkEntries;
 		if (!entries.length) return;
 		this.imageLightboxClose?.();
+		this.previewRenderSig = null;
 		for (const entry of entries) entry.el.remove();
 		if (kind === "images") {
 			this.imageEntries = [];
@@ -6699,16 +6732,10 @@ export class SectionCardsView extends ItemView {
 	 * early. Placements load once per note and persist like the other canvases'.
 	 */
 	private renderLinksLayout(file: TFile, content: string): void {
-		this.clearAllCards();
-		this.clearHierarchy();
-		this.hideSnapPreview();
-		this.imageLightboxClose?.();
 		this.jumpDateWrap?.toggleClass("is-hidden", true);
 		this.starBtn?.toggleClass("is-hidden", true);
 		this.pendingEditHeading = null;
 		this.pendingMaximizeHeading = null;
-		// clearAllCards empties the grid wholesale — put the extent marker back.
-		this.gridEl.appendChild(this.canvasExtentEl);
 
 		this.linksByKey.clear();
 		const links = urlLinksIn(content);
@@ -6732,6 +6759,24 @@ export class SectionCardsView extends ItemView {
 			}
 			if (normalised) this.persistCanvas();
 		}
+
+		// An unchanged link set keeps its DOM — a rebuild here would reload every
+		// page frame on each note edit, which is the single worst thing this
+		// layout could do.
+		const signature = links.map((l) => `${l.url} ${l.label}`).join(" ");
+		if (signature === this.previewRenderSig && this.linkEntries.length) {
+			this.applyLinksLayout();
+			this.observeCards(); // refresh() disconnected the observer up top
+			return;
+		}
+		this.previewRenderSig = signature;
+
+		this.clearAllCards();
+		this.clearHierarchy();
+		this.hideSnapPreview();
+		this.imageLightboxClose?.();
+		// clearAllCards empties the grid wholesale — put the extent marker back.
+		this.gridEl.appendChild(this.canvasExtentEl);
 
 		this.linkEntries = links.map((link) => this.renderLinkCard(link));
 		if (!links.length) {
@@ -6903,7 +6948,7 @@ export class SectionCardsView extends ItemView {
 		}
 		const unplacedKeys = unplaced.map((u) => u.key);
 
-		const signature = `links|${this.sortOrder}|${unplacedKeys.join(" ")}`;
+		const signature = `links|${this.sortOrder}|${unplacedKeys.join("\u0000")}`;
 		if (signature === this.traySignature) return;
 		this.traySignature = signature;
 		this.rebuildLinksTray(unplacedKeys);
@@ -8801,6 +8846,10 @@ class QuickAddModal extends Modal {
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.addClass("section-cards-quickadd-modal");
+		// On phones the software keyboard covers a centered modal's lower half — the
+		// dialog rides at the top instead so the text box stays visible while typing
+		// (portrait is where the squeeze happens; styles.css scopes it there).
+		this.containerEl.addClass("sfsc-raise-for-keyboard");
 		contentEl.createEl("h3", { text: `Quick add to “${this.title}”` });
 
 		// The same editor flavour cards edit with: the live-preview embed (or source),
