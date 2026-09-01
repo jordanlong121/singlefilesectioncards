@@ -30,7 +30,9 @@ m = json.load(open("manifest.json"))
 m["version"] = sys.argv[1]
 json.dump(m, sys.stdout, indent="\t", ensure_ascii=False)
 EOF
-cp main.js styles.css "$tmp/"
+cp main.js "$tmp/"
+# The stylesheet ships minified; the repo copy stays readable for review and diffs.
+npx esbuild styles.css --minify --outfile="$tmp/styles.css" --log-level=error
 
 gh release create "$v" "$tmp/main.js" "$tmp/manifest.json" "$tmp/styles.css" \
 	--prerelease --title "$v" \
