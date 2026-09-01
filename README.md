@@ -72,17 +72,6 @@ live in the plugin's data and never touch the note itself.
 
 ![Images](screenshots/images.png)
 
-### Links
-
-And the same canvas for the note's web links: every URL — `[name](url)` markdown links
-and bare addresses — waits in the tray, and placed tiles show a live preview of the
-page under a title bar. Previews are inert so they drag and resize like images; the
-magnifier (or a double-click) opens the page big and fully interactive, ↗ opens it in
-your browser, and right-click offers Copy URL. Sites that refuse to be embedded show
-a blank frame — the title bar still names them.
-
-![Links](screenshots/links.png)
-
 ### Grid
 
 Masonry columns: every card takes only the height it needs, so a short card never leaves dead space
@@ -117,6 +106,17 @@ or drag a card onto another day to move it there — dropping it on a day that a
 has a card offers to merge them.
 
 ![Calendar](screenshots/calendar.png)
+
+### Links
+
+The freeform canvas once more, for the note's web links: every URL — `[name](url)` markdown links
+and bare addresses — waits in the tray, and placed tiles show a live preview of the
+page under a title bar. Previews are inert so they drag and resize like images; the
+magnifier (or a double-click) opens the page big and fully interactive, ↗ opens it in
+your browser, and right-click offers Copy URL. Sites that refuse to be embedded show
+a blank frame — the title bar still names them.
+
+![Links](screenshots/links.png)
 
 ### Hierarchy & Dividers
 
@@ -196,35 +196,18 @@ layouts, views, and restarts.
 
 ## Filter and starred lines
 
-The toolbar's filter box (`Ctrl/⌘+F`) narrows the wall to cards containing the typed text —
-title or body, case-insensitive; `Esc` clears it.
-
-For a longer-lived kind of highlighting, right-click any task or paragraph and pick **Add
-star**: the star emoji (configurable in settings) is written at the start of the line — plain
-text in your note, so it survives edits, drags, sync, and shows in the normal editor too.
-Once a note has a starred line, a star button appears beside the filter box (key `S`): toggle
-it to see only the starred lines, on only the cards that hold one. Cards where the starred-only
-view hid something end in a faint `…`, and both filters combine. **Remove star** on the same
-menu takes the mark back off.
+The toolbar's filter box (`Ctrl/⌘+F`) narrows the wall to cards containing the typed text;
+`Esc` clears it. For longer-lived highlighting, right-click a line and pick **Add star** —
+the star emoji is written into the note as plain text, and the toolbar's star toggle (key
+`S`) then shows only the starred lines.
 
 ## The menu, and per-note backgrounds
 
-The ☰ button at the toolbar's left end collects the per-note controls in one place: the
-Dates toggle, jump-to-date, and the new-card options (all still on the toolbar too). It's
-also where **Background** lives: give the note's card wall a background image, remembered
-per note in the plugin's data.
-
-- **Select background…** — one dialog, three sources: an image already **in your vault**,
-  any image **on your computer** (a copy is saved into the vault's attachment folder so it
-  travels with the vault), or an image URL **from the internet**, downloaded **once** into
-  the attachment folder and shown from there — nothing loads from the network afterwards.
-- **Transparency** — a slider right in the menu that fades the image toward the page
-  color, previewed live as you drag; the strength is remembered per note.
-- **Remove background** — back to the plain background.
-
-> **Network use:** this download is the plugin's only network access. It only ever happens
-> when you click **Download** in that dialog, and only fetches the URL you entered.
-> Everything else works fully offline.
+The ☰ button at the toolbar's left end collects the per-note controls, including
+**Background**: give the note's card wall an image — from the vault, your computer, or a
+URL (downloaded once into the attachment folder) — with live sliders for transparency,
+brightness, and saturation, all remembered per note. That one URL download is the plugin's
+only network access; everything else works fully offline.
 
 ## Style Settings
 
@@ -356,6 +339,9 @@ No, but you should use it because it's cool.
 **Do you need the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin?**
 No — checkboxes, done dates, and the right-click menu all work without it. If it's installed,
 ticking goes through Tasks (so recurring tasks recur) and the menu gains its create/edit dialogs.
+
+**Do you accept feature or bug fix requests?**
+Yes, please open an issue on the [GitHub page](https://github.com/jordanlong121/singlefilesectioncards/issues).
 
 ## License
 
