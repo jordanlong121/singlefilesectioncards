@@ -1616,7 +1616,8 @@ body.theme-light .sfsc-swatch {
 
 /* Toolbar spans the top; canvas left, tray right; each pane scrolls itself. */
 .workspace-leaf-content .view-content.section-cards-view.is-layout-custom,
-.workspace-leaf-content .view-content.section-cards-view.is-layout-images {
+.workspace-leaf-content .view-content.section-cards-view.is-layout-images,
+.workspace-leaf-content .view-content.section-cards-view.is-layout-links {
 	display: grid;
 	grid-template-columns: 1fr 232px;
 	grid-template-rows: auto 1fr;
@@ -1624,7 +1625,8 @@ body.theme-light .sfsc-swatch {
 }
 
 .is-layout-custom .section-cards-toolbar,
-.is-layout-images .section-cards-toolbar {
+.is-layout-images .section-cards-toolbar,
+.is-layout-links .section-cards-toolbar {
 	grid-column: 1 / -1;
 	position: static;
 }
@@ -1632,13 +1634,16 @@ body.theme-light .sfsc-swatch {
 /* The Images canvas shows what the note links, not its sections — the heading-level
    and text-filter controls would only mislead there. */
 .is-layout-images .section-cards-level-control,
-.is-layout-images .section-cards-filter {
+.is-layout-links .section-cards-level-control,
+.is-layout-images .section-cards-filter,
+.is-layout-links .section-cards-filter {
 	display: none;
 }
 
 /* The canvas: subtle dot pattern, its own scrolling, placements are absolute. */
 .is-layout-custom .section-cards-grid,
-.is-layout-images .section-cards-grid {
+.is-layout-images .section-cards-grid,
+.is-layout-links .section-cards-grid {
 	grid-column: 1;
 	grid-row: 2;
 	display: block;
@@ -1659,12 +1664,14 @@ body.theme-light .sfsc-swatch {
 }
 
 .is-layout-custom.section-cards-view,
-.is-layout-images.section-cards-view {
+.is-layout-images.section-cards-view,
+.is-layout-links.section-cards-view {
 	position: relative;
 }
 
 .is-layout-custom .section-cards-zoom,
-.is-layout-images .section-cards-zoom {
+.is-layout-images .section-cards-zoom,
+.is-layout-links .section-cards-zoom {
 	display: flex;
 	gap: 2px;
 	position: absolute;
@@ -1697,12 +1704,14 @@ body.theme-light .sfsc-swatch {
 }
 
 .is-layout-custom .section-cards-grid.is-panning,
-.is-layout-images .section-cards-grid.is-panning {
+.is-layout-images .section-cards-grid.is-panning,
+.is-layout-links .section-cards-grid.is-panning {
 	cursor: grabbing;
 }
 
 .is-layout-custom .section-cards-grid.is-drop-target,
-.is-layout-images .section-cards-grid.is-drop-target {
+.is-layout-images .section-cards-grid.is-drop-target,
+.is-layout-links .section-cards-grid.is-drop-target {
 	outline: 2px dashed var(--interactive-accent);
 	outline-offset: -2px;
 }
@@ -1713,7 +1722,8 @@ body.theme-light .sfsc-swatch {
 }
 
 .is-layout-custom .section-cards-tray,
-.is-layout-images .section-cards-tray {
+.is-layout-images .section-cards-tray,
+.is-layout-links .section-cards-tray {
 	grid-column: 2;
 	grid-row: 2;
 	display: block;
@@ -1871,7 +1881,8 @@ body.theme-light .sfsc-swatch {
    stripe runs corner-to-corner, so the lines form a triangle with no clipping.
    pointer-events: none keeps the native resizer underneath doing the actual work. */
 .is-layout-custom .section-card.is-placed::after,
-.is-layout-images .sc-image-card.is-placed::after {
+.is-layout-images .sc-image-card.is-placed::after,
+.is-layout-links .sc-image-card.is-placed::after {
 	content: "";
 	position: absolute;
 	right: 3px;
@@ -1908,7 +1919,8 @@ body.theme-light .sfsc-swatch {
 }
 
 .is-layout-custom .section-card.is-placed:hover::after,
-.is-layout-images .sc-image-card.is-placed:hover::after {
+.is-layout-images .sc-image-card.is-placed:hover::after,
+.is-layout-links .sc-image-card.is-placed:hover::after {
 	--sc-grip: var(--interactive-accent);
 	opacity: 1;
 }
@@ -1921,13 +1933,15 @@ body.theme-light .sfsc-swatch {
 /* Chromium sizes the native resizer square from the element's scrollbar metrics —
    these never render (overflow: hidden) but grow the draggable corner to 20px. */
 .is-layout-custom .section-card.is-placed::-webkit-scrollbar,
-.is-layout-images .sc-image-card.is-placed::-webkit-scrollbar {
+.is-layout-images .sc-image-card.is-placed::-webkit-scrollbar,
+.is-layout-links .sc-image-card.is-placed::-webkit-scrollbar {
 	width: 20px;
 	height: 20px;
 }
 
 .is-layout-custom .section-card.is-placed::-webkit-resizer,
-.is-layout-images .sc-image-card.is-placed::-webkit-resizer {
+.is-layout-images .sc-image-card.is-placed::-webkit-resizer,
+.is-layout-links .sc-image-card.is-placed::-webkit-resizer {
 	background: transparent;
 }
 
@@ -1982,7 +1996,8 @@ body.theme-light .sfsc-swatch {
 	display: none;
 }
 
-.is-layout-images .sc-image-card.is-placed {
+.is-layout-images .sc-image-card.is-placed,
+.is-layout-links .sc-image-card.is-placed {
 	display: flex;
 	zoom: var(--sc-zoom, 1);
 	position: absolute;
@@ -2177,6 +2192,100 @@ body.theme-light .sfsc-swatch {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+/* ---------- Links canvas: live page previews ---------- */
+
+/* A link tile stacks its title bar over the page frame. */
+.sc-link-card {
+	flex-direction: column;
+}
+
+.sc-link-card-bar {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 28px 5px 26px; /* clears the hover ✕ (left) and ↗/🔍 (right) */
+	background-color: var(--sc-header);
+	border-bottom: 1px solid var(--sc-line);
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-normal);
+	cursor: grab;
+	min-width: 0;
+}
+
+.sc-link-card-icon {
+	flex: 0 0 auto;
+	display: flex;
+	color: var(--text-muted);
+}
+
+.sc-link-card-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+.sc-link-card-title {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* The live page. Inert on the canvas so the tile drags and resizes like an image;
+   the lightbox serves the interactive copy. Pages assume a white ground. */
+.sc-link-card-frame {
+	flex: 1 1 auto;
+	width: 100%;
+	min-height: 0;
+	border: none;
+	pointer-events: none;
+	background-color: #fff;
+}
+
+/* On link tiles the hover buttons sit over the theme-colored title bar, not a
+   photo — theme text colors read better there than the white-with-shadow. */
+.sc-link-card .sc-image-untray,
+.sc-link-card .sc-image-open,
+.sc-link-card .sc-image-big {
+	color: var(--text-muted);
+	filter: none;
+}
+
+/* Tray tiles: name row plus the URL underneath, no live frames in the list. */
+.sc-link-tile-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.sc-link-tile-name {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.sc-link-tile-url {
+	margin-top: 2px;
+	font-size: var(--font-ui-smaller);
+	font-weight: 400;
+	color: var(--text-faint);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* The links lightbox: an interactive page, sized like the image lightbox's media. */
+.sc-link-lightbox-frame {
+	width: 100%;
+	height: calc(100% - 36px);
+	border: none;
+	border-radius: var(--radius-m, 8px);
+	box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+	background-color: #fff;
+	cursor: default;
 }
 
 /* ---------- drag a block (task/paragraph) between cards ---------- */
