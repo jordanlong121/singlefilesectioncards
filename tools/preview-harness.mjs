@@ -123,7 +123,7 @@ function toolbarHtml(layout, mode = "default") {
 	// canvas (dates mean nothing to pictures); styles.css hides the Card level and
 	// filter controls via the layout class.
 	const datesHidden = layout === "calendar" || layout === "images" || layout === "links" ? " is-hidden" : "";
-	return `<div class="section-cards-toolbar">
+	return `<div class="section-cards-toolbar${MOBILE ? " is-compact" : ""}">
 	<button class="section-cards-icon-btn section-cards-menu-btn">${MENU_ICON}</button>
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
 	<div class="section-cards-control section-cards-level-control"><span class="section-cards-label">Card level</span><select class="dropdown"><option>H${LEVEL}</option></select></div>
@@ -134,7 +134,7 @@ function toolbarHtml(layout, mode = "default") {
 		<label class="section-cards-dates-label${datesHidden}"><span class="section-cards-label">Dates</span><input type="checkbox" class="section-cards-dates-toggle"${NOTE_HAS_DATES ? " checked" : ""}></label>
 	</div>
 	<div class="section-cards-spacer"></div>
-	<button class="section-cards-new-btn mod-cta">+ New card</button>
+	<button class="section-cards-new-btn mod-cta">${MOBILE ? "+" : "+ New card"}</button>
 	<div class="section-cards-control section-cards-mode-control"><span class="section-cards-label">View mode</span><div class="section-cards-segmented">${seg("Default", "default")}${seg("Hierarchy", "hier")}${seg("Dividers", "sections")}</div></div>
 	<div class="section-cards-control section-cards-sort-control"><span class="section-cards-label">Sort</span><select class="dropdown"><option>${(layout === "calendar" ? CAL_SORT_LABELS : SORT_LABELS)[SORT]}</option></select></div>
 	<div class="section-cards-control"><span class="section-cards-label">Layout</span><select class="dropdown"><option>${LAYOUT_LABELS[layout]}</option></select></div>
@@ -517,7 +517,62 @@ function pageBackground(page) {
 	return process.env.BG ?? PAGE_BACKGROUNDS[page] ?? null;
 }
 
+/** MOBILE=1 stages the pages as Obsidian iOS: phone body classes (styles.css and
+ * app.css key off them), the compact toolbar, no desktop tab strip — and a faked
+ * status bar / view header / home indicator so the shot reads as an iPhone.
+ * Screenshot at phone size, e.g. --window-size=390,844 --force-device-scale-factor=3. */
+const MOBILE = !!process.env.MOBILE;
+
+const STATUS_ICONS = `<svg width="46" height="12" viewBox="0 0 46 12" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="7" width="2.5" height="5" rx="0.8"/><rect x="4.5" y="5" width="2.5" height="7" rx="0.8"/><rect x="9" y="2.5" width="2.5" height="9.5" rx="0.8"/><rect x="13.5" y="0.5" width="2.5" height="11.5" rx="0.8"/><path d="M25.5 3.5a7 7 0 0 1 5 2.1l-1.2 1.2a5.3 5.3 0 0 0-7.6 0l-1.2-1.2a7 7 0 0 1 5-2.1z"/><path d="M25.5 6.9a3.6 3.6 0 0 1 2.6 1.1l-2.6 2.6-2.6-2.6a3.6 3.6 0 0 1 2.6-1.1z"/><rect x="34" y="1.5" width="10" height="9" rx="2.4" fill="none" stroke="currentColor"/><rect x="35.4" y="2.9" width="6" height="6.2" rx="1.2"/><path d="M45 4.5v3a1.7 1.7 0 0 0 0-3z"/></svg>`;
+
+function mobileChromeCss() {
+	return `
+/* Harness-only iOS dressing: status bar, view header, home indicator. */
+.sfsc-harness-statusbar { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; padding: 14px 28px 6px; font-size: 15px; font-weight: 600; color: var(--text-normal); background-color: var(--background-primary); }
+.sfsc-harness-viewheader { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; position: relative; padding: 6px 44px 8px; background-color: var(--background-primary); }
+.sfsc-harness-viewheader .back { position: absolute; left: 14px; display: flex; color: var(--text-muted); }
+.sfsc-harness-viewheader .title { font-size: 16px; font-weight: 600; color: var(--text-normal); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sfsc-harness-viewheader .more { position: absolute; right: 14px; display: flex; color: var(--text-muted); }
+.sfsc-harness-homebar { flex: 0 0 auto; display: flex; justify-content: center; padding: 8px 0 8px; background-color: var(--background-primary); }
+.sfsc-harness-homebar::after { content: ""; width: 134px; height: 5px; border-radius: 3px; background-color: var(--text-normal); opacity: 0.9; }
+/* A fixed iPhone-sized stage: headless Chrome clamps windows to ~500px wide, so the
+   page centers a real 390x844 phone screen instead — screenshot, then crop to it. */
+.sfsc-harness-phone { width: 390px; height: 844px; margin: 0 auto; overflow: hidden; display: flex; flex-direction: column; background-color: var(--background-primary); }
+.sfsc-harness-phone .workspace-leaf-content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+`;
+}
+
+const BACK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`;
+const MORE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>`;
+
 function pageHtml(layout, { withMenu = false, mode = "default", background = null } = {}) {
+	const view = `<div class="workspace-leaf-content" data-type="section-cards-view">
+<div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}${background ? " has-sfsc-bg" : ""}"${background ? ` style="--sfsc-bg-image: url('${background}.svg')"` : ""}>
+${toolbarHtml(layout, mode)}
+${gridHtml(layout, mode)}
+</div>
+</div>`;
+	const desktopShell = `<div class="app-container"><div class="horizontal-main-container"><div class="workspace">
+<div class="workspace-split mod-root mod-vertical"><div class="workspace-tabs mod-top mod-active">
+<div class="workspace-tab-header-container">
+	<div class="workspace-tab-header-container-inner">
+		<div class="workspace-tab-header tappable is-active mod-active">
+			<div class="workspace-tab-header-inner">
+				<div class="workspace-tab-header-inner-icon">${DECK_ICON}</div>
+				<div class="workspace-tab-header-inner-title">Cards: ${esc(path.basename(notePath, ".md"))}</div>
+			</div>
+		</div>
+	</div>
+	<div class="workspace-tab-header-spacer"></div>
+</div>
+<div class="workspace-tab-container">
+<div class="workspace-leaf mod-active">${view}</div></div></div></div></div></div></div>`;
+	const phoneShell = `<div class="sfsc-harness-phone">
+<div class="sfsc-harness-statusbar"><span>9:41</span><span>${STATUS_ICONS}</span></div>
+<div class="sfsc-harness-viewheader"><span class="back">${BACK_ICON}</span><span class="title">${esc(path.basename(notePath, ".md"))}</span><span class="more">${MORE_ICON}</span></div>
+${view}
+<div class="sfsc-harness-homebar"></div>
+</div>`;
 	return `<!doctype html>
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="app.css">
@@ -532,29 +587,11 @@ html, body { height: 100%; margin: 0; }
 .workspace-tab-container { flex: 1 1 auto; min-height: 0; display: flex; }
 .workspace-leaf { flex: 1 1 auto; min-width: 0; display: flex; }
 .workspace-leaf-content { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+${MOBILE ? mobileChromeCss() : ""}
 </style>
 </head>
-<body class="theme-dark mod-windows is-focused preset-default bg-auto no-animation disable-splash-screen">
-<div class="app-container"><div class="horizontal-main-container"><div class="workspace">
-<div class="workspace-split mod-root mod-vertical"><div class="workspace-tabs mod-top mod-active">
-<div class="workspace-tab-header-container">
-	<div class="workspace-tab-header-container-inner">
-		<div class="workspace-tab-header tappable is-active mod-active">
-			<div class="workspace-tab-header-inner">
-				<div class="workspace-tab-header-inner-icon">${DECK_ICON}</div>
-				<div class="workspace-tab-header-inner-title">Cards: ${esc(path.basename(notePath, ".md"))}</div>
-			</div>
-		</div>
-	</div>
-	<div class="workspace-tab-header-spacer"></div>
-</div>
-<div class="workspace-tab-container">
-<div class="workspace-leaf mod-active"><div class="workspace-leaf-content" data-type="section-cards-view">
-<div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}${background ? " has-sfsc-bg" : ""}"${background ? ` style="--sfsc-bg-image: url('${background}.svg')"` : ""}>
-${toolbarHtml(layout, mode)}
-${gridHtml(layout, mode)}
-</div>
-</div></div></div></div></div></div></div></div>
+<body class="${MOBILE ? "theme-dark mod-ios is-mobile is-phone is-ios" : "theme-dark mod-windows"} is-focused preset-default bg-auto no-animation disable-splash-screen">
+${MOBILE ? phoneShell : desktopShell}
 ${withMenu ? menuHtml() : ""}
 ${PACK_SCRIPT.replace("<script>", `<script data-layout="${layout}">`)}
 ${withMenu ? MENU_SCRIPT : ""}
