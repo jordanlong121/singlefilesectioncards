@@ -581,6 +581,13 @@ body.sfsc-flat-cards .section-cards-view {
 	max-height: 40vh;
 }
 
+/* Obsidian's mobile theme rounds inputs pill-style; a multi-line writing box wants
+   mostly-square corners. */
+.is-mobile .section-cards-quickadd-modal .section-cards-quickadd-input,
+.is-mobile .section-cards-quickadd-modal .section-cards-quickadd-editor {
+	border-radius: 4px;
+}
+
 /* ---------- grid ---------- */
 
 /* Masonry: many short implicit rows, and main.ts gives each card a
@@ -2194,16 +2201,14 @@ body.theme-light .sfsc-swatch {
 	text-overflow: ellipsis;
 }
 
-/* On phones in portrait, the software keyboard covers the lower half of a centered
-   modal — dialogs wearing this class anchor to the top instead, so their text box
-   stays visible while typing. (align-self + auto bottom margin wins whether the
-   container centers with flex alignment or auto margins.) */
-@media (orientation: portrait) {
-	.is-phone .modal-container.sfsc-raise-for-keyboard .modal {
-		align-self: flex-start;
-		margin-top: max(20px, env(safe-area-inset-top, 0px));
-		margin-bottom: auto;
-	}
+/* On phones, the software keyboard covers the lower half of a centered modal —
+   dialogs wearing this class anchor to the top instead, so their text box stays
+   visible while typing, in either orientation. (align-self + auto bottom margin
+   wins whether the container centers with flex alignment or auto margins.) */
+.is-phone .modal-container.sfsc-raise-for-keyboard .modal {
+	align-self: flex-start;
+	margin-top: max(20px, env(safe-area-inset-top, 0px));
+	margin-bottom: auto;
 }
 
 /* ---------- Links canvas: live page previews ---------- */
