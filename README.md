@@ -30,7 +30,7 @@ If this plugin is useful to you, you can support its development:
   orders, and per-card colors.
 - **Work directly on the cards.** Click a card to edit its markdown, tick task checkboxes (with
   optional `✅` done dates), quick-add text or delete it. Pinned cards stay at the top.
-- **Drag and drop.** Reorder cards, or drag a task or paragraph onto another card.
+- **Drag and drop.** Reorder cards, or drag a task, paragraph, or image onto another card.
 - **Plays with the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin.**
   Ticking a checkbox uses its toggle (recurring tasks recur), and the right-click menu gains its
   create/edit dialogs.
@@ -40,8 +40,8 @@ If this plugin is useful to you, you can support its development:
 - **Navigate as cards.** Wikilinks open the linked note's card wall, the ↗ button opens the section in a
   normal editor.
 - **Keyboard shortcuts.** `1`–`6` heading level, `L` layouts, `H`/`D` hierarchy/dividers,
-  `,`/`.` previous/next heading, `N` new card, `S` starred lines only, `Ctrl/⌘+F` filter — the toolbar's `?` button
-  lists them all.
+  `,`/`.` previous/next heading, `N` new card, `O` pick a note, `S` starred lines only,
+  `Ctrl/⌘+F` filter — the toolbar's `?` button lists them all.
 - **Writes are surgical.** Only the touched section's lines change, re-located by content
   first, so a stale card refuses rather than touching the wrong lines.
 
@@ -106,6 +106,15 @@ or drag a card onto another day to move it there — dropping it on a day that a
 has a card offers to merge them.
 
 ![Calendar](screenshots/calendar.png)
+
+### Heatmap
+
+A year-at-a-glance activity graph of the dated cards — one cell per day, shaded by how
+many tasks that day finished — with the current streak, longest streak, and totals
+above. Click a filled day to open its section in the note; click an empty one to
+create its card. Like the Calendar, it needs date headings.
+
+![Heatmap](screenshots/heatmap.png)
 
 ### Links
 
@@ -200,6 +209,14 @@ The toolbar's filter box (`Ctrl/⌘+F`) narrows the wall to cards containing the
 `Esc` clears it. For longer-lived highlighting, right-click a line and pick **Add star** —
 the star emoji is written into the note as plain text, and the toolbar's star toggle (key
 `S`) then shows only the starred lines.
+
+## Manage notes
+
+The ☰ menu's **Manage notes…** (also a command) lists every note the plugin remembers
+a cards view for — searchable, pinned notes first, each with its heading level and
+layout. Click a note to open it, or use the row's buttons: pin it into the right-click
+menu's quick switch, rename it (links update), duplicate it with its view settings,
+forget the remembered view, or delete the note.
 
 ## The menu, and per-note backgrounds
 

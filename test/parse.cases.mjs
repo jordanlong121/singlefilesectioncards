@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -1526,6 +1526,41 @@ t("imageLinkSpans reports exact ranges, so removal can excise the markup", () =>
     spans.map((s) => content.slice(s.start, s.end)),
     ["![[a.png]]", "![x](b.jpg)", '<img src="c.gif">'],
   );
+});
+
+t("heatmapDays tallies tasks per dated section; same-day sections pool", () => {
+  const lines = [
+    "### 2026-08-05, Wednesday",
+    "- [ ] open one",
+    "- [x] done one",
+    "- [X] done two",
+    "prose doesn't count [x] even with brackets",
+    "### Not a date",
+    "- [x] ignored",
+    "### 2026-08-05, Wednesday again",
+    "- [ ] open two",
+    "### 2026-08-06, Thursday",
+    "just prose",
+  ];
+  const days = heatmapDays(parseCards(lines, 3, null), "YYYY-MM-DD, dddd");
+  assert.deepEqual([...days.keys()].sort(), ["2026-08-05", "2026-08-06"]);
+  assert.deepEqual(days.get("2026-08-05"), { done: 2, open: 2, headingLine: 0 });
+  assert.deepEqual(days.get("2026-08-06"), { done: 0, open: 0, headingLine: 9 });
+});
+
+t("heatmapDays ignores tasks inside code fences", () => {
+  const sections = parseCards(["### 2026-03-02", "```", "- [ ] fenced", "```", "- [ ] real"], 3, null);
+  assert.deepEqual(heatmapDays(sections, "YYYY-MM-DD").get("2026-03-02"), { done: 0, open: 1, headingLine: 0 });
+});
+
+t("heatmapStreaks: longest run wins; current forgives an unwritten today", () => {
+  const days = ["2026-08-01", "2026-08-02", "2026-08-03", "2026-08-10", "2026-08-11"];
+  assert.deepEqual(heatmapStreaks(days, "2026-08-11"), { current: 2, longest: 3 });
+  assert.deepEqual(heatmapStreaks(days, "2026-08-12"), { current: 2, longest: 3 }, "today missing counts through yesterday");
+  assert.deepEqual(heatmapStreaks(days, "2026-08-20"), { current: 0, longest: 3 }, "a stale note has no current streak");
+  assert.deepEqual(heatmapStreaks([], "2026-08-20"), { current: 0, longest: 0 });
+  // Month boundary: consecutive across 08-31 -> 09-01.
+  assert.deepEqual(heatmapStreaks(["2026-08-31", "2026-09-01"], "2026-09-01"), { current: 2, longest: 2 });
 });
 
 t("urlLinksIn: markdown labels win, bare URLs dedupe, media embeds are skipped", () => {

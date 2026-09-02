@@ -80,7 +80,8 @@ export type Layout =
 	| "custom"
 	| "images"
 	| "links"
-	| "calendar";
+	| "calendar"
+	| "heatmap";
 
 const SORT_LABELS: Record<SortOrder, string> = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 
@@ -95,6 +96,7 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["images", "Images", "Freeform canvas of the note's images: drag previews on from the tray, place and resize them"],
 	["links", "Links", "Freeform canvas of the note's web links: drag page previews on from the tray, place and resize them"],
 	["calendar", "Calendar", "Date cards on a monthly calendar grid — needs the Dates checkbox"],
+	["heatmap", "Heatmap", "A year-at-a-glance activity graph of the dated cards — needs the Dates checkbox"],
 ];
 
 /** What clicking a card's title bar does. */
@@ -954,6 +956,68 @@ export function retitledDateTitle(title: string, format: string, iso: string, de
 }
 
 /** Date-looking headings per level (index 1–6), in one pass over the file. */
+/** One day's activity on the Heatmap: task tallies and where its section lives. */
+export interface HeatDay {
+	done: number;
+	open: number;
+	headingLine: number;
+}
+
+/** The Heatmap's data: every dated section's day, with its task tallies. Two
+ * sections naming the same day pool their counts (the first one keeps the click). */
+export function heatmapDays(sections: Section[], format: string, detect = ""): Map<string, HeatDay> {
+	const days = new Map<string, HeatDay>();
+	for (const section of sections) {
+		const iso = titleToIso(section.title, format, detect);
+		if (!iso) continue;
+		let done = 0;
+		let open = 0;
+		// taskLineIndexes is the fence-aware scanner every other tally uses — a
+		// `- [ ]` sitting inside a code block is text, not a task.
+		const lines = section.body.split("\n");
+		for (const i of taskLineIndexes(lines)) {
+			if (TASK_RE.exec(lines[i])?.[2] === " ") open++;
+			else done++;
+		}
+		const day = days.get(iso);
+		if (day) {
+			day.done += done;
+			day.open += open;
+		} else {
+			days.set(iso, { done, open, headingLine: section.headingLine });
+		}
+	}
+	return days;
+}
+
+/** The ISO day before/after, in UTC so DST can never skip or double a day. */
+function shiftIso(iso: string, delta: number): string {
+	const date = new Date(`${iso}T00:00:00Z`);
+	date.setUTCDate(date.getUTCDate() + delta);
+	return date.toISOString().slice(0, 10);
+}
+
+/** Current and longest runs of consecutive days with cards. The current streak
+ * forgives a today that hasn't been written yet (it counts through yesterday). */
+export function heatmapStreaks(isoDays: Iterable<string>, todayIso: string): { current: number; longest: number } {
+	const days = new Set(isoDays);
+	let longest = 0;
+	let run = 0;
+	let prev: string | null = null;
+	for (const iso of [...days].sort()) {
+		run = prev !== null && shiftIso(prev, 1) === iso ? run + 1 : 1;
+		if (run > longest) longest = run;
+		prev = iso;
+	}
+	let cursor: string | null = days.has(todayIso) ? todayIso : days.has(shiftIso(todayIso, -1)) ? shiftIso(todayIso, -1) : null;
+	let current = 0;
+	while (cursor && days.has(cursor)) {
+		current++;
+		cursor = shiftIso(cursor, -1);
+	}
+	return { current, longest };
+}
+
 export function dateHeadingCounts(lines: string[], format: string, detect = ""): number[] {
 	const counts = [0, 0, 0, 0, 0, 0, 0];
 	// Level 7 keeps nothing out: every real heading (1–6) comes back, each seen once.
@@ -2724,7 +2788,13 @@ export class SectionCardsView extends ItemView {
 	 * view modes (hierarchy columns, section dividers) don't apply on them. One
 	 * predicate, so the next self-placing layout changes exactly one line. */
 	private layoutOwnsPlacement(): boolean {
-		return this.isCanvasLayout() || this.layout === "calendar";
+		return this.isCanvasLayout() || this.isDateLayout();
+	}
+
+	/** Calendar and Heatmap both place by date headings: they borrow the note's date
+	 * level, need the Dates checkbox, and grey out in notes with no date headings. */
+	private isDateLayout(): boolean {
+		return this.layout === "calendar" || this.layout === "heatmap";
 	}
 
 	/** The freeform canvases — Custom Grid (section cards) and Images (previews) —
@@ -2779,13 +2849,15 @@ export class SectionCardsView extends ItemView {
 	}
 
 	private calendarSelectable(): boolean {
-		return this.hasAnyDates || this.layout === "calendar";
+		return this.hasAnyDates || this.isDateLayout();
 	}
 
-	/** Grey the layout dropdown's Calendar option in/out as the note's headings change. */
+	/** Grey the layout dropdown's date options in/out as the note's headings change. */
 	private syncCalendarOption(): void {
-		const option = this.layoutSelect?.querySelector<HTMLOptionElement>('option[value="calendar"]');
-		if (option) option.disabled = !this.calendarSelectable();
+		for (const value of ["calendar", "heatmap"]) {
+			const option = this.layoutSelect?.querySelector<HTMLOptionElement>(`option[value="${value}"]`);
+			if (option) option.disabled = !this.calendarSelectable();
+		}
 	}
 
 	/** The Calendar layout implies Dates, so the toggle hides once it's on there — but
@@ -2795,7 +2867,7 @@ export class SectionCardsView extends ItemView {
 	private syncDatesLabel(): void {
 		this.datesLabelEl?.toggleClass(
 			"is-hidden",
-			(this.layout === "calendar" && this.containsDates) || this.layout === "images" || this.layout === "links",
+			(this.isDateLayout() && this.containsDates) || this.layout === "images" || this.layout === "links",
 		);
 	}
 
@@ -2921,7 +2993,7 @@ export class SectionCardsView extends ItemView {
 				if (!this.plainShortcutOk(evt)) return true;
 				// The Calendar follows the note's date-heading level; a manual level
 				// would only be forced back (and churn the stored view) on refresh.
-				if (this.layout === "calendar") return true;
+				if (this.isDateLayout()) return true;
 				if (!this.levelOptionValues().includes(level)) return true;
 				if (this.headingLevel !== level) {
 					this.headingLevel = level;
@@ -2937,8 +3009,8 @@ export class SectionCardsView extends ItemView {
 			if (!this.plainShortcutOk(evt)) return true;
 			const values = LAYOUT_OPTIONS.map(([value]) => value);
 			let next = values[(values.indexOf(this.layout) + 1) % values.length];
-			// The cycle skips a greyed-out Calendar, like the dropdown refuses it.
-			if (next === "calendar" && !this.calendarSelectable()) {
+			// The cycle skips the greyed-out date layouts, like the dropdown refuses them.
+			while ((next === "calendar" || next === "heatmap") && !this.calendarSelectable()) {
 				next = values[(values.indexOf(next) + 1) % values.length];
 			}
 			this.setLayout(next);
@@ -2989,6 +3061,12 @@ export class SectionCardsView extends ItemView {
 		this.scope.register([], "N", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
 			this.promptNewCard();
+			return false;
+		});
+		// O: pick a different note, same as clicking the toolbar's file button.
+		this.scope.register([], "O", (evt) => {
+			if (!this.plainShortcutOk(evt)) return true;
+			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path)).open();
 			return false;
 		});
 		// S: show only starred lines / show everything, same as the toolbar star.
@@ -3130,7 +3208,18 @@ export class SectionCardsView extends ItemView {
 
 	/** The layout lives as a class on the view root so CSS can restyle grid *and* scrolling. */
 	private applyLayoutClass(): void {
-		for (const name of ["grid", "aligned", "tight", "horizontal", "vertical", "custom", "images", "links", "calendar"]) {
+		for (const name of [
+			"grid",
+			"aligned",
+			"tight",
+			"horizontal",
+			"vertical",
+			"custom",
+			"images",
+			"links",
+			"calendar",
+			"heatmap",
+		]) {
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name);
 		}
 		this.contentEl.toggleClass("is-hier-on", this.hierarchyActive());
@@ -3947,7 +4036,7 @@ export class SectionCardsView extends ItemView {
 		menuBtn.addEventListener("click", (evt) => this.openMainMenu(evt));
 
 		const fileBtn = bar.createEl("button", { cls: "section-cards-file-btn" });
-		fileBtn.setAttr("aria-label", "Pick a different note");
+		fileBtn.setAttr("aria-label", "Pick a different note (O)");
 		fileBtn.createSpan({ text: this.filePath || "(no file)" });
 		fileBtn.addEventListener("click", () => {
 			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path)).open();
@@ -3962,6 +4051,15 @@ export class SectionCardsView extends ItemView {
 		levelSelect.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
 		this.levelSelect = levelSelect;
 		this.populateLevelOptions();
+		// The date layouts follow the note's date-heading level; the dropdown still
+		// SHOWS which level that is, but a manual pick would only be forced back on
+		// the next refresh, so it greys out (the 1–6 keys are guarded the same way).
+		if (this.isDateLayout()) {
+			levelSelect.disabled = true;
+			const hint = "The Calendar and Heatmap follow the note's date-heading level";
+			levelWrap.setAttr("aria-label", hint);
+			levelSelect.setAttr("aria-label", hint);
+		}
 		levelSelect.addEventListener("change", () => {
 			this.headingLevel = Number(levelSelect.value);
 			this.rememberView();
@@ -4213,7 +4311,7 @@ export class SectionCardsView extends ItemView {
 			option.title = hint;
 			// Calendar is greyed out in notes with no date headings at any level
 			// (refresh keeps this current; the current layout stays selectable).
-			if (value === "calendar") option.disabled = !this.calendarSelectable();
+			if (value === "calendar" || value === "heatmap") option.disabled = !this.calendarSelectable();
 		}
 		layoutSelect.value = this.layout;
 		layoutSelect.addEventListener("change", () => this.setLayout(layoutSelect.value as Layout));
@@ -4354,6 +4452,12 @@ export class SectionCardsView extends ItemView {
 				.setIcon("layout-template")
 				.onClick(() => this.openTemplateMenu(evt, this.templateBtn ?? this.toolbarEl)),
 		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Manage notes…")
+				.setIcon("library")
+				.onClick(() => new NoteLibraryModal(this.plugin, (path) => void this.navigateTo(path)).open()),
+		);
 
 		menu.addSeparator();
 		this.addLayoutItems(menu);
@@ -4419,7 +4523,11 @@ export class SectionCardsView extends ItemView {
 					item
 						.setTitle(label)
 						.setChecked(this.layout === value)
-						.setDisabled(value === "calendar" && this.layout !== "calendar" && !this.calendarSelectable())
+						.setDisabled(
+						(value === "calendar" || value === "heatmap") &&
+							this.layout !== value &&
+							!this.calendarSelectable(),
+					)
 						.onClick(() => {
 							if (this.layout !== value) this.setLayout(value);
 						}),
@@ -4923,12 +5031,12 @@ export class SectionCardsView extends ItemView {
 		const dateLevel = bestDateLevel(dateCounts);
 		this.hasAnyDates = dateLevel !== null;
 		this.syncCalendarOption();
-		if (this.layout !== "calendar" && this.preCalendarLevel !== null) {
+		if (!this.isDateLayout() && this.preCalendarLevel !== null) {
 			this.headingLevel = this.preCalendarLevel;
 			this.preCalendarLevel = null;
 			this.buildToolbar();
 		}
-		if (this.layout === "calendar" && dateLevel && dateLevel !== this.headingLevel) {
+		if (this.isDateLayout() && dateLevel && dateLevel !== this.headingLevel) {
 			this.preCalendarLevel ??= this.headingLevel;
 			this.headingLevel = dateLevel;
 			this.buildToolbar();
@@ -4973,14 +5081,20 @@ export class SectionCardsView extends ItemView {
 		this.starBtn?.toggleClass("is-hidden", !this.hasStars);
 		this.starBtn?.toggleClass("is-active", this.starredOnly);
 
-		// The Calendar only means something on a dated note: without the Dates checkbox
-		// there is nothing to place on a month, so say so instead of guessing.
+		// The date layouts only mean something on a dated note: without the Dates
+		// checkbox there is nothing to place, so say so instead of guessing.
 		const calendar = this.layout === "calendar";
-		if (calendar && !this.containsDates) {
+		if (this.isDateLayout() && !this.containsDates) {
 			this.showEmpty(
-				"The Calendar layout needs date headings.",
+				`The ${calendar ? "Calendar" : "Heatmap"} layout needs date headings.`,
 				"Turn on the toolbar's Dates checkbox, or pick another layout.",
 			);
+			return;
+		}
+
+		// The Heatmap renders day cells straight from the sections — no cards.
+		if (this.layout === "heatmap") {
+			this.renderHeatmapLayout(file, sections, cardFormat, detect);
 			return;
 		}
 
@@ -5066,7 +5180,7 @@ export class SectionCardsView extends ItemView {
 		// section rebuilds one card and every other card's rendered markdown is kept.
 		for (const stray of Array.from(
 			this.gridEl.querySelectorAll(
-				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty, .sc-cal-dow, .sc-cal-month, .sc-cal-blank",
+				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty, .sc-cal-dow, .sc-cal-month, .sc-cal-blank, .sc-heat-wrap",
 			),
 		)) {
 			stray.remove();
@@ -5891,7 +6005,32 @@ export class SectionCardsView extends ItemView {
 
 	/** True when a rendered element plausibly shows the given source lines. */
 	private static blockTextsAgree(el: HTMLElement, blockLines: string[]): boolean {
-		const key = SectionCardsView.blockKey(blockLines[0] ?? "");
+		const first = (blockLines[0] ?? "").trim();
+		// An image or media embed renders as pixels, not prose, so the text check
+		// below could never pass — for those, the DOM agrees with the source when
+		// the rendered embed names the same target file/URL.
+		const media = /^!\[\[([^\][|#\n]+)/.exec(first) ?? /^!\[[^\]\n]*\]\(\s*<?([^)\s>]+)/.exec(first);
+		if (media) {
+			let target = media[1].split("#")[0].trim();
+			try {
+				target = decodeURIComponent(target);
+			} catch {
+				// a stray % — compare as written
+			}
+			const base = (target.split("/").pop() ?? target).toLowerCase();
+			if (!base) return true;
+			for (const node of Array.from(el.querySelectorAll<HTMLElement>(".internal-embed, img, video, audio"))) {
+				let hay = `${node.getAttribute("src") ?? ""} ${node.getAttribute("alt") ?? ""}`;
+				try {
+					hay = decodeURIComponent(hay);
+				} catch {
+					// raw is fine for the comparison
+				}
+				if (hay.toLowerCase().includes(base)) return true;
+			}
+			return false;
+		}
+		const key = SectionCardsView.blockKey(first);
 		if (!key) return true; // nothing distinctive to compare
 		const dom = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 		return dom.includes(key);
@@ -6979,6 +7118,126 @@ export class SectionCardsView extends ItemView {
 		if (!unplacedKeys.length) {
 			this.trayEl.createDiv({ cls: "section-cards-tray-hint", text: "Every link is on the canvas." });
 		}
+	}
+
+	/**
+	 * The Heatmap layout's render pass: a year-at-a-glance activity graph of the
+	 * dated cards — one cell per day in week columns, shaded by how many tasks the
+	 * day finished — with streak stats above and a shade legend below. A filled cell
+	 * opens its section in the note; an empty one offers to create the day's card.
+	 */
+	private renderHeatmapLayout(file: TFile, sections: Section[], format: string, detect: string): void {
+		this.clearAllCards();
+		this.clearHierarchy();
+		this.jumpDateWrap?.toggleClass("is-hidden", true);
+		this.starBtn?.toggleClass("is-hidden", true);
+		this.pendingEditHeading = null;
+		this.pendingMaximizeHeading = null;
+		this.gridEl.appendChild(this.canvasExtentEl); // clearAllCards emptied the grid
+
+		const days = heatmapDays(sections, format, detect);
+		if (!days.size) {
+			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
+			empty.createEl("p", { text: `No date headings found in ${file.basename}.` });
+			empty.createEl("p", { text: "Days whose headings name a date, like 2026-08-26, each get a cell." });
+			this.rememberView();
+			return;
+		}
+
+		const todayIso = mo().format("YYYY-MM-DD");
+		const isos = [...days.keys()].sort();
+		const streaks = heatmapStreaks(isos, todayIso);
+		let doneTotal = 0;
+		let openTotal = 0;
+		let maxDone = 1;
+		for (const day of days.values()) {
+			doneTotal += day.done;
+			openTotal += day.open;
+			if (day.done > maxDone) maxDone = day.done;
+		}
+
+		const wrap = this.gridEl.createDiv({ cls: "sc-heat-wrap" });
+		const stats = wrap.createDiv({ cls: "sc-heat-stats" });
+		const stat = (value: number, label: string) => {
+			const box = stats.createDiv({ cls: "sc-heat-stat" });
+			box.createDiv({ cls: "sc-heat-stat-value", text: String(value) });
+			box.createDiv({ cls: "sc-heat-stat-label", text: label });
+		};
+		stat(streaks.current, "day streak");
+		stat(streaks.longest, "longest streak");
+		stat(days.size, days.size === 1 ? "day with a card" : "days with cards");
+		stat(doneTotal, doneTotal === 1 ? "task done" : "tasks done");
+		if (openTotal) stat(openTotal, "still open");
+
+		// Week columns run from the first card's week through today's (or the last
+		// card's, for notes that reach into the future). Same week-start rule as the
+		// Calendar: the setting first, the locale otherwise.
+		const locale = moment as unknown as {
+			weekdaysShort: (localeSorted: boolean) => string[];
+			localeData: () => { firstDayOfWeek: () => number };
+		};
+		const weekStartSetting = this.plugin.settings.weekStart;
+		const firstDow =
+			weekStartSetting === "sunday" ? 0 : weekStartSetting === "monday" ? 1 : locale.localeData().firstDayOfWeek();
+		const names = locale.weekdaysShort(false);
+
+		const first = isos[0];
+		const last = isos[isos.length - 1] > todayIso ? isos[isos.length - 1] : todayIso;
+		let cursor = first;
+		while (new Date(`${cursor}T00:00:00Z`).getUTCDay() !== firstDow) cursor = shiftIso(cursor, -1);
+
+		const scroll = wrap.createDiv({ cls: "sc-heat-scroll" });
+		const graph = scroll.createDiv({ cls: "sc-heat-graph" });
+		const dowCol = graph.createDiv({ cls: "sc-heat-week sc-heat-dows" });
+		dowCol.createDiv({ cls: "sc-heat-mlabel" });
+		for (let i = 0; i < 7; i++) {
+			// Every other name keeps the column legible without crowding it.
+			dowCol.createDiv({ cls: "sc-heat-dow", text: i % 2 === 1 ? names[(firstDow + i) % 7] : "" });
+		}
+
+		let lastMonth = "";
+		while (cursor <= last) {
+			const week = graph.createDiv({ cls: "sc-heat-week" });
+			// The label reads from the week's first REAL day — lead-in pads would
+			// otherwise stamp the previous month on the first column.
+			const month = mo(cursor < first ? first : cursor, "YYYY-MM-DD").format("MMM");
+			week.createDiv({ cls: "sc-heat-mlabel", text: month !== lastMonth ? month : "" });
+			lastMonth = month;
+			for (let i = 0; i < 7; i++) {
+				const iso = cursor;
+				cursor = shiftIso(cursor, 1);
+				const cell = week.createDiv({ cls: "sc-heat-cell" });
+				if (iso < first || iso > last) {
+					cell.addClass("is-pad");
+					continue;
+				}
+				const day = days.get(iso);
+				const level = !day ? 0 : day.done === 0 ? 1 : 1 + Math.ceil((3 * day.done) / maxDone);
+				cell.addClass(`lv${level}`);
+				if (iso === todayIso) cell.addClass("is-today");
+				const summary = day
+					? `${iso} — ${day.done} done, ${day.open} open`
+					: `${iso} — no card (click to create one)`;
+				cell.setAttr("aria-label", summary);
+				cell.setAttr("title", summary);
+				cell.addEventListener("click", () => {
+					if (day) void this.plugin.revealSection(file, day.headingLine);
+					else this.promptCreateDateCard(iso);
+				});
+			}
+		}
+
+		const legend = wrap.createDiv({ cls: "sc-heat-legend" });
+		legend.createSpan({ text: "Less" });
+		for (let level = 0; level <= 4; level++) legend.createDiv({ cls: `sc-heat-cell lv${level}` });
+		legend.createSpan({ text: "More" });
+
+		// A graph wider than the pane (a phone, a long note) opens at its recent end —
+		// today is what the streak-watcher came for, not last January.
+		scroll.scrollLeft = scroll.scrollWidth;
+
+		this.rememberView();
+		(this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
 	}
 
 	/** Apply the zoom factor: cards, extent marker, preview and dots all ride the var. */
@@ -8435,6 +8694,255 @@ class MergeCardsModal extends Modal {
 	}
 }
 
+/** A one-line text prompt: Enter (or the CTA) submits, Escape cancels. */
+class TextInputModal extends Modal {
+	private readonly title: string;
+	private readonly initial: string;
+	private readonly cta: string;
+	private readonly onSubmit: (value: string) => void;
+
+	constructor(app: App, title: string, initial: string, cta: string, onSubmit: (value: string) => void) {
+		super(app);
+		this.title = title;
+		this.initial = initial;
+		this.cta = cta;
+		this.onSubmit = onSubmit;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: this.title });
+		const input = contentEl.createEl("input", {
+			cls: "sfsc-text-input",
+			attr: { type: "text", spellcheck: "false" },
+		});
+		input.value = this.initial;
+		const submit = () => {
+			this.close();
+			this.onSubmit(input.value);
+		};
+		input.addEventListener("keydown", (evt) => {
+			if (evt.key !== "Enter") return;
+			evt.preventDefault();
+			submit();
+		});
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => b.setButtonText(this.cta).setCta().onClick(submit));
+		input.focus();
+		input.select();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/** A generic confirmation: heading, one paragraph, Cancel + one action button. */
+class ConfirmActionModal extends Modal {
+	private readonly title: string;
+	private readonly body: string;
+	private readonly cta: string;
+	private readonly destructive: boolean;
+	private readonly onConfirm: () => void;
+
+	constructor(app: App, title: string, body: string, cta: string, destructive: boolean, onConfirm: () => void) {
+		super(app);
+		this.title = title;
+		this.body = body;
+		this.cta = cta;
+		this.destructive = destructive;
+		this.onConfirm = onConfirm;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: this.title });
+		contentEl.createEl("p", { text: this.body });
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => {
+				b.setButtonText(this.cta)
+					.setCta()
+					.onClick(() => {
+						this.close();
+						this.onConfirm();
+					});
+				if (this.destructive) b.setDestructive();
+				b.buttonEl.focus();
+			});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/**
+ * The Note Library: every note the plugin remembers a cards view for, searchable,
+ * with basic note management — open, pin to the quick switch, rename, duplicate
+ * (view settings included), forget the remembered view, or trash the note.
+ */
+class NoteLibraryModal extends Modal {
+	private readonly plugin: SectionCardsPlugin;
+	private readonly openNote: (path: string) => void;
+	private query = "";
+	private listEl!: HTMLElement;
+
+	constructor(plugin: SectionCardsPlugin, openNote: (path: string) => void) {
+		super(plugin.app);
+		this.plugin = plugin;
+		this.openNote = openNote;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.addClass("sfsc-library-modal");
+		contentEl.createEl("h3", { text: "Manage notes" });
+		contentEl.createEl("p", {
+			cls: "sfsc-library-hint",
+			text: "Every note with a remembered cards view. Click one to open it.",
+		});
+		const search = contentEl.createEl("input", {
+			cls: "sfsc-library-search",
+			attr: { type: "text", placeholder: "Filter notes…", spellcheck: "false" },
+		});
+		search.addEventListener("input", () => {
+			this.query = search.value;
+			this.renderList();
+		});
+		this.listEl = contentEl.createDiv({ cls: "sfsc-library-list" });
+		this.renderList();
+		if (!Platform.isMobile) search.focus();
+	}
+
+	private renderList(): void {
+		this.listEl.empty();
+		const entries = this.plugin.libraryEntries(this.query);
+		if (!entries.length) {
+			this.listEl.createDiv({
+				cls: "sfsc-library-empty",
+				text: this.query ? "No remembered notes match." : "No notes have a remembered cards view yet.",
+			});
+			return;
+		}
+		for (const entry of entries) {
+			const row = this.listEl.createDiv({ cls: "sfsc-library-row" });
+			row.toggleClass("is-pinned", entry.pinned);
+			const main = row.createDiv({ cls: "sfsc-library-main" });
+			main.createDiv({ cls: "sfsc-library-name", text: entry.name });
+			if (entry.path !== `${entry.name}.md`) main.createDiv({ cls: "sfsc-library-path", text: entry.path });
+			row.createDiv({ cls: "sfsc-library-badge", text: `H${entry.headingLevel} · ${entry.layoutLabel}` });
+
+			const button = (icon: string, label: string, action: () => void) => {
+				const btn = row.createEl("button", { cls: "sfsc-library-btn" });
+				setIcon(btn, icon);
+				btn.setAttr("aria-label", label);
+				btn.addEventListener("click", (evt) => {
+					evt.stopPropagation();
+					action();
+				});
+				return btn;
+			};
+			button(
+				entry.pinned ? "pin-off" : "pin",
+				entry.pinned ? "Unpin from the quick switch" : "Pin to the quick switch",
+				() => {
+					void this.plugin.toggleRecentPin(entry.path).then(() => this.renderList());
+				},
+			).toggleClass("is-active", entry.pinned);
+			button("pencil", "Rename note (links update)", () => this.renameNote(entry.path));
+			button("copy-plus", "Duplicate note, view settings included", () => this.duplicateNote(entry.path));
+			button("eraser", "Forget the remembered view (the note is untouched)", () => this.forgetNote(entry.path));
+			button("trash-2", "Delete the note", () => this.deleteNote(entry.path));
+
+			row.addEventListener("click", () => {
+				this.close();
+				this.openNote(entry.path);
+			});
+		}
+	}
+
+	/** The note's folder prefix, for building sibling paths in rename/duplicate. */
+	private folderOf(file: TFile): string {
+		return file.parent && file.parent.path !== "/" ? `${file.parent.path}/` : "";
+	}
+
+	private renameNote(path: string): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		new TextInputModal(this.app, "Rename note", file.basename, "Rename", (value) => {
+			const name = value.trim();
+			if (!name || name === file.basename) return;
+			void (async () => {
+				try {
+					// fileManager (not vault) so links to the note update everywhere.
+					await this.app.fileManager.renameFile(file, normalizePath(`${this.folderOf(file)}${name}.md`));
+				} catch {
+					new Notice("Couldn't rename — is the name free?");
+				}
+				this.renderList();
+			})();
+		}).open();
+	}
+
+	private duplicateNote(path: string): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		new TextInputModal(this.app, "Duplicate note", `${file.basename} copy`, "Duplicate", (value) => {
+			const name = value.trim();
+			if (!name) return;
+			void (async () => {
+				const dest = normalizePath(`${this.folderOf(file)}${name}.md`);
+				try {
+					await this.app.vault.copy(file, dest);
+					await this.plugin.copyNoteState(path, dest);
+					new Notice(`Duplicated to “${dest}”.`);
+				} catch {
+					new Notice("Couldn't duplicate — is the name free?");
+				}
+				this.renderList();
+			})();
+		}).open();
+	}
+
+	private forgetNote(path: string): void {
+		new ConfirmActionModal(
+			this.app,
+			"Forget this note's cards view?",
+			`“${path}” keeps its file — only the plugin's remembered layout, placements, colors, and pins are dropped.`,
+			"Forget",
+			false,
+			() => {
+				void this.plugin.forgetNote(path).then(() => this.renderList());
+			},
+		).open();
+	}
+
+	private deleteNote(path: string): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		new ConfirmActionModal(
+			this.app,
+			"Delete note?",
+			`“${path}” is moved to the trash, and the plugin forgets its cards view.`,
+			"Delete",
+			true,
+			() => {
+				void (async () => {
+					await this.app.fileManager.trashFile(file);
+					await this.plugin.forgetNote(path);
+					this.renderList();
+				})();
+			},
+		).open();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
 /** Images canvas: confirm removing a tile's link(s), optionally trashing the file. */
 class DeleteImageModal extends Modal {
 	private readonly label: string;
@@ -8583,6 +9091,7 @@ class ShortcutsModal extends Modal {
 			[", / .", "Previous / next heading in the Hierarchy and Dividers view modes"],
 			["S", "Show only starred lines / show everything"],
 			["N", "New card"],
+			["O", "Open a different note"],
 			[`${MOD_LABEL}+F`, "Jump to the filter box"],
 			["Esc", "Clear the filter, or close a maximized card"],
 			[`${MOD_LABEL}+Enter`, "Save the card being edited"],
@@ -9340,6 +9849,12 @@ export default class SectionCardsPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: "manage-notes",
+			name: "Manage notes",
+			callback: () => new NoteLibraryModal(this, (path) => void this.openCardsView(path)).open(),
+		});
+
+		this.addCommand({
 			id: "new-section-card",
 			name: "Create new card",
 			checkCallback: (checking) => {
@@ -9880,6 +10395,56 @@ export default class SectionCardsPlugin extends Plugin {
 		current.linksGrid = placements;
 		if (zoom !== undefined) current.linksZoom = zoom;
 		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
+	/** The Note Library's rows: every existing note the plugin remembers a cards view
+	 * for — pinned notes first (in pin order), then by recency, then by name. */
+	libraryEntries(query = ""): { path: string; name: string; layoutLabel: string; headingLevel: number; pinned: boolean }[] {
+		const q = query.trim().toLowerCase();
+		const labels = new Map<string, string>(LAYOUT_OPTIONS.map(([value, label]) => [value, label]));
+		const pins = this.settings.pinnedRecentFiles;
+		const recents = this.settings.recentFiles;
+		const entries = Object.entries(this.settings.perFile ?? {})
+			.filter(([path]) => this.app.vault.getFileByPath(path) !== null)
+			.map(([path, view]) => ({
+				path,
+				name: path.replace(/\.md$/, "").split("/").pop() ?? path,
+				layoutLabel: labels.get(view.layout) ?? view.layout,
+				headingLevel: view.headingLevel,
+				pinned: pins.includes(path),
+			}))
+			.filter((entry) => !q || entry.path.toLowerCase().includes(q));
+		const rank = (path: string): [number, number, string] => {
+			const pin = pins.indexOf(path);
+			if (pin >= 0) return [0, pin, ""];
+			const recent = recents.indexOf(path);
+			if (recent >= 0) return [1, recent, ""];
+			return [2, 0, path.toLowerCase()];
+		};
+		return entries.sort((a, b) => {
+			const [ag, an, as] = rank(a.path);
+			const [bg, bn, bs] = rank(b.path);
+			return ag - bg || an - bn || as.localeCompare(bs);
+		});
+	}
+
+	/** Drop everything the plugin remembers about a note — the file is untouched. */
+	async forgetNote(path: string): Promise<void> {
+		delete this.settings.perFile?.[path];
+		for (const list of [this.settings.recentFiles, this.settings.pinnedRecentFiles]) {
+			const at = list.indexOf(path);
+			if (at >= 0) list.splice(at, 1);
+		}
+		await this.saveSettings();
+	}
+
+	/** A duplicated note starts with a copy of the original's remembered view —
+	 * same headings, so the placements, colors, and pins all still apply. */
+	async copyNoteState(from: string, to: string): Promise<void> {
+		const entry = this.settings.perFile?.[from];
+		if (!entry) return;
+		this.settings.perFile[to] = JSON.parse(JSON.stringify(entry)) as PerFileView;
 		await this.saveSettings();
 	}
 
