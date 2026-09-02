@@ -243,12 +243,13 @@ function linksHtml() {
 	const GLOBE = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-globe"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>`;
 	const fakePage = (title, hue) =>
 		`<html><body style="margin:0;font-family:sans-serif;background:#fff"><div style="background:hsl(${hue},60%,45%);color:#fff;padding:14px 16px;font-size:15px;font-weight:700">${title}</div><div style="padding:12px 16px"><div style="height:10px;width:80%;background:#ddd;border-radius:4px;margin:8px 0"></div><div style="height:10px;width:95%;background:#e7e7e7;border-radius:4px;margin:8px 0"></div><div style="height:10px;width:70%;background:#ddd;border-radius:4px;margin:8px 0"></div><div style="height:72px;background:hsl(${hue},45%,88%);border-radius:6px;margin:12px 0"></div><div style="height:10px;width:88%;background:#e7e7e7;border-radius:4px;margin:8px 0"></div><div style="height:10px;width:60%;background:#ddd;border-radius:4px;margin:8px 0"></div></div></body></html>`;
+	// Entirely fictional pages and reserved-.example domains — nothing real to date.
 	const LINKS = [
-		{ label: "Server rack 3D model", url: "https://www.turbosquid.com/3d-models/rack-1372065", hue: 210, spot: { x: 48, y: 48, w: 312, h: 336 } },
-		{ label: "Data center walkthrough", url: "https://www.youtube.com/watch?v=zcwqTkbaZ0o", hue: 0, spot: { x: 384, y: 48, w: 312, h: 240 } },
-		{ label: "LiDAR reference designs", url: "https://example.com/lidar/reference-designs", hue: 150, spot: { x: 384, y: 312, w: 312, h: 264 } },
-		{ label: "Obsidian help", url: "https://help.obsidian.md/", hue: 265 },
-		{ label: "Mermaid diagrams", url: "https://mermaid.js.org/intro/", hue: 330 },
+		{ label: "Quarterly planning guide", url: "https://planwise.example/guides/quarterly", hue: 210, spot: { x: 48, y: 48, w: 312, h: 336 } },
+		{ label: "Espresso machine manual", url: "https://brewtech.example/manuals/lx-9", hue: 0, spot: { x: 384, y: 48, w: 312, h: 240 } },
+		{ label: "Trail map — Pine Ridge loop", url: "https://trailatlas.example/pine-ridge", hue: 150, spot: { x: 384, y: 312, w: 312, h: 264 } },
+		{ label: "Sourdough starter FAQ", url: "https://crumbworks.example/faq", hue: 265 },
+		{ label: "Home office lighting ideas", url: "https://lumenlab.example/office", hue: 330 },
 	];
 	const placed = LINKS.filter((l) => l.spot).map(
 		({ label, hue, spot: r }) =>

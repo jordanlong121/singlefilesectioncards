@@ -118,12 +118,9 @@ create its card. Like the Calendar, it needs date headings.
 
 ### Links
 
-The freeform canvas once more, for the note's web links: every URL — `[name](url)` markdown links
-and bare addresses — waits in the tray, and placed tiles show a live preview of the
-page under a title bar. Previews are inert so they drag and resize like images; the
-magnifier (or a double-click) opens the page big and fully interactive, ↗ opens it in
-your browser, and right-click offers Copy URL. Sites that refuse to be embedded show
-a blank frame — the title bar still names them.
+The freeform canvas once more, for the note's web links: every URL waits in the tray,
+and placed tiles show a live page preview that drags and resizes like an image. The
+magnifier opens the page big and fully interactive; ↗ opens it in your browser.
 
 ![Links](screenshots/links.png)
 
