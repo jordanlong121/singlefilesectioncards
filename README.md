@@ -41,9 +41,7 @@ If this plugin is useful to you, you can support its development:
   normal editor.
 - **Keyboard shortcuts.** `1`–`6` heading level, `L` layouts, `H`/`D` hierarchy/dividers,
   `,`/`.` previous/next heading, `N` new card, `O` pick a note, `S` starred lines only,
-  `Ctrl/⌘+F` filter — the toolbar's `?` button lists them all.
-- **Writes are surgical.** Only the touched section's lines change, re-located by content
-  first, so a stale card refuses rather than touching the wrong lines.
+  `Ctrl/⌘+F` filter. Click `?` to show keyboard shortcuts.
 
 ## Layouts
 
