@@ -2211,6 +2211,238 @@ body.theme-light .sfsc-swatch {
 	margin-bottom: auto;
 }
 
+/* ---------- Note Library: manage the remembered notes ---------- */
+
+.sfsc-library-modal .sfsc-library-hint {
+	margin: 0 0 8px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.sfsc-library-search,
+.sfsc-text-input {
+	width: 100%;
+	margin-bottom: 8px;
+}
+
+.sfsc-library-list {
+	max-height: 50vh;
+	overflow-y: auto;
+}
+
+.sfsc-library-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 7px 8px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.sfsc-library-row:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.sfsc-library-main {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.sfsc-library-name {
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.sfsc-library-row.is-pinned .sfsc-library-name::before {
+	content: "📌 ";
+	font-size: 0.85em;
+}
+
+.sfsc-library-path {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.sfsc-library-badge {
+	flex: 0 0 auto;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	border: 1px solid var(--sc-line);
+	border-radius: 5px;
+	padding: 1px 7px;
+	white-space: nowrap;
+}
+
+.sfsc-library-btn {
+	flex: 0 0 auto;
+	padding: 4px 6px;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	opacity: 0;
+}
+
+.sfsc-library-row:hover .sfsc-library-btn,
+.sfsc-library-btn.is-active,
+body.is-mobile .sfsc-library-btn {
+	opacity: 1;
+}
+
+.sfsc-library-btn:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+
+.sfsc-library-btn svg {
+	width: 16px;
+	height: 16px;
+}
+
+.sfsc-library-empty {
+	padding: 12px 8px;
+	color: var(--text-faint);
+	font-size: var(--font-ui-small);
+}
+
+/* ---------- Heatmap: year-at-a-glance activity graph ---------- */
+
+/* The graph replaces the card grid wholesale; sort and filter mean nothing here. */
+.is-layout-heatmap .section-cards-grid {
+	display: block;
+	overflow: auto;
+	padding: var(--sc-pad);
+}
+
+.is-layout-heatmap .section-cards-filter,
+.is-layout-heatmap .section-cards-sort-control {
+	display: none;
+}
+
+.sc-heat-wrap {
+	max-width: 980px;
+	margin: 12px auto 0;
+}
+
+.sc-heat-stats {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin-bottom: 16px;
+}
+
+.sc-heat-stat {
+	flex: 1 1 120px;
+	padding: 10px 14px;
+	border: 1px solid var(--sc-line);
+	border-radius: 8px;
+	background-color: var(--sc-surface);
+	text-align: center;
+}
+
+.sc-heat-stat-value {
+	font-size: 1.6em;
+	font-weight: 700;
+	color: var(--text-normal);
+	line-height: 1.2;
+}
+
+.sc-heat-stat-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.sc-heat-scroll {
+	overflow-x: auto;
+	padding-bottom: 6px;
+}
+
+.sc-heat-graph {
+	display: flex;
+	gap: 3px;
+	width: max-content;
+}
+
+.sc-heat-week {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.sc-heat-mlabel {
+	height: 16px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.sc-heat-dows {
+	margin-right: 4px;
+}
+
+.sc-heat-dow {
+	height: 14px;
+	font-size: 10px;
+	line-height: 14px;
+	color: var(--text-faint);
+	text-align: right;
+}
+
+.sc-heat-cell {
+	width: 14px;
+	height: 14px;
+	border-radius: 3px;
+	background-color: color-mix(in srgb, var(--interactive-accent) 0%, rgba(var(--mono-rgb-100), 0.08));
+	cursor: pointer;
+}
+
+.sc-heat-cell.is-pad {
+	visibility: hidden;
+	cursor: default;
+}
+
+.sc-heat-cell.lv1 {
+	background-color: color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}
+
+.sc-heat-cell.lv2 {
+	background-color: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+}
+
+.sc-heat-cell.lv3 {
+	background-color: color-mix(in srgb, var(--interactive-accent) 75%, transparent);
+}
+
+.sc-heat-cell.lv4 {
+	background-color: var(--interactive-accent);
+}
+
+.sc-heat-cell.lv0:hover {
+	background-color: rgba(var(--mono-rgb-100), 0.2);
+}
+
+.sc-heat-cell.is-today {
+	outline: 2px solid var(--text-highlight-bg, var(--interactive-accent));
+	outline-offset: 1px;
+}
+
+.sc-heat-legend {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-top: 10px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.sc-heat-legend .sc-heat-cell {
+	cursor: default;
+}
+
 /* ---------- Links canvas: live page previews ---------- */
 
 /* A link tile stacks its title bar over the page frame. */

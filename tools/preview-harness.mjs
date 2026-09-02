@@ -104,7 +104,7 @@ function cardHtml(s, { maxHeight = null, placed = null, hierHidden = false } = {
 
 const DECK_ICON = `<svg viewBox="0 0 100 100" class="svg-icon" width="16" height="16"><g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="9" width="12" height="12.5" rx="2"/><path d="M5.5 6h10a2 2 0 0 1 2 2v10"/><path d="M8.5 3h10a2 2 0 0 1 2 2v10"/></g></svg>`;
 
-const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid", images: "Images", links: "Links", calendar: "Calendar" };
+const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid", images: "Images", links: "Links", calendar: "Calendar", heatmap: "Heatmap" };
 const SORT_LABELS = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 /* On the Calendar the sort control orders the months instead of the cards. */
 const CAL_SORT_LABELS = { asc: "Ascending", desc: "Descending", doc: "Ascending" };
@@ -118,15 +118,15 @@ const TEMPLATE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height
  * mode: "default" | "hier" | "sections" — which View mode segment is active. */
 function toolbarHtml(layout, mode = "default") {
 	const seg = (label, key) =>
-		`<button${mode === key ? ' class="is-active"' : ""}${["custom", "images", "links"].includes(layout) ? " disabled" : ""}>${label}</button>`;
+		`<button${mode === key ? ' class="is-active"' : ""}${["custom", "images", "links", "calendar", "heatmap"].includes(layout) ? " disabled" : ""}>${label}</button>`;
 	// The Calendar hides the dates checkbox (redundant there), as does the Images
 	// canvas (dates mean nothing to pictures); styles.css hides the Card level and
 	// filter controls via the layout class.
-	const datesHidden = layout === "calendar" || layout === "images" || layout === "links" ? " is-hidden" : "";
+	const datesHidden = ["calendar", "heatmap", "images", "links"].includes(layout) ? " is-hidden" : "";
 	return `<div class="section-cards-toolbar${MOBILE ? " is-compact" : ""}">
 	<button class="section-cards-icon-btn section-cards-menu-btn">${MENU_ICON}</button>
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
-	<div class="section-cards-control section-cards-level-control"><span class="section-cards-label">Card level</span><select class="dropdown"><option>H${LEVEL}</option></select></div>
+	<div class="section-cards-control section-cards-level-control"><span class="section-cards-label">Card level</span><select class="dropdown"${["calendar", "heatmap"].includes(layout) ? " disabled" : ""}><option>H${LEVEL}</option></select></div>
 	<div class="section-cards-control section-cards-filter"><input type="text" class="section-cards-filter-input" placeholder="Filter…" spellcheck="false"><button class="section-cards-filter-clear"></button></div>
 	<div class="section-cards-spacer"></div>
 	<div class="section-cards-control">
@@ -277,11 +277,65 @@ ${tiles.join("\n")}
 <div class="section-cards-zoom"><button>−</button><button class="section-cards-zoom-label">100%</button><button>+</button></div>`;
 }
 
+/** Heatmap: a deterministic fake year of activity — most weekdays filled, weekends
+ * sparse, done-counts varying — so the graph reads like a real daily-notes note. */
+function heatmapHtml() {
+	const today = new Date(Date.UTC(2026, 7, 6)); // the sample vault's "today"
+	const start = new Date(Date.UTC(2026, 0, 1));
+	let seed = 42;
+	const rand = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+
+	// Lead-in pads to the week start (Sunday).
+	const first = new Date(start);
+	while (first.getUTCDay() !== 0) first.setUTCDate(first.getUTCDate() - 1);
+	let lastMonth = "";
+	const weeks = [];
+	let week = null;
+	let days = 0, done = 0;
+	for (const d = new Date(first); d <= today; d.setUTCDate(d.getUTCDate() + 1)) {
+		if (d.getUTCDay() === 0) {
+			week = { label: "", cells: [] };
+			weeks.push(week);
+			const labelDay = d < start ? start : d;
+			const month = labelDay.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+			if (month !== lastMonth) week.label = month;
+			lastMonth = month;
+		}
+		if (d < start) {
+			week.cells.push('<div class="sc-heat-cell is-pad"></div>');
+			continue;
+		}
+		const weekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+		const hasCard = rand() > (weekend ? 0.72 : 0.14);
+		const n = hasCard ? Math.floor(rand() * 6) : 0;
+		const level = !hasCard ? 0 : n === 0 ? 1 : 1 + Math.ceil((3 * n) / 5);
+		if (hasCard) { days++; done += n; }
+		const isToday = d.getTime() === today.getTime() ? " is-today" : "";
+		week.cells.push(`<div class="sc-heat-cell lv${level}${isToday}"></div>`);
+	}
+	const dows = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+	const stat = (value, label) =>
+		`<div class="sc-heat-stat"><div class="sc-heat-stat-value">${value}</div><div class="sc-heat-stat-label">${label}</div></div>`;
+	return `<div class="section-cards-pinned"></div>
+<div class="section-cards-grid">
+<div class="sc-heat-wrap">
+<div class="sc-heat-stats">${stat(9, "day streak")}${stat(23, "longest streak")}${stat(days, "days with cards")}${stat(done, "tasks done")}${stat(31, "still open")}</div>
+<div class="sc-heat-scroll"><div class="sc-heat-graph">
+<div class="sc-heat-week sc-heat-dows"><div class="sc-heat-mlabel"></div>${dows.map((n, i) => `<div class="sc-heat-dow">${i % 2 === 1 ? n : ""}</div>`).join("")}</div>
+${weeks.map((w) => `<div class="sc-heat-week"><div class="sc-heat-mlabel">${w.label}</div>${w.cells.join("")}</div>`).join("\n")}
+</div></div>
+<div class="sc-heat-legend"><span>Less</span><div class="sc-heat-cell lv0"></div><div class="sc-heat-cell lv1"></div><div class="sc-heat-cell lv2"></div><div class="sc-heat-cell lv3"></div><div class="sc-heat-cell lv4"></div><span>More</span></div>
+</div>
+</div>
+<div class="section-cards-tray"></div>`;
+}
+
 function gridHtml(layout, mode = "default") {
 	const hier = mode === "hier";
 	if (layout === "calendar") return calendarHtml();
 	if (layout === "images") return imagesHtml();
 	if (layout === "links") return linksHtml();
+	if (layout === "heatmap") return heatmapHtml();
 	if (layout === "custom") {
 		const placedCards = sections.slice(0, PLACEMENTS.length).map((s, i) => cardHtml(s, { placed: PLACEMENTS[i] }));
 		const hidden = sections.slice(PLACEMENTS.length).map((s) => cardHtml(s));
@@ -507,6 +561,7 @@ const PAGE_BACKGROUNDS = {
 	images: null, // the previews are the pictures — a photo background would fight them
 	links: null, // same story: the page frames are the content
 	calendar: "bg-meadow",
+	heatmap: "bg-ocean",
 	hierarchy: "bg-aurora",
 	dividers: "bg-dunes",
 	"context-menu": null,
