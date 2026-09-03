@@ -3183,6 +3183,9 @@ export class SectionCardsView extends ItemView {
 	private readonly wheelPanHandler = (evt: WheelEvent): void => {
 		if (this.layout !== "vertical" || !this.gridEl) return;
 		if (evt.ctrlKey || evt.metaKey) return; // zoom gestures
+		// A maximized card owns the wheel: its body scrolls natively (or nothing
+		// does), and the row hiding behind the overlay must not pan sideways.
+		if (this.isMaximized()) return;
 
 		const step = wheelDeltaToPixels(evt, this.gridEl.clientWidth);
 		if (!step) return;
