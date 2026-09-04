@@ -99,6 +99,18 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["heatmap", "Heatmap", "A year-at-a-glance activity graph of the dated cards — needs the Dates checkbox"],
 ];
 
+/** How the Deck orders its note thumbnails. "recent" is the working-set order:
+ * pinned notes first, then most recently opened. */
+export type DeckSort = "recent" | "name-asc" | "name-desc" | "modified" | "created";
+
+const DECK_SORT_LABELS: [DeckSort, string][] = [
+	["recent", "Recent"],
+	["name-asc", "File name ascending"],
+	["name-desc", "File name descending"],
+	["modified", "Modified"],
+	["created", "Created"],
+];
+
 /** What clicking a card's title bar does. */
 export type TitleBarClick = "maximize" | "edit";
 
@@ -166,6 +178,10 @@ interface SectionCardsSettings {
 	hierTaskCounts: boolean;
 	/** The nine card colors as configured (label + hex per slot); see CARD_COLORS. */
 	palette: PaletteColor[];
+	/** How many note thumbnails the Deck shows (pinned first, then most recent). */
+	deckCount: number;
+	/** How the Deck's thumbnails are ordered. */
+	deckSort: DeckSort;
 	/** Notes recently opened in the cards view, newest first — the right-click menu's
 	 * quick-switch section shows the top of this list. */
 	recentFiles: string[];
@@ -408,6 +424,8 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	layout: "grid",
 	hierTaskCounts: true,
 	palette: CARD_COLORS.map(([, label, hex]) => ({ label, hex })),
+	deckCount: 5,
+	deckSort: "recent",
 	recentFiles: [],
 	pinnedRecentFiles: [],
 	perFile: {},
@@ -956,6 +974,31 @@ export function retitledDateTitle(title: string, format: string, iso: string, de
 }
 
 /** Date-looking headings per level (index 1–6), in one pass over the file. */
+/**
+ * A note's first few content lines as a Deck thumbnail excerpt: frontmatter dropped,
+ * heading/list/task/quote markers stripped, capped by lines and characters.
+ */
+export function deckExcerpt(content: string, maxLines = 8, maxChars = 260): string {
+	let lines = content.split(/\r?\n/);
+	if (lines[0]?.trim() === "---") {
+		const close = lines.indexOf("---", 1);
+		if (close > 0) lines = lines.slice(close + 1);
+	}
+	const kept: string[] = [];
+	for (const line of lines) {
+		const text = line
+			.replace(/^\s{0,3}>+\s*/, "")
+			.replace(/^\s{0,3}#{1,6}\s+/, "")
+			.replace(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s*)?/, "")
+			.trim();
+		if (!text) continue;
+		kept.push(text);
+		if (kept.length >= maxLines || kept.join("\n").length >= maxChars) break;
+	}
+	const out = kept.join("\n");
+	return out.length > maxChars ? `${out.slice(0, maxChars - 1).trimEnd()}…` : out;
+}
+
 /** One day's activity on the Heatmap: task tallies and where its section lives. */
 export interface HeatDay {
 	done: number;
@@ -2471,6 +2514,7 @@ interface CardsViewState {
 	hierarchy?: boolean;
 	sections?: boolean;
 	starredOnly?: boolean;
+	deck?: boolean;
 }
 
 export class SectionCardsView extends ItemView {
@@ -2484,6 +2528,8 @@ export class SectionCardsView extends ItemView {
 	hierarchyOn = false;
 	/** Section dividers toggled on (toolbar button); mutually exclusive with the columns. */
 	sectionsOn = false;
+	/** The Deck: a wall of note thumbnails replacing the cards until a note is picked. */
+	deckMode = false;
 	/** Starred-only toggled on (toolbar star): only starred lines and their cards show. */
 	starredOnly = false;
 
@@ -2731,11 +2777,13 @@ export class SectionCardsView extends ItemView {
 			hierarchy: this.hierarchyOn,
 			sections: this.sectionsOn,
 			starredOnly: this.starredOnly,
+			deck: this.deckMode,
 		};
 	}
 
 	async setState(state: CardsViewState, result: unknown): Promise<void> {
 		if (state?.filePath) this.filePath = state.filePath;
+		this.deckMode = !!state?.deck;
 		// @ts-ignore — base signature varies across API versions
 		await super.setState(state, result);
 		this.applyStoredView({
@@ -2925,7 +2973,7 @@ export class SectionCardsView extends ItemView {
 		// in the Hierarchy view mode.
 		const backgroundMenu = (evt: MouseEvent) => {
 			const target = evt.target as HTMLElement | null;
-			if (target?.closest(".section-card, .sc-image-card, button")) return;
+			if (target?.closest(".section-card, .sc-image-card, .sfsc-deck-card, button")) return;
 			evt.preventDefault();
 			const menu = new Menu();
 			menu.addItem((item) =>
@@ -3016,29 +3064,31 @@ export class SectionCardsView extends ItemView {
 			this.setLayout(next);
 			return false;
 		});
-		// H: show/hide the hierarchy columns (not available on the Custom Grid canvas).
-		// Turning them on turns the section dividers off — never both at once.
-		this.scope.register([], "H", (evt) => {
+		// V: cycle the View mode — one flat wall, hierarchy columns, divider bars —
+		// mirroring the toolbar's three-way toggle. Not on the layouts that place
+		// everything themselves, where the modes don't apply.
+		this.scope.register([], "V", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
 			if (this.layoutOwnsPlacement()) return true;
-			this.hierarchyOn = !this.hierarchyOn;
-			if (this.hierarchyOn) this.sectionsOn = false;
+			if (this.hierarchyOn) {
+				this.hierarchyOn = false;
+				this.sectionsOn = true;
+			} else if (this.sectionsOn) {
+				this.sectionsOn = false;
+			} else {
+				this.hierarchyOn = true;
+			}
 			this.rememberView();
 			this.applyLayoutClass();
-			this.buildToolbar(); // both toggles reflect the state
+			this.buildToolbar(); // the three-way toggle reflects the state
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 			return false;
 		});
-		// D: show/hide the dividers (not on the canvas); turns the columns off.
+		// D: show/hide the Deck of note thumbnails — allowed from inside the Deck,
+		// or the key that opened it couldn't close it.
 		this.scope.register([], "D", (evt) => {
-			if (!this.plainShortcutOk(evt)) return true;
-			if (this.layoutOwnsPlacement()) return true;
-			this.sectionsOn = !this.sectionsOn;
-			if (this.sectionsOn) this.hierarchyOn = false;
-			this.rememberView();
-			this.applyLayoutClass();
-			this.buildToolbar(); // both toggles reflect the state
-			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+			if (!this.plainShortcutOk(evt, true)) return true;
+			void this.toggleDeck();
 			return false;
 		});
 		// , and .: with the hierarchy columns showing, step the deepest column's
@@ -3064,8 +3114,9 @@ export class SectionCardsView extends ItemView {
 			return false;
 		});
 		// O: pick a different note, same as clicking the toolbar's file button.
+		// Allowed in the Deck too — it's another way of picking a note.
 		this.scope.register([], "O", (evt) => {
-			if (!this.plainShortcutOk(evt)) return true;
+			if (!this.plainShortcutOk(evt, true)) return true;
 			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path)).open();
 			return false;
 		});
@@ -3082,7 +3133,7 @@ export class SectionCardsView extends ItemView {
 		});
 		// Ctrl/⌘+F: jump to the filter box (from anywhere in the view, fields included).
 		this.scope.register(["Mod"], "F", (evt) => {
-			if (this.activeEditor) return true; // edit mode keeps its own Ctrl+F
+			if (this.activeEditor || this.deckMode) return true; // no filter box to jump to
 			evt.preventDefault();
 			this.filterInput?.focus();
 			this.filterInput?.select();
@@ -3202,7 +3253,7 @@ export class SectionCardsView extends ItemView {
 	};
 
 	private updateWheelPan(): void {
-		const want = this.layout === "vertical";
+		const want = this.layout === "vertical" && !this.deckMode;
 		if (want === this.wheelPanBound) return;
 		this.wheelPanBound = want;
 		if (want) this.contentEl.addEventListener("wheel", this.wheelPanHandler, { passive: false });
@@ -3223,9 +3274,11 @@ export class SectionCardsView extends ItemView {
 			"calendar",
 			"heatmap",
 		]) {
-			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name);
+			// The Deck replaces the layout wholesale; its class drops the layout chrome.
+			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name && !this.deckMode);
 		}
-		this.contentEl.toggleClass("is-hier-on", this.hierarchyActive());
+		this.contentEl.toggleClass("is-deck", this.deckMode);
+		this.contentEl.toggleClass("is-hier-on", this.hierarchyActive() && !this.deckMode);
 		// Only the masonry layouts pack with inline `grid-row-end` spans. Leaving a
 		// previous layout's spans in place would let the other layouts paint overlapping
 		// cards for a frame before the masonry pass clears them, so shed them here,
@@ -4045,6 +4098,34 @@ export class SectionCardsView extends ItemView {
 			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path)).open();
 		});
 
+		// The Deck toggle: a wall of note thumbnails instead of the cards. While it's
+		// showing, the rest of the toolbar (all note-specific) stands down.
+		const deckBtn = bar.createEl("button", { cls: "section-cards-icon-btn section-cards-deck-btn" });
+		setIcon(deckBtn, DECK_ICON);
+		deckBtn.toggleClass("is-active", this.deckMode);
+		deckBtn.setAttr(
+			"aria-label",
+			this.deckMode ? "Back to this note's cards (D)" : "Deck: pick a note from thumbnails (D)",
+		);
+		deckBtn.addEventListener("click", () => void this.toggleDeck());
+		if (this.deckMode) {
+			// The Deck's own sort — the rest of the toolbar is note-specific and
+			// stands down, but ordering the thumbnails belongs here.
+			const sortWrap = bar.createDiv({ cls: "section-cards-control section-cards-sort-control" });
+			sortWrap.setAttr("aria-label", "Order the deck's notes");
+			sortWrap.createSpan({ text: "Sort", cls: "section-cards-label" });
+			const sortSelect = sortWrap.createEl("select", { cls: "dropdown" });
+			sortSelect.setAttr("aria-label", "Order the deck's notes");
+			for (const [value, label] of DECK_SORT_LABELS) sortSelect.createEl("option", { text: label, value });
+			sortSelect.value = this.plugin.settings.deckSort;
+			sortSelect.addEventListener("change", () => {
+				this.plugin.settings.deckSort = sortSelect.value as DeckSort;
+				void this.plugin.saveSettings().then(() => this.refresh());
+			});
+			this.addHelpButton(bar);
+			return;
+		}
+
 		// Heading level leads the controls, the filter box beside it: what becomes a
 		// card sits on the left with the note name; the view options keep the right.
 		const levelWrap = bar.createDiv({ cls: "section-cards-control section-cards-level-control" });
@@ -4255,7 +4336,7 @@ export class SectionCardsView extends ItemView {
 		addModeBtn(
 			"Hierarchy",
 			"list-tree",
-			"Hierarchy columns: drill into the headings above the card level (H)",
+			"Hierarchy columns: drill into the headings above the card level (V cycles)",
 			() => this.hierarchyActive(),
 			() => {
 				this.hierarchyOn = true;
@@ -4265,7 +4346,7 @@ export class SectionCardsView extends ItemView {
 		addModeBtn(
 			"Dividers",
 			"rows-3",
-			"Dividers: group the cards under the heading above the card level (D)",
+			"Dividers: group the cards under the heading above the card level (V cycles)",
 			() => this.sectionsActive(),
 			() => {
 				this.sectionsOn = true;
@@ -4330,6 +4411,11 @@ export class SectionCardsView extends ItemView {
 		refreshBtn.setAttr("aria-label", "Reload from file");
 		refreshBtn.addEventListener("click", () => void this.refresh());
 
+		this.addHelpButton(bar);
+	}
+
+	/** The ? button ends every toolbar variant — full, compact, and the Deck's. */
+	private addHelpButton(bar: HTMLElement): void {
 		const helpBtn = bar.createEl("button", { cls: "section-cards-help-btn", text: "?" });
 		helpBtn.setAttr("aria-label", "Keyboard shortcuts");
 		helpBtn.addEventListener("click", () => new ShortcutsModal(this.app).open());
@@ -4358,12 +4444,75 @@ export class SectionCardsView extends ItemView {
 
 	/** Whether a plain-key view shortcut may run: no card editor open, and the key
 	 * wasn't typed into a field (input, textarea, select, or an editable region). */
-	private plainShortcutOk(evt: KeyboardEvent): boolean {
-		if (this.activeEditor) return false;
+	private plainShortcutOk(evt: KeyboardEvent, allowInDeck = false): boolean {
+		if (this.activeEditor || (this.deckMode && !allowInDeck)) return false;
 		const el = evt.target as HTMLElement | null;
 		if (!el) return true;
 		if (el.isContentEditable) return false;
 		return !el.closest("input, textarea, select");
+	}
+
+	/** Show or hide the Deck of note thumbnails over this view's cards. */
+	async toggleDeck(next = !this.deckMode): Promise<void> {
+		if (next === this.deckMode) return;
+		this.deckMode = next;
+		this.filterQuery = "";
+		this.applyLayoutClass();
+		this.buildToolbar();
+		this.updateToolbarOffset();
+		await this.refresh();
+		this.app.workspace.requestSaveLayout();
+	}
+
+	/** The Deck: one clickable thumbnail per remembered note — pinned first, then
+	 * recents — with the note's first lines as an excerpt and its layout as a badge. */
+	private renderDeck(): void {
+		const gen = this.renderGeneration;
+		this.clearAllCards();
+		this.clearHierarchy();
+		this.clearPreviewTiles("images");
+		this.clearPreviewTiles("links");
+		this.applyBackground();
+		const entries = this.plugin.deckEntries(this.plugin.settings.deckCount);
+		if (!entries.length) {
+			this.showEmpty("No notes in the deck yet.", "Open a note as cards and it lands here.");
+			return;
+		}
+		for (const entry of entries) {
+			const tile = this.gridEl.createDiv({ cls: "sfsc-deck-card" });
+			tile.setAttr("role", "button");
+			tile.setAttr("tabindex", "0");
+			tile.setAttr("aria-label", `Open ${entry.name} as cards`);
+			tile.createDiv({ cls: "sfsc-deck-title", text: entry.name });
+			const excerpt = tile.createDiv({ cls: "sfsc-deck-excerpt" });
+			if (entry.layoutLabel) tile.createDiv({ cls: "sfsc-deck-meta", text: entry.layoutLabel });
+			const open = () => void this.navigateTo(entry.path);
+			tile.addEventListener("click", open);
+			tile.addEventListener("keydown", (evt) => {
+				if (evt.key !== "Enter" && evt.key !== " ") return;
+				evt.preventDefault();
+				open();
+			});
+			tile.addEventListener("contextmenu", (evt) => {
+				const file = this.app.vault.getFileByPath(entry.path);
+				if (!file) return;
+				evt.preventDefault();
+				evt.stopPropagation();
+				const menu = new Menu();
+				this.app.workspace.trigger("file-menu", menu, file, "file-explorer");
+				menu.showAtMouseEvent(evt);
+			});
+			void this.fillDeckExcerpt(entry.path, excerpt, gen);
+		}
+	}
+
+	/** Excerpts read lazily, per tile — a stale render or a removed tile writes nothing. */
+	private async fillDeckExcerpt(path: string, el: HTMLElement, gen: number): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		const content = await this.app.vault.cachedRead(file);
+		if (gen !== this.renderGeneration || !el.isConnected) return;
+		el.setText(deckExcerpt(content));
 	}
 
 	/** Offer to create the card for a day that has none — jump-to-date landing on an
@@ -4944,6 +5093,7 @@ export class SectionCardsView extends ItemView {
 	/** Point this tab at another note, the way a link navigates a markdown tab. */
 	async navigateTo(path: string, revealHeading?: string): Promise<void> {
 		this.filePath = path;
+		this.deckMode = false; // picking a note leaves the Deck
 		this.applyStoredView();
 		await this.syncView();
 		if (revealHeading) this.revealCard(revealHeading);
@@ -4979,6 +5129,13 @@ export class SectionCardsView extends ItemView {
 		this.cardObserver?.disconnect();
 		this.editingKey = null;
 		this.activeEditor = null;
+
+		// The Deck replaces the whole wall until a note is picked; a missing default
+		// note must not block it, so this branch outranks the not-found message.
+		if (this.deckMode) {
+			this.renderDeck();
+			return;
+		}
 
 		if (!file) {
 			this.containsDates = false;
@@ -5183,7 +5340,7 @@ export class SectionCardsView extends ItemView {
 		// section rebuilds one card and every other card's rendered markdown is kept.
 		for (const stray of Array.from(
 			this.gridEl.querySelectorAll(
-				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty, .sc-cal-dow, .sc-cal-month, .sc-cal-blank, .sc-heat-wrap",
+				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty, .sc-cal-dow, .sc-cal-month, .sc-cal-blank, .sc-heat-wrap, .sfsc-deck-card",
 			),
 		)) {
 			stray.remove();
@@ -9089,8 +9246,8 @@ class ShortcutsModal extends Modal {
 		const rows: [string, string][] = [
 			["1–6", "Show that heading level as cards"],
 			["L", "Cycle the layouts"],
-			["H", "Show or hide the hierarchy columns"],
-			["D", "Show or hide the dividers"],
+			["V", "Cycle the view modes: default / hierarchy / dividers"],
+			["D", "Show or hide the Deck of notes"],
 			[", / .", "Previous / next heading in the Hierarchy and Dividers view modes"],
 			["S", "Show only starred lines / show everything"],
 			["N", "New card"],
@@ -9622,6 +9779,18 @@ class SectionCardsSettingTab extends PluginSettingTab {
 							type: "dropdown",
 							key: "toolbarStyle",
 							options: { full: "Full", compact: "Compact" },
+						},
+					},
+					{
+						name: "Deck thumbnails",
+						desc: "How many notes the Deck shows (the toolbar's deck button, or D): pinned notes first, then the ones opened most recently.",
+						control: {
+							type: "slider",
+							key: "deckCount",
+							min: 3,
+							max: 12,
+							step: 1,
+							displayFormat: (value: number) => `${value} notes`,
 						},
 					},
 					{
@@ -10449,6 +10618,34 @@ export default class SectionCardsPlugin extends Plugin {
 		if (!entry) return;
 		this.settings.perFile[to] = JSON.parse(JSON.stringify(entry)) as PerFileView;
 		await this.saveSettings();
+	}
+
+	/** The Deck's thumbnails. The working set is always pinned notes plus the most
+	 * recently opened, capped at the setting's count; the Deck's sort then orders
+	 * that set — recency (the default), file name, or the file's modified/created
+	 * time, newest first. Deleted notes are skipped. */
+	deckEntries(count = 5): { path: string; name: string; layoutLabel: string }[] {
+		const labels = new Map<string, string>(LAYOUT_OPTIONS.map(([value, label]) => [value, label]));
+		const exists = (path: string) => this.app.vault.getFileByPath(path) !== null;
+		const pinned = this.settings.pinnedRecentFiles.filter(exists);
+		const recents = this.settings.recentFiles.filter((path) => !pinned.includes(path) && exists(path));
+		const entries = [...pinned, ...recents].slice(0, Math.max(1, count)).map((path) => ({
+			path,
+			name: path.replace(/\.md$/, "").split("/").pop() ?? path,
+			layoutLabel: labels.get(this.settings.perFile?.[path]?.layout ?? "") ?? "",
+		}));
+		const sort = this.settings.deckSort;
+		if (sort === "name-asc" || sort === "name-desc") {
+			const dir = sort === "name-asc" ? 1 : -1;
+			entries.sort((a, b) => dir * a.name.localeCompare(b.name, undefined, { numeric: true }));
+		} else if (sort === "modified" || sort === "created") {
+			const time = (path: string) => {
+				const stat = this.app.vault.getFileByPath(path)?.stat;
+				return (sort === "modified" ? stat?.mtime : stat?.ctime) ?? 0;
+			};
+			entries.sort((a, b) => time(b.path) - time(a.path));
+		}
+		return entries;
 	}
 
 	/** A note rendered in the cards view moves to the front of the quick-switch

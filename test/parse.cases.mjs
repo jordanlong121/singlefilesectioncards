@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -1526,6 +1526,17 @@ t("imageLinkSpans reports exact ranges, so removal can excise the markup", () =>
     spans.map((s) => content.slice(s.start, s.end)),
     ["![[a.png]]", "![x](b.jpg)", '<img src="c.gif">'],
   );
+});
+
+t("deckExcerpt: frontmatter dropped, markers stripped, capped with an ellipsis", () => {
+  const excerpt = deckExcerpt(
+    ["---", "tag: x", "---", "", "## Heading", "> quoted line", "- [x] a done task", "1. ordered", "plain text"].join("\n"),
+  );
+  assert.equal(excerpt, "Heading\nquoted line\na done task\nordered\nplain text");
+  const long = deckExcerpt("x".repeat(500), 8, 40);
+  assert.equal(long.length, 40);
+  assert.ok(long.endsWith("…"));
+  assert.equal(deckExcerpt(""), "");
 });
 
 t("heatmapDays tallies tasks per dated section; same-day sections pool", () => {

@@ -252,6 +252,9 @@ body.sfsc-flat-cards .section-cards-view {
 
 /* The toolbar's help button: a small round circle, quieter than the other buttons. */
 .section-cards-help-btn {
+	/* Always the toolbar's right edge — the Deck's short bar included — so ? sits
+	   in the same spot no matter which controls a note or mode shows. */
+	margin-left: auto;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -413,8 +416,10 @@ body.sfsc-flat-cards .section-cards-view {
 /* ---------- starred lines ---------- */
 
 /* No starred lines in the note — the toggle has nothing to show, so it hides. */
+/* Hidden toolbar toggles keep their footprint (visibility, not display), so the
+   controls after them — the ? button above all — never shift between notes. */
 .section-cards-star-btn.is-hidden {
-	display: none;
+	visibility: hidden;
 }
 
 /* The toolbar's starred-only toggle: accent-filled while it's on. */
@@ -464,7 +469,7 @@ body.sfsc-flat-cards .section-cards-view {
 
 /* The Calendar layout implies Dates, so the toggle hides once it's on there. */
 .section-cards-dates-label.is-hidden {
-	display: none;
+	visibility: hidden;
 }
 
 /* ---------- jump to date ----------
@@ -478,7 +483,7 @@ body.sfsc-flat-cards .section-cards-view {
 }
 
 .section-cards-jump-date.is-hidden {
-	display: none;
+	visibility: hidden;
 }
 
 /* The extra selector weight out-ranks theme input[type=…] rules: the input must
@@ -2209,6 +2214,96 @@ body.theme-light .sfsc-swatch {
 	align-self: flex-start;
 	margin-top: max(20px, env(safe-area-inset-top, 0px));
 	margin-bottom: auto;
+}
+
+/* ---------- Deck: a wall of note thumbnails ---------- */
+
+.section-cards-deck-btn.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent, #fff);
+}
+
+.section-cards-deck-btn svg {
+	width: 15px;
+	height: 15px;
+}
+
+/* The Deck replaces the wall wholesale: every layout-specific pane stands down. */
+.section-cards-view.is-deck .section-cards-pinned,
+.section-cards-view.is-deck .section-cards-hier,
+.section-cards-view.is-deck .section-cards-tray,
+.section-cards-view.is-deck .section-cards-zoom,
+.section-cards-view.is-deck .section-cards-canvas-extent {
+	display: none;
+}
+
+.section-cards-view.is-deck .section-cards-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(var(--sc-col-min), 1fr));
+	grid-auto-rows: auto;
+	gap: var(--sc-card-gap);
+	padding: var(--sc-pad);
+	align-items: start;
+}
+
+.sfsc-deck-card {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-height: 132px;
+	padding: 12px 14px;
+	background-color: transparent;
+	border: 1px solid var(--sc-line);
+	border-radius: var(--radius-m, 8px);
+	box-shadow: none;
+	cursor: pointer;
+	overflow: hidden;
+	transition:
+		border-color 0.12s ease,
+		background-color 0.12s ease;
+}
+
+@media (hover: hover) {
+	.sfsc-deck-card:hover {
+		border-color: var(--interactive-accent);
+		background-color: var(--background-modifier-hover);
+	}
+}
+
+.sfsc-deck-card:focus-visible {
+	outline: none;
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px var(--interactive-accent);
+}
+
+.sfsc-deck-title {
+	font-weight: 600;
+	font-size: var(--font-ui-medium);
+	line-height: 1.3;
+	color: var(--text-normal);
+	overflow-wrap: anywhere;
+}
+
+.sfsc-deck-excerpt {
+	flex: 1;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.45;
+	white-space: pre-line;
+	overflow: hidden;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 5;
+	overflow-wrap: anywhere;
+}
+
+.sfsc-deck-meta {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+body.is-phone .section-cards-view.is-deck .section-cards-grid {
+	grid-template-columns: 1fr;
 }
 
 /* ---------- Note Library: manage the remembered notes ---------- */

@@ -331,6 +331,39 @@ ${weeks.map((w) => `<div class="sc-heat-week"><div class="sc-heat-mlabel">${w.la
 <div class="section-cards-tray"></div>`;
 }
 
+/** The Deck: fictional pinned/recent notes as thumbnails, plus its own toolbar
+ * (menu, note button, active deck toggle, the Deck sort, and ?). */
+const DECK_NOTES = [
+	{ name: "Daily Notes 2026", meta: "Grid", excerpt: "Slow start — the espresso machine on the third floor is out again.\n09:00 team stand-up\ndraft the Q3 summary\nreply to the vendor quote" },
+	{ name: "Garden Planning", meta: "Custom Grid", excerpt: "Raised beds get the morning sun, so tomatoes move east this year.\norder seed potatoes\nsketch the drip lines\ncompost turn, week 2" },
+	{ name: "Trip Packing Lists", meta: "Vertical", excerpt: "One list per trip, newest on the left.\npassports + printouts\ncamera, two batteries\nthe good walking shoes" },
+	{ name: "Reading Log", meta: "Horizontal", excerpt: "A card per book, quotes underneath.\nfinished: The Sea of Tranquility\nnext: something short\nlibrary holds arrive Tuesday" },
+	{ name: "Sourdough Experiments", meta: "Calendar", excerpt: "Hydration up to 78% this week.\nfeed at 8am and 6pm\nbatch 14: too dense, cut the rye\nbatch 15: best crumb yet" },
+	{ name: "Home Projects", meta: "Grid Aligned", excerpt: "The hallway paint can wait; the gutter can't.\nclear the gutters before the rain\npatch the fence board\nmeasure for the shelf brackets" },
+];
+
+function deckToolbarHtml() {
+	return `<div class="section-cards-toolbar is-compact">
+	<button class="section-cards-icon-btn section-cards-menu-btn">${MENU_ICON}</button>
+	<button class="section-cards-file-btn"><span>${esc(path.basename(notePath))}</span></button>
+	<button class="section-cards-icon-btn section-cards-deck-btn is-active">${DECK_ICON}</button>
+	<div class="section-cards-control section-cards-sort-control"><span class="section-cards-label">Sort</span><select class="dropdown"><option>Recent</option></select></div>
+	<button class="section-cards-help-btn">?</button>
+</div>`;
+}
+
+function deckPageHtml() {
+	const tiles = DECK_NOTES.map(
+		({ name, meta, excerpt }) =>
+			`<div class="sfsc-deck-card" role="button" tabindex="0">` +
+			`<div class="sfsc-deck-title">${esc(name)}</div>` +
+			`<div class="sfsc-deck-excerpt">${esc(excerpt)}</div>` +
+			`<div class="sfsc-deck-meta">${esc(meta)}</div></div>`,
+	).join("\n");
+	const grid = `<div class="section-cards-pinned"></div>\n<div class="section-cards-grid">\n${tiles}\n</div>\n<div class="section-cards-tray"></div>`;
+	return pageHtml("grid", {}).replace(/is-layout-grid/, "is-deck").replace(toolbarHtml("grid"), deckToolbarHtml()).replace(gridHtml("grid"), grid);
+}
+
 function gridHtml(layout, mode = "default") {
 	const hier = mode === "hier";
 	if (layout === "calendar") return calendarHtml();
@@ -677,4 +710,5 @@ fs.writeFileSync(
 	path.join(OUT_DIR, "context-menu.html"),
 	pageHtml("grid", { withMenu: true, background: pageBackground("context-menu") }),
 );
-console.log("wrote", Object.keys(LAYOUT_LABELS).length + 3, "pages to", OUT_DIR, "with", sections.length, "cards");
+fs.writeFileSync(path.join(OUT_DIR, "deck.html"), deckPageHtml());
+console.log("wrote", Object.keys(LAYOUT_LABELS).length + 4, "pages to", OUT_DIR, "with", sections.length, "cards");
