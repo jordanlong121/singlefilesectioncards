@@ -334,12 +334,12 @@ ${weeks.map((w) => `<div class="sc-heat-week"><div class="sc-heat-mlabel">${w.la
 /** The Deck: fictional pinned/recent notes as thumbnails, plus its own toolbar
  * (menu, note button, active deck toggle, the Deck sort, and ?). */
 const DECK_NOTES = [
-	{ name: "Daily Notes 2026", meta: "Grid", excerpt: "Slow start — the espresso machine on the third floor is out again.\n09:00 team stand-up\ndraft the Q3 summary\nreply to the vendor quote" },
-	{ name: "Garden Planning", meta: "Custom Grid", excerpt: "Raised beds get the morning sun, so tomatoes move east this year.\norder seed potatoes\nsketch the drip lines\ncompost turn, week 2" },
-	{ name: "Trip Packing Lists", meta: "Vertical", excerpt: "One list per trip, newest on the left.\npassports + printouts\ncamera, two batteries\nthe good walking shoes" },
-	{ name: "Reading Log", meta: "Horizontal", excerpt: "A card per book, quotes underneath.\nfinished: The Sea of Tranquility\nnext: something short\nlibrary holds arrive Tuesday" },
-	{ name: "Sourdough Experiments", meta: "Calendar", excerpt: "Hydration up to 78% this week.\nfeed at 8am and 6pm\nbatch 14: too dense, cut the rye\nbatch 15: best crumb yet" },
-	{ name: "Home Projects", meta: "Grid Aligned", excerpt: "The hallway paint can wait; the gutter can't.\nclear the gutters before the rain\npatch the fence board\nmeasure for the shelf brackets" },
+	{ name: "Daily Notes 2026", date: "Aug 6", meta: "Grid", excerpt: "Slow start — the espresso machine on the third floor is out again.\n09:00 team stand-up\ndraft the Q3 summary\nreply to the vendor quote" },
+	{ name: "Garden Planning", date: "Aug 4", meta: "Custom Grid", excerpt: "Raised beds get the morning sun, so tomatoes move east this year.\norder seed potatoes\nsketch the drip lines\ncompost turn, week 2" },
+	{ name: "Trip Packing Lists", date: "Jul 28", meta: "Vertical", excerpt: "One list per trip, newest on the left.\npassports + printouts\ncamera, two batteries\nthe good walking shoes" },
+	{ name: "Reading Log", date: "Aug 2", meta: "Horizontal", excerpt: "A card per book, quotes underneath.\nfinished: The Sea of Tranquility\nnext: something short\nlibrary holds arrive Tuesday" },
+	{ name: "Sourdough Experiments", date: "Aug 5", meta: "Calendar", excerpt: "Hydration up to 78% this week.\nfeed at 8am and 6pm\nbatch 14: too dense, cut the rye\nbatch 15: best crumb yet" },
+	{ name: "Home Projects", date: "Jul 19", meta: "Grid Aligned", excerpt: "The hallway paint can wait; the gutter can't.\nclear the gutters before the rain\npatch the fence board\nmeasure for the shelf brackets" },
 ];
 
 function deckToolbarHtml() {
@@ -354,9 +354,9 @@ function deckToolbarHtml() {
 
 function deckPageHtml() {
 	const tiles = DECK_NOTES.map(
-		({ name, meta, excerpt }) =>
+		({ name, meta, excerpt, date }) =>
 			`<div class="sfsc-deck-card" role="button" tabindex="0">` +
-			`<div class="sfsc-deck-title">${esc(name)}</div>` +
+			`<div class="sfsc-deck-head"><div class="sfsc-deck-title">${esc(name)}</div><div class="sfsc-deck-date">${esc(date)}</div></div>` +
 			`<div class="sfsc-deck-excerpt">${esc(excerpt)}</div>` +
 			`<div class="sfsc-deck-meta">${esc(meta)}</div></div>`,
 	).join("\n");

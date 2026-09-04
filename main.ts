@@ -105,8 +105,8 @@ export type DeckSort = "recent" | "name-asc" | "name-desc" | "modified" | "creat
 
 const DECK_SORT_LABELS: [DeckSort, string][] = [
 	["recent", "Recent"],
-	["name-asc", "File name ascending"],
-	["name-desc", "File name descending"],
+	["name-asc", "File name A → Z"],
+	["name-desc", "File name Z → A"],
 	["modified", "Modified"],
 	["created", "Created"],
 ];
@@ -4483,7 +4483,21 @@ export class SectionCardsView extends ItemView {
 			tile.setAttr("role", "button");
 			tile.setAttr("tabindex", "0");
 			tile.setAttr("aria-label", `Open ${entry.name} as cards`);
-			tile.createDiv({ cls: "sfsc-deck-title", text: entry.name });
+			const head = tile.createDiv({ cls: "sfsc-deck-head" });
+			head.createDiv({ cls: "sfsc-deck-title", text: entry.name });
+			if (entry.mtime) {
+				// Top-right: when the note last changed — the year only once it isn't this one.
+				const modified = new Date(entry.mtime);
+				const date = head.createDiv({
+					cls: "sfsc-deck-date",
+					text: modified.toLocaleDateString(undefined, {
+						month: "short",
+						day: "numeric",
+						...(modified.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}),
+					}),
+				});
+				date.setAttr("title", `Last modified ${modified.toLocaleString()}`);
+			}
 			const excerpt = tile.createDiv({ cls: "sfsc-deck-excerpt" });
 			if (entry.layoutLabel) tile.createDiv({ cls: "sfsc-deck-meta", text: entry.layoutLabel });
 			const open = () => void this.navigateTo(entry.path);
@@ -10147,9 +10161,42 @@ export default class SectionCardsPlugin extends Plugin {
 		this.applyBodyClasses();
 		this.applyPaletteCss();
 		this.applyFontScale();
+		this.armMidnightRefresh();
+	}
+
+	/** Pending midnight-rollover timeout, cleared on unload. */
+	private midnightTimer: number | null = null;
+
+	/**
+	 * Obsidian left open overnight goes stale at midnight: the today-card highlight,
+	 * the Calendar's today square, the Heatmap's streaks, and the Deck's dates all
+	 * still say yesterday. Refresh every open cards view just after the day rolls
+	 * over, then re-arm. The deadline is recomputed each time — a fixed 24-hour
+	 * interval drifts, and a laptop asleep at midnight fires this on wake, when the
+	 * recompute sets the next true midnight.
+	 */
+	private armMidnightRefresh(): void {
+		const now = new Date();
+		// Five seconds past midnight, clear of clock-edge jitter.
+		const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+		this.midnightTimer = window.setTimeout(() => {
+			for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
+				const view = leaf.view;
+				// A card mid-edit or blown up big keeps its state; it re-dates on its
+				// own next refresh, same as the file-change refreshes behave.
+				if (view instanceof SectionCardsView && !view.isEditing() && !view.isMaximized()) {
+					void view.refresh();
+				}
+			}
+			this.armMidnightRefresh();
+		}, next.getTime() - now.getTime());
 	}
 
 	onunload(): void {
+		if (this.midnightTimer !== null) {
+			window.clearTimeout(this.midnightTimer);
+			this.midnightTimer = null;
+		}
 		document.body.removeClass("sfsc-no-nested-strike");
 		for (const [name] of CARD_COLORS) {
 			document.body.style.removeProperty(`--sfsc-color-${name}`);
@@ -10624,7 +10671,7 @@ export default class SectionCardsPlugin extends Plugin {
 	 * recently opened, capped at the setting's count; the Deck's sort then orders
 	 * that set — recency (the default), file name, or the file's modified/created
 	 * time, newest first. Deleted notes are skipped. */
-	deckEntries(count = 5): { path: string; name: string; layoutLabel: string }[] {
+	deckEntries(count = 5): { path: string; name: string; layoutLabel: string; mtime: number }[] {
 		const labels = new Map<string, string>(LAYOUT_OPTIONS.map(([value, label]) => [value, label]));
 		const exists = (path: string) => this.app.vault.getFileByPath(path) !== null;
 		const pinned = this.settings.pinnedRecentFiles.filter(exists);
@@ -10633,6 +10680,7 @@ export default class SectionCardsPlugin extends Plugin {
 			path,
 			name: path.replace(/\.md$/, "").split("/").pop() ?? path,
 			layoutLabel: labels.get(this.settings.perFile?.[path]?.layout ?? "") ?? "",
+			mtime: this.app.vault.getFileByPath(path)?.stat.mtime ?? 0,
 		}));
 		const sort = this.settings.deckSort;
 		if (sort === "name-asc" || sort === "name-desc") {
