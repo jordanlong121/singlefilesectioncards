@@ -2276,12 +2276,27 @@ body.theme-light .sfsc-swatch {
 	box-shadow: 0 0 0 2px var(--interactive-accent);
 }
 
+/* Title on the left, the last-modified date tucked into the top-right corner. */
+.sfsc-deck-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+}
+
 .sfsc-deck-title {
 	font-weight: 600;
 	font-size: var(--font-ui-medium);
 	line-height: 1.3;
 	color: var(--text-normal);
 	overflow-wrap: anywhere;
+}
+
+.sfsc-deck-date {
+	flex: 0 0 auto;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
 }
 
 .sfsc-deck-excerpt {
