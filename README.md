@@ -39,7 +39,9 @@ If this plugin is useful to you, you can support its development:
   and tune the look with the [Style Settings](https://github.com/mgmeyers/obsidian-style-settings) plugin.
 - **Navigate as cards.** Wikilinks open the linked note's card wall, the ↗ button opens the section in a
   normal editor.
-- **Keyboard shortcuts.** `1`–`6` heading level, `L` layouts, `H`/`D` hierarchy/dividers,
+- **Deck.** The toolbar's deck button (or `D`) flips the view to thumbnails of your pinned
+  and most recent card notes — click one to hop over.
+- **Keyboard shortcuts.** `1`–`6` heading level, `L` layouts, `V` view modes, `D` deck,
   `,`/`.` previous/next heading, `N` new card, `O` pick a note, `S` starred lines only,
   `Ctrl/⌘+F` filter. Click `?` to show keyboard shortcuts.
 
@@ -204,6 +206,15 @@ The toolbar's filter box (`Ctrl/⌘+F`) narrows the wall to cards containing the
 `Esc` clears it. For longer-lived highlighting, right-click a line and pick **Add star** —
 the star emoji is written into the note as plain text, and the toolbar's star toggle (key
 `S`) then shows only the starred lines.
+
+## The Deck
+
+The toolbar's deck button (or `D`) flips the view to thumbnails of your card notes —
+pinned ones first, then the most recently opened — each with the note's first lines
+and its layout. Click one to hop over; the Sort dropdown reorders them by recency,
+file name, or the file's modified/created time.
+
+![The Deck of note thumbnails](screenshots/deck.png)
 
 ## Manage notes
 
