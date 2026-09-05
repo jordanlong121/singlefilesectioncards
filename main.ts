@@ -169,6 +169,10 @@ interface SectionCardsSettings {
 	dateDetectFormat: string;
 	/** Card editor flavour: Obsidian's live-preview editor, or the plain textarea. */
 	editorMode: EditorMode;
+	/** Commit an open card editor whenever the wall re-renders out from under it
+	 * (switching notes or layouts, opening the Deck, an external change) instead of
+	 * discarding the typing. Escape still cancels explicitly. */
+	saveOnLeave: boolean;
 	/** Periodically write an open card editor's content back to the note. */
 	autosaveEnabled: boolean;
 	/** Minutes between autosaves while a card editor is open. */
@@ -419,6 +423,7 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	weekStart: "locale",
 	dateDetectFormat: "",
 	editorMode: "live",
+	saveOnLeave: true,
 	autosaveEnabled: true,
 	autosaveMinutes: 5,
 	layout: "grid",
@@ -3298,8 +3303,9 @@ export class SectionCardsView extends ItemView {
 			this.autosaveTimer = null;
 		}
 		// A view closed with an editor still open writes that editor's content out
-		// instead of dropping it — same opt-in as the periodic autosave.
-		if (this.plugin.settings.autosaveEnabled && this.activeEditor) {
+		// instead of dropping it — covered by either the save-on-leave default or
+		// the periodic-autosave opt-in.
+		if ((this.plugin.settings.saveOnLeave || this.plugin.settings.autosaveEnabled) && this.activeEditor) {
 			await this.activeEditor.autosave().catch(() => {});
 			this.activeEditor = null;
 			this.editingKey = null;
@@ -5135,6 +5141,17 @@ export class SectionCardsView extends ItemView {
 
 	async refresh(): Promise<void> {
 		if (!this.gridEl) return;
+
+		// A refresh rebuilds mid-edit cards from disk, so typed-but-unsaved work
+		// would silently vanish — every path that renders over an open editor lands
+		// here (switching notes, layouts, the Deck, external file changes). With
+		// the setting on (the default), the editor commits first; finish() ends in
+		// its own refresh over the saved content, so this pass hands off to that
+		// one. Escape still cancels explicitly, before any refresh is involved.
+		if (this.activeEditor && this.plugin.settings.saveOnLeave) {
+			await this.activeEditor.finish(true);
+			return;
+		}
 
 		this.closeMaximized();
 		const gen = ++this.renderGeneration;
@@ -9854,6 +9871,11 @@ class SectionCardsSettingTab extends PluginSettingTab {
 							key: "editorMode",
 							options: { live: "Live preview", source: "Source mode", plain: "Plain text box" },
 						},
+					},
+					{
+						name: "Save edits when leaving a card",
+						desc: "An open card editor commits its changes whenever the wall re-renders out from under it — switching notes or layouts, opening the Deck, an outside change to the file — instead of discarding them. Escape still cancels.",
+						control: { type: "toggle", key: "saveOnLeave" },
 					},
 					{
 						name: "Autosave open card editors",
