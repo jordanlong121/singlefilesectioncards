@@ -55,27 +55,22 @@ Full-height cards side by side.
 
 ### Custom Grid
 
-A freeform canvas. Drag sections from the tray on the right onto the dot grid, then place, move,
-and resize them however you like — cards snap to the grid; the ✕ (or a drag back
-onto the tray) returns one to the list. Layout is remembered per note in the plugin's data — never in your notes.
+A freeform canvas: drag sections on from the tray, then place, move, and resize them.
+The arrangement is remembered per note in the plugin's data — never in your notes.
 
 ![Custom Grid](screenshots/custom.png)
 
 ### Images
 
-The same canvas, for the note's pictures: every image and video the note links waits
-in the tray — drag previews on, place and resize them freely, and it becomes a
-reference or idea board built from what the note already holds. Hover a preview to
-magnify it (scroll zooms, drag pans) or open the original file; right-click one to
-copy, cut, or delete it, or to paste a clipboard image into the note. Arrangements
-live in the plugin's data and never touch the note itself.
+The same canvas for the note's images and videos — a reference or idea board built
+from what the note already links. Hover a preview to magnify it or open the original;
+right-click to copy, cut, delete, or paste.
 
 ![Images](screenshots/images.png)
 
 ### Grid
 
-Masonry columns: every card takes only the height it needs, so a short card never leaves dead space
-beneath it.
+Masonry columns: every card takes only the height it needs.
 
 ![Grid](screenshots/grid.png)
 
@@ -93,13 +88,8 @@ The same masonry packing, denser: narrower columns, smaller gaps and type.
 
 ### Tasks Only
 
-Just the tasks: each card shows only its task lines (prose and everything else hides),
-ordered by the cards' dates, then their first `#tag`, then title — or by **task count**,
-via two extra Sort options. A **Tasks** dropdown filters to open or done items, a badge
-in each card's corner counts what it's showing, and cards with nothing left drop out —
-except today's, which stays as the wall's anchor. Jumping to a day with no tasks reveals
-it briefly with a "No tasks" note. Editing a card still opens the section's full text,
-and checkboxes, drags, and the block menu all work as usual.
+Each card shows only its task lines, ordered by date, `#tag`, or task count, with an
+open/done filter and a per-card count badge. Editing still opens the section's full text.
 
 ![Tasks](screenshots/tasks.png)
 
@@ -111,28 +101,22 @@ One card per row, full pane width.
 
 ### Calendar
 
-Date cards on a monthly calendar grid — every month between the first and last dated
-card, with today highlighted. Needs headings that name dates (the toolbar's Dates
-checkbox); the sort control orders the months. Click an empty day to start its card,
-or drag a card onto another day to move it there — dropping it on a day that already
-has a card offers to merge them.
+Date cards on a monthly grid, today highlighted. Click an empty day to start its card,
+or drag a card onto another day to move it. Needs date headings.
 
 ![Calendar](screenshots/calendar.png)
 
 ### Heatmap
 
-A year-at-a-glance activity graph of the dated cards — one cell per day, shaded by how
-many tasks that day finished — with the current streak, longest streak, and totals
-above. Click a filled day to open its section in the note; click an empty one to
-create its card. Like the Calendar, it needs date headings.
+A year-at-a-glance graph of the dated cards, shaded by tasks done, with streak stats
+above. Click a day to open (or create) its card. Needs date headings.
 
 ![Heatmap](screenshots/heatmap.png)
 
 ### Links
 
-The freeform canvas once more, for the note's web links: every URL waits in the tray,
-and placed tiles show a live page preview that drags and resizes like an image. The
-magnifier opens the page big and fully interactive; ↗ opens it in your browser.
+The canvas for the note's web links: placed tiles show a live page preview. The
+magnifier opens the page big and interactive; ↗ opens it in your browser.
 
 ![Links](screenshots/links.png)
 
