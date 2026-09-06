@@ -96,7 +96,7 @@ function cardHtml(s, { maxHeight = null, placed = null, hierHidden = false } = {
 	const bodyStyle = maxHeight ? ` style="max-height: ${maxHeight}px;"` : "";
 	return `<div class="section-card${today}${placedCls}"${style} draggable="true">
 	<div class="section-card-header is-click-big">
-		<div class="section-card-title">${esc(s.title || "(untitled)")}</div>${HEADER_BUTTONS}
+		<div class="section-card-title">${esc(s.title || "(untitled)")}</div><div class="sfsc-task-count">${(s.body.match(/^\s*- \[[ x]\]/gm) || []).length}</div>${HEADER_BUTTONS}
 	</div>
 	<div class="section-card-body markdown-rendered"${bodyStyle}>${renderBody(s.body) || '<div class="section-card-placeholder">Empty section — click to add content.</div>'}</div>
 </div>`;
@@ -104,7 +104,7 @@ function cardHtml(s, { maxHeight = null, placed = null, hierHidden = false } = {
 
 const DECK_ICON = `<svg viewBox="0 0 100 100" class="svg-icon" width="16" height="16"><g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="9" width="12" height="12.5" rx="2"/><path d="M5.5 6h10a2 2 0 0 1 2 2v10"/><path d="M8.5 3h10a2 2 0 0 1 2 2v10"/></g></svg>`;
 
-const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid", images: "Images", links: "Links", calendar: "Calendar", heatmap: "Heatmap" };
+const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", tasks: "Tasks Only", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid", images: "Images", links: "Links", calendar: "Calendar", heatmap: "Heatmap" };
 const SORT_LABELS = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 /* On the Calendar the sort control orders the months instead of the cards. */
 const CAL_SORT_LABELS = { asc: "Ascending", desc: "Descending", doc: "Ascending" };
@@ -137,6 +137,7 @@ function toolbarHtml(layout, mode = "default") {
 	<button class="section-cards-new-btn mod-cta">${MOBILE ? "+" : "+ New card"}</button>
 	<div class="section-cards-control section-cards-mode-control"><span class="section-cards-label">View mode</span><div class="section-cards-segmented">${seg("Default", "default")}${seg("Hierarchy", "hier")}${seg("Dividers", "sections")}</div></div>
 	<div class="section-cards-control section-cards-sort-control"><span class="section-cards-label">Sort</span><select class="dropdown"><option>${(layout === "calendar" ? CAL_SORT_LABELS : SORT_LABELS)[SORT]}</option></select></div>
+	${layout === "tasks" ? `<div class="section-cards-control"><span class="section-cards-label">Tasks</span><select class="dropdown"><option>All</option></select></div>` : ""}
 	<div class="section-cards-control"><span class="section-cards-label">Layout</span><select class="dropdown"><option>${LAYOUT_LABELS[layout]}</option></select></div>
 	<button class="section-cards-icon-btn section-cards-template-btn">${TEMPLATE_ICON}</button>
 	<button class="section-cards-icon-btn">↻</button>
@@ -596,6 +597,7 @@ const PAGE_BACKGROUNDS = {
 	links: null, // same story: the page frames are the content
 	calendar: "bg-meadow",
 	heatmap: "bg-ocean",
+	tasks: "bg-forest",
 	hierarchy: "bg-aurora",
 	dividers: "bg-dunes",
 	"context-menu": null,

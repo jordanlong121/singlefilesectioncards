@@ -91,6 +91,18 @@ The same masonry packing, denser: narrower columns, smaller gaps and type.
 
 ![Tight](screenshots/tight.png)
 
+### Tasks Only
+
+Just the tasks: each card shows only its task lines (prose and everything else hides),
+ordered by the cards' dates, then their first `#tag`, then title — or by **task count**,
+via two extra Sort options. A **Tasks** dropdown filters to open or done items, a badge
+in each card's corner counts what it's showing, and cards with nothing left drop out —
+except today's, which stays as the wall's anchor. Jumping to a day with no tasks reveals
+it briefly with a "No tasks" note. Editing a card still opens the section's full text,
+and checkboxes, drags, and the block menu all work as usual.
+
+![Tasks](screenshots/tasks.png)
+
 ### Horizontal
 
 One card per row, full pane width.

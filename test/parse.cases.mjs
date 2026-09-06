@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -298,44 +298,44 @@ t("sample vault: checkbox N maps to task line N for every card", () => {
 const DEFAULTS = { layout: "grid", headingLevel: 3, sortOrder: "asc" };
 
 t("a note with no saved view falls back to the defaults (grid)", () => {
-  assert.deepEqual(resolveViewSettings(undefined, {}, DEFAULTS), { ...DEFAULTS, hierarchy: false, sections: false, starredOnly: false });
+  assert.deepEqual(resolveViewSettings(undefined, {}, DEFAULTS), { ...DEFAULTS, hierarchy: false, sections: false, starredOnly: false, taskFilter: "all" });
 });
 
 t("a note's saved view wins over restored tab state and defaults", () => {
   const saved = { layout: "vertical", headingLevel: 2, sortOrder: "desc", hierarchy: true, sections: false, starredOnly: true };
   const state = { layout: "tight", headingLevel: 4, sortOrder: "asc", hierarchy: false, sections: true, starredOnly: false };
-  assert.deepEqual(resolveViewSettings(saved, state, DEFAULTS), saved);
+  assert.deepEqual(resolveViewSettings(saved, state, DEFAULTS), { ...saved, taskFilter: "all" });
 });
 
 t("restored tab state is used when the note has no saved view", () => {
   const state = { layout: "aligned", headingLevel: 2, sortOrder: "desc", hierarchy: false, sections: true, starredOnly: true };
-  assert.deepEqual(resolveViewSettings(undefined, state, DEFAULTS), state);
+  assert.deepEqual(resolveViewSettings(undefined, state, DEFAULTS), { ...state, taskFilter: "all" });
 });
 
 t("partial saved views fall through field by field", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "horizontal" }, { sortOrder: "desc" }, DEFAULTS),
-    { layout: "horizontal", headingLevel: 3, sortOrder: "desc", hierarchy: false, sections: false, starredOnly: false },
+    { layout: "horizontal", headingLevel: 3, sortOrder: "desc", hierarchy: false, sections: false, starredOnly: false, taskFilter: "all" },
   );
 });
 
 t("a stale 'hierarchy' layout becomes grid with the columns toggled on", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "hierarchy" }, {}, DEFAULTS),
-    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false },
+    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false, taskFilter: "all" },
   );
 });
 
 t("a stale 'sections' layout becomes grid with the dividers toggled on", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "sections" }, {}, DEFAULTS),
-    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: false, sections: true, starredOnly: false },
+    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: false, sections: true, starredOnly: false, taskFilter: "all" },
   );
 });
 
 t("hierarchy and section dividers are never both on — the columns win", () => {
   const both = resolveViewSettings({ layout: "grid", hierarchy: true, sections: true }, {}, DEFAULTS);
-  assert.deepEqual(both, { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false });
+  assert.deepEqual(both, { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false, taskFilter: "all" });
 });
 
 // ---------- wheel panning ----------
@@ -1526,6 +1526,39 @@ t("imageLinkSpans reports exact ranges, so removal can excise the markup", () =>
     spans.map((s) => content.slice(s.start, s.end)),
     ["![[a.png]]", "![x](b.jpg)", '<img src="c.gif">'],
   );
+});
+
+t("sortTasksLayout: dates lead, then first tag, then title; desc flips; doc keeps", () => {
+  const lines = [
+    "### Untagged notes",
+    "- [ ] plain",
+    "### 2026-08-05, Wednesday",
+    "- [ ] dated later",
+    "### Errands",
+    "- [ ] buy stamps #admin",
+    "### 2026-08-03, Monday",
+    "- [ ] dated earlier",
+    "### Writing",
+    "- [ ] draft post #writing and #admin second",
+  ];
+  const sections = parseCards(lines, 3, null);
+  const titles = (order) => sortTasksLayout(sections, "YYYY-MM-DD, dddd", "", order).map((s) => s.title);
+  assert.deepEqual(titles("asc"), [
+    "2026-08-03, Monday",
+    "2026-08-05, Wednesday",
+    "Errands",
+    "Writing",
+    "Untagged notes",
+  ]);
+  assert.deepEqual(titles("desc"), [...titles("asc")].reverse());
+  assert.deepEqual(titles("doc"), sections.map((s) => s.title), "doc keeps the note's order");
+  assert.equal(firstBodyTag("- [ ] buy stamps #admin"), "admin");
+  assert.equal(firstBodyTag("no tags here"), null);
+  // Task-count sorts: fewest first ascending, stable on ties, fences don't count.
+  const byCount = sortTasksLayout(sections, "YYYY-MM-DD, dddd", "", "count-asc").map((se) => sectionTaskCount(se.body));
+  assert.deepEqual(byCount, [...byCount].sort((a, b) => a - b));
+  const descCount = sortTasksLayout(sections, "YYYY-MM-DD, dddd", "", "count-desc").map((se) => sectionTaskCount(se.body));
+  assert.deepEqual(descCount, [...byCount].reverse());
 });
 
 t("deckExcerpt: frontmatter dropped, markers stripped, capped with an ellipsis", () => {
