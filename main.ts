@@ -54,7 +54,7 @@ const DECK_SVG = `<g transform="scale(4.1667)" fill="none" stroke="currentColor"
 	<path d="M8.5 3h10a2 2 0 0 1 2 2v10"/>
 </g>`;
 
-export type SortOrder = "doc" | "asc" | "desc";
+export type SortOrder = "doc" | "asc" | "desc" | "count-asc" | "count-desc";
 
 /** Where a newly created section is inserted into the file. */
 export type Placement = "top" | "logical" | "bottom";
@@ -77,13 +77,20 @@ export type Layout =
 	| "tight"
 	| "horizontal"
 	| "vertical"
+	| "tasks"
 	| "custom"
 	| "images"
 	| "links"
 	| "calendar"
 	| "heatmap";
 
-const SORT_LABELS: Record<SortOrder, string> = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
+const SORT_LABELS: Record<SortOrder, string> = {
+	asc: "A → Z",
+	desc: "Z → A",
+	doc: "Document order",
+	"count-asc": "Task count ascending",
+	"count-desc": "Task count descending",
+};
 
 /** [value, toolbar label, tooltip] */
 const LAYOUT_OPTIONS: [Layout, string, string][] = [
@@ -91,6 +98,7 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["aligned", "Grid Aligned", "Uniform grid: every row starts at the same height"],
 	["tight", "Tight", "Denser, narrower masonry columns"],
 	["horizontal", "Horizontal", "One card per row, full width"],
+	["tasks", "Tasks Only", "Just the tasks: each card shows only its task lines, ordered by date and tag"],
 	["vertical", "Vertical", "Full-height cards side by side, scrolling sideways"],
 	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
 	["images", "Images", "Freeform canvas of the note's images: drag previews on from the tray, place and resize them"],
@@ -236,7 +244,12 @@ export interface ViewSettings {
 	sections?: boolean;
 	/** Starred-only toggled on: only starred lines (and the cards holding them) show. */
 	starredOnly?: boolean;
+	/** Tasks layout: which task states show — everything, open only, or done only. */
+	taskFilter?: TaskFilter;
 }
+
+/** The Tasks layout's complete/incomplete filter. */
+export type TaskFilter = "all" | "open" | "done";
 
 /**
  * The card color palette's nine slots. Slot names key the stored per-card choice and the
@@ -562,10 +575,21 @@ export function parseSections(lines: string[], level: number): Section[] {
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
+/** How many task lines (any state) a section body holds — the count sorts' key. */
+export function sectionTaskCount(body: string): number {
+	return taskLineIndexes(body.split("\n")).length;
+}
+
 export function sortSections(sections: Section[], order: SortOrder): Section[] {
 	const sorted = sections.slice();
 	if (order === "asc") sorted.sort((a, b) => collator.compare(a.title, b.title));
 	else if (order === "desc") sorted.sort((a, b) => collator.compare(b.title, a.title));
+	else if (order === "count-asc" || order === "count-desc") {
+		// Stable sort: equal counts keep the note's own order.
+		const counts = new Map(sections.map((s) => [s, sectionTaskCount(s.body)]));
+		const dir = order === "count-asc" ? 1 : -1;
+		sorted.sort((a, b) => dir * ((counts.get(a) ?? 0) - (counts.get(b) ?? 0)));
+	}
 	// The unfiled card is the top of the file, not an alphabetical peer — keep it first.
 	const pre = sorted.findIndex((s) => s.unfiled);
 	if (pre > 0) sorted.unshift(...sorted.splice(pre, 1));
@@ -1002,6 +1026,36 @@ export function deckExcerpt(content: string, maxLines = 8, maxChars = 260): stri
 	}
 	const out = kept.join("\n");
 	return out.length > maxChars ? `${out.slice(0, maxChars - 1).trimEnd()}…` : out;
+}
+
+/** The first #tag in a section's body, lowercased — the Tasks layout's second sort key. */
+export function firstBodyTag(body: string): string | null {
+	const m = /(^|[\s(])#([A-Za-z][\w/-]*)/.exec(body);
+	return m ? m[2].toLowerCase() : null;
+}
+
+/**
+ * Tasks layout order: by the heading's date first, then by the body's first #tag,
+ * then by title — so dated cards run chronologically and undated ones cluster by
+ * tag after them. desc flips the whole ordering; doc keeps the note's own.
+ */
+export function sortTasksLayout(sections: Section[], format: string, detect: string, order: SortOrder): Section[] {
+	if (order === "doc") return sections;
+	// The count sorts replace the date/tag ordering outright.
+	if (order === "count-asc" || order === "count-desc") return sortSections(sections, order);
+	// "~" outsorts dates and word characters, so missing keys go last (in asc).
+	const keys = new Map(
+		sections.map((s) => [
+			s,
+			`${titleToIso(s.title, format, detect) ?? "~~~~~"} | ${firstBodyTag(s.body) ?? "~~~~~"} | ${(s.title || "").toLowerCase()}`,
+		]),
+	);
+	const dir = order === "asc" ? 1 : -1;
+	return [...sections].sort((a, b) => {
+		const ka = keys.get(a) ?? "";
+		const kb = keys.get(b) ?? "";
+		return ka === kb ? 0 : dir * (ka < kb ? -1 : 1);
+	});
 }
 
 /** One day's activity on the Heatmap: task tallies and where its section lives. */
@@ -2062,6 +2116,7 @@ export function resolveViewSettings(
 		hierarchy: saved?.hierarchy ?? fromState.hierarchy ?? defaults.hierarchy ?? false,
 		sections: saved?.sections ?? fromState.sections ?? defaults.sections ?? false,
 		starredOnly: saved?.starredOnly ?? fromState.starredOnly ?? defaults.starredOnly ?? false,
+		taskFilter: saved?.taskFilter ?? fromState.taskFilter ?? defaults.taskFilter ?? "all",
 	};
 	// Hierarchy briefly shipped as a layout; stored views from then become grid + columns.
 	if ((resolved.layout as string) === "hierarchy") {
@@ -2519,6 +2574,7 @@ interface CardsViewState {
 	hierarchy?: boolean;
 	sections?: boolean;
 	starredOnly?: boolean;
+	taskFilter?: TaskFilter;
 	deck?: boolean;
 }
 
@@ -2535,6 +2591,8 @@ export class SectionCardsView extends ItemView {
 	sectionsOn = false;
 	/** The Deck: a wall of note thumbnails replacing the cards until a note is picked. */
 	deckMode = false;
+	/** Tasks layout: which task states its cards show. */
+	taskFilter: TaskFilter = "all";
 	/** Starred-only toggled on (toolbar star): only starred lines and their cards show. */
 	starredOnly = false;
 
@@ -2782,6 +2840,7 @@ export class SectionCardsView extends ItemView {
 			hierarchy: this.hierarchyOn,
 			sections: this.sectionsOn,
 			starredOnly: this.starredOnly,
+			taskFilter: this.taskFilter,
 			deck: this.deckMode,
 		};
 	}
@@ -2798,6 +2857,7 @@ export class SectionCardsView extends ItemView {
 			hierarchy: state?.hierarchy,
 			sections: state?.sections,
 			starredOnly: state?.starredOnly,
+			taskFilter: state?.taskFilter,
 		});
 		await this.syncView();
 	}
@@ -2821,6 +2881,7 @@ export class SectionCardsView extends ItemView {
 		this.hierarchyOn = resolved.hierarchy ?? false;
 		this.sectionsOn = resolved.sections ?? false;
 		this.starredOnly = resolved.starredOnly ?? false;
+		this.taskFilter = resolved.taskFilter ?? "all";
 	}
 
 	/** The current view as one ViewSettings value — the shape everything persists.
@@ -2834,6 +2895,7 @@ export class SectionCardsView extends ItemView {
 			hierarchy: this.hierarchyOn,
 			sections: this.sectionsOn,
 			starredOnly: this.starredOnly,
+			taskFilter: this.taskFilter,
 		};
 	}
 
@@ -3271,6 +3333,7 @@ export class SectionCardsView extends ItemView {
 			"grid",
 			"aligned",
 			"tight",
+			"tasks",
 			"horizontal",
 			"vertical",
 			"custom",
@@ -3588,6 +3651,7 @@ export class SectionCardsView extends ItemView {
 				(el.hasClass("section-card") &&
 					!el.hasClass("is-filtered-out") &&
 					!el.hasClass("is-hier-hidden") &&
+					!(el.hasClass("is-task-empty") && !el.hasClass("is-task-peek")) &&
 					!el.hasClass("is-section-hidden")) ||
 				(el.hasClass("section-cards-section-bar") && !el.hasClass("is-hidden")),
 		);
@@ -4379,6 +4443,12 @@ export class SectionCardsView extends ItemView {
 			sortSelect.createEl("option", { text: "A → Z", value: "asc" });
 			sortSelect.createEl("option", { text: "Z → A", value: "desc" });
 			sortSelect.createEl("option", { text: "Document order", value: "doc" });
+			// The count sorts belong to the Tasks layout — but a count order carried
+			// into another layout still works, so the select keeps showing it there.
+			if (this.layout === "tasks" || this.sortOrder.startsWith("count")) {
+				sortSelect.createEl("option", { text: SORT_LABELS["count-asc"], value: "count-asc" });
+				sortSelect.createEl("option", { text: SORT_LABELS["count-desc"], value: "count-desc" });
+			}
 			sortSelect.value = this.sortOrder;
 		}
 		sortSelect.addEventListener("change", () => {
@@ -4386,6 +4456,26 @@ export class SectionCardsView extends ItemView {
 			this.rememberView();
 			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
 		});
+
+		// Tasks layout: the complete/incomplete filter, beside the sort it refines.
+		if (this.layout === "tasks") {
+			const taskWrap = bar.createDiv({ cls: "section-cards-control section-cards-taskfilter-control" });
+			taskWrap.setAttr("aria-label", "Which task states the cards show");
+			taskWrap.createSpan({ text: "Tasks", cls: "section-cards-label" });
+			const taskSelect = taskWrap.createEl("select", { cls: "dropdown" });
+			taskSelect.setAttr("aria-label", "Which task states the cards show");
+			taskSelect.createEl("option", { text: "All", value: "all" });
+			taskSelect.createEl("option", { text: "Open", value: "open" });
+			taskSelect.createEl("option", { text: "Done", value: "done" });
+			taskSelect.value = this.taskFilter;
+			taskSelect.addEventListener("change", () => {
+				this.taskFilter = taskSelect.value as TaskFilter;
+				this.rememberView();
+				this.applyTaskFilter();
+				this.layoutMasonry(); // task-empty cards just came or went
+				this.app.workspace.requestSaveLayout();
+			});
+		}
 
 		// Layout sits rightmost of the dropdowns: everything between it and the pane
 		// edge is fixed-width, so it stays put when the Sort options change widths
@@ -4456,6 +4546,56 @@ export class SectionCardsView extends ItemView {
 		if (!el) return true;
 		if (el.isContentEditable) return false;
 		return !el.closest("input, textarea, select");
+	}
+
+	/**
+	 * Tasks layout: the complete/incomplete filter is pure CSS (classes on the view
+	 * root hide checked or unchecked task lines), so the rendered DOM — and with it
+	 * checkbox toggling, block dragging, and editing — never changes shape. This
+	 * pass only marks the cards left with nothing to show so they drop out.
+	 */
+	private applyTaskFilter(): void {
+		const active = this.layout === "tasks" && !this.deckMode;
+		this.contentEl.toggleClass("is-taskfilter-open", active && this.taskFilter === "open");
+		this.contentEl.toggleClass("is-taskfilter-done", active && this.taskFilter === "done");
+		for (const entry of this.cardEntries) {
+			if (!active) {
+				entry.el.removeClass("is-task-empty");
+				continue;
+			}
+			const lines = entry.holder.section.body.split("\n");
+			let open = 0;
+			let done = 0;
+			for (const i of taskLineIndexes(lines)) {
+				if (TASK_RE.exec(lines[i])?.[2] === " ") open++;
+				else done++;
+			}
+			const showing = this.taskFilter === "open" ? open : this.taskFilter === "done" ? done : open + done;
+			// Today's card stays visible even with nothing to show — it's the wall's
+			// anchor: the highlight, the jump-to-today scroll, and the place new
+			// tasks get added all point at it.
+			entry.el.toggleClass("is-task-empty", showing === 0 && !entry.el.hasClass("is-today"));
+			// The top-right count: what this card is showing under the filter.
+			const badge = entry.el.querySelector<HTMLElement>(".sfsc-task-count");
+			if (badge) {
+				badge.setText(String(showing));
+				badge.setAttr("title", `${open} open, ${done} done`);
+			}
+		}
+	}
+
+	/** Tasks layout: a jump landed on a card with no tasks to show — reveal it (a
+	 * non-today card would be hidden) and write a temporary "No tasks" note on it. */
+	private peekNoTasks(card: HTMLElement): void {
+		card.addClass("is-task-peek");
+		const bodyEl = card.querySelector<HTMLElement>(".section-card-body");
+		const note = bodyEl?.createDiv({ cls: "sfsc-no-tasks", text: "No tasks" });
+		this.layoutMasonry(); // the revealed card needs a measured spot in the pack
+		window.setTimeout(() => {
+			note?.remove();
+			card.removeClass("is-task-peek");
+			this.layoutMasonry(); // and leaves it again
+		}, 4000);
 	}
 
 	/** Show or hide the Deck of note thumbnails over this view's cards. */
@@ -4569,6 +4709,18 @@ export class SectionCardsView extends ItemView {
 		if (entry.el.hasClass("is-filtered-out")) {
 			new Notice(`“${title}” is hidden by the filter.`);
 			return;
+		}
+		// The Tasks layout may have nothing to show on the target card (no tasks, or
+		// none in the filtered state). Rather than refusing the jump, reveal the
+		// card and say "No tasks" on it for a moment.
+		if (this.layout === "tasks") {
+			const lines = entry.holder.section.body.split("\n");
+			let showing = 0;
+			for (const i of taskLineIndexes(lines)) {
+				const open = TASK_RE.exec(lines[i])?.[2] === " ";
+				if (this.taskFilter === "all" || (this.taskFilter === "open") === open) showing++;
+			}
+			if (showing === 0) this.peekNoTasks(entry.el);
 		}
 		entry.el.scrollIntoView({ block: "center", inline: "center" });
 		entry.el.addClass("is-linked");
@@ -5306,6 +5458,9 @@ export class SectionCardsView extends ItemView {
 				isoByHeading.set(s.headingRaw, iso);
 			}
 			ordered = dated.sort((a, b) => a.iso.localeCompare(b.iso)).map((x) => x.s);
+		} else if (this.layout === "tasks") {
+			// The Tasks layout orders by date, then first tag, then title.
+			ordered = applyPinned(sortTasksLayout(sections, cardFormat, detect, this.sortOrder), pinnedList);
 		} else {
 			ordered = applyPinned(sortSections(sections, this.sortOrder), pinnedList);
 		}
@@ -5501,6 +5656,7 @@ export class SectionCardsView extends ItemView {
 		if (this.filterQuery.trim() || this.starredOnly || this.contentEl.hasClass("is-starred-only")) {
 			this.applyFilter();
 		}
+		this.applyTaskFilter(); // marks task-empty cards before the pack measures
 		this.layoutMasonry();
 		this.insertRowRules();
 
@@ -5609,6 +5765,9 @@ export class SectionCardsView extends ItemView {
 		const titleClick = this.plugin.settings.titleBarClick;
 		header.addClass(titleClick === "maximize" ? "is-click-big" : "is-click-edit");
 		header.createDiv({ cls: "section-card-title", text: section.title || "(untitled)" });
+		// Tasks layout only (CSS hides it elsewhere): how many tasks the card is
+		// showing under the current filter — applyTaskFilter keeps it current.
+		header.createDiv({ cls: "sfsc-task-count" });
 
 		// The delete confirmation, shared by the hover strip's trash button and the
 		// title bar's right-click menu.
@@ -10360,7 +10519,8 @@ export default class SectionCardsPlugin extends Plugin {
 			current.sortOrder === view.sortOrder &&
 			(current.hierarchy ?? false) === (view.hierarchy ?? false) &&
 			(current.sections ?? false) === (view.sections ?? false) &&
-			(current.starredOnly ?? false) === (view.starredOnly ?? false)
+			(current.starredOnly ?? false) === (view.starredOnly ?? false) &&
+			(current.taskFilter ?? "all") === (view.taskFilter ?? "all")
 		) {
 			return;
 		}

@@ -2216,6 +2216,69 @@ body.theme-light .sfsc-swatch {
 	margin-bottom: auto;
 }
 
+/* ---------- Tasks layout: task lines only ---------- */
+
+/* Non-task content hides in the wall but the DOM keeps its shape, so checkbox
+   toggling, block dragging, and line indexes all still line up with the source.
+   An editing card is exempt: the editor shows the section's full text. */
+.is-layout-tasks .section-card:not(.is-editing) .section-card-body > :not(ul):not(ol):not(.sfsc-no-tasks) {
+	display: none;
+}
+
+/* Non-task list items hide too, unless a task hides inside them (nesting). */
+.is-layout-tasks .section-card:not(.is-editing) .section-card-body li:not(.task-list-item):not(:has(li.task-list-item)) {
+	display: none;
+}
+
+/* The complete/incomplete filter: classes on the view root, no re-render. */
+.is-taskfilter-open.is-layout-tasks .section-card:not(.is-editing) .section-card-body li.task-list-item.is-checked {
+	display: none;
+}
+
+.is-taskfilter-done.is-layout-tasks .section-card:not(.is-editing) .section-card-body li.task-list-item:not(.is-checked) {
+	display: none;
+}
+
+/* Cards with nothing left to show (no tasks, or none in the filtered state). */
+.is-layout-tasks .section-card.is-task-empty {
+	display: none;
+}
+
+/* …except while a jump is peeking at one, with its temporary "No tasks" note. */
+.is-layout-tasks .section-card.is-task-empty.is-task-peek {
+	display: flex;
+}
+
+.sfsc-no-tasks {
+	padding: 10px 12px;
+	color: var(--text-faint);
+	font-style: italic;
+	font-size: var(--font-ui-small);
+}
+
+/* Top-right of each card: how many tasks it is showing under the current filter.
+   The badge element exists on every card; only the Tasks layout reveals it. */
+.sfsc-task-count {
+	display: none;
+}
+
+.is-layout-tasks .section-card .sfsc-task-count {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 0 auto;
+	margin-left: auto;
+	padding: 0 7px;
+	min-width: 14px;
+	justify-content: center;
+	border: 1px solid var(--sc-line);
+	border-radius: 10px;
+	background-color: var(--sc-surface);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	line-height: 1.5;
+}
+
 /* ---------- Deck: a wall of note thumbnails ---------- */
 
 .section-cards-deck-btn.is-active {
