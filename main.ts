@@ -179,7 +179,7 @@ interface SectionCardsSettings {
 	editorMode: EditorMode;
 	/** Commit an open card editor whenever the wall re-renders out from under it
 	 * (switching notes or layouts, opening the Deck, an external change) instead of
-	 * discarding the typing. Escape still cancels explicitly. */
+	 * discarding the typing. Escape on an edited card asks before discarding. */
 	saveOnLeave: boolean;
 	/** Periodically write an open card editor's content back to the note. */
 	autosaveEnabled: boolean;
@@ -5299,7 +5299,8 @@ export class SectionCardsView extends ItemView {
 		// here (switching notes, layouts, the Deck, external file changes). With
 		// the setting on (the default), the editor commits first; finish() ends in
 		// its own refresh over the saved content, so this pass hands off to that
-		// one. Escape still cancels explicitly, before any refresh is involved.
+		// one. Escape cancels explicitly (asking first when there's unsaved typing),
+		// before any refresh is involved.
 		if (this.activeEditor && this.plugin.settings.saveOnLeave) {
 			await this.activeEditor.finish(true);
 			return;
@@ -8333,6 +8334,23 @@ export class SectionCardsView extends ItemView {
 			this.editingKey = null;
 			await this.refresh();
 		};
+		// Escape: an untouched editor just closes; one with unsaved typing asks first,
+		// since Escape is too easy to hit to silently throw the work away. The footer's
+		// Cancel button stays an explicit discard.
+		const cancel = () => {
+			if (settled) return;
+			if (trimTrailingBlankLines(readValue()) === section.raw) {
+				void finish(false);
+				return;
+			}
+			new UnsavedChangesModal(this.app, section.title || "(untitled)", (choice) => {
+				if (settled) return; // a refresh already committed it (save-on-leave)
+				if (choice === "save") void finish(true);
+				else if (choice === "discard") void finish(false);
+				else refocus();
+			}).open();
+		};
+		let refocus: () => void = () => {};
 
 		if (this.plugin.settings.editorMode !== "plain") {
 			const host = bodyEl.createDiv({ cls: "section-card-editor-embed" });
@@ -8343,11 +8361,12 @@ export class SectionCardsView extends ItemView {
 				value: initial,
 				mode: this.plugin.settings.editorMode === "source" ? "source" : "live",
 				onSave: () => void finish(true),
-				onCancel: () => void finish(false),
+				onCancel: cancel,
 				onChange: () => remeasure(),
 			});
 			if (embedded) {
 				readValue = () => (embedded as EmbeddedEditor).value;
+				refocus = () => (embedded as EmbeddedEditor).focus();
 				// Clicks inside the editor stay there — same contract as the textarea.
 				host.addEventListener("click", (e) => e.stopPropagation());
 			} else {
@@ -8356,8 +8375,9 @@ export class SectionCardsView extends ItemView {
 		}
 
 		if (!embedded) {
-			const textarea = this.buildPlainEditor(bodyEl, initial, finish);
+			const textarea = this.buildPlainEditor(bodyEl, initial, finish, cancel);
 			readValue = () => textarea.value;
+			refocus = () => textarea.focus();
 		}
 
 		// Autosave: periodically write the editor's content to the note without closing
@@ -8408,6 +8428,7 @@ export class SectionCardsView extends ItemView {
 		bodyEl: HTMLElement,
 		initial: string,
 		finish: (save: boolean) => Promise<void>,
+		cancel: () => void,
 	): HTMLTextAreaElement {
 		const textarea = bodyEl.createEl("textarea", { cls: "section-card-editor" });
 		textarea.value = initial;
@@ -8433,7 +8454,7 @@ export class SectionCardsView extends ItemView {
 				void finish(true);
 			} else if (e.key === "Escape") {
 				e.preventDefault();
-				void finish(false);
+				cancel();
 			} else if (e.key === "Tab") {
 				// Tab indents instead of leaving the field — nested tasks need it.
 				e.preventDefault();
@@ -9085,6 +9106,51 @@ class TextInputModal extends Modal {
 
 	onClose(): void {
 		this.contentEl.empty();
+	}
+}
+
+/**
+ * Escape on a card editor with unsaved typing: Save, Discard, or Keep editing.
+ * Closing the modal any other way (its own Escape, clicking outside) keeps editing.
+ */
+class UnsavedChangesModal extends Modal {
+	private readonly cardTitle: string;
+	private readonly onChoice: (choice: "save" | "discard" | "keep") => void;
+	private decided = false;
+
+	constructor(app: App, cardTitle: string, onChoice: (choice: "save" | "discard" | "keep") => void) {
+		super(app);
+		this.cardTitle = cardTitle;
+		this.onChoice = onChoice;
+	}
+
+	private choose(choice: "save" | "discard" | "keep"): void {
+		if (this.decided) return;
+		this.decided = true;
+		this.close();
+		this.onChoice(choice);
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Unsaved changes" });
+		contentEl.createEl("p", { text: `Save your changes to “${this.cardTitle}”?` });
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Keep editing").onClick(() => this.choose("keep")))
+			.addButton((b) => b.setButtonText("Discard").setDestructive().onClick(() => this.choose("discard")))
+			.addButton((b) => {
+				// Enter saves, Esc (the modal's own handling) keeps editing.
+				b.setButtonText("Save").setCta().onClick(() => this.choose("save"));
+				b.buttonEl.focus();
+			});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		if (!this.decided) {
+			this.decided = true;
+			this.onChoice("keep");
+		}
 	}
 }
 
@@ -10033,7 +10099,7 @@ class SectionCardsSettingTab extends PluginSettingTab {
 					},
 					{
 						name: "Save edits when leaving a card",
-						desc: "An open card editor commits its changes whenever the wall re-renders out from under it — switching notes or layouts, opening the Deck, an outside change to the file — instead of discarding them. Escape still cancels.",
+						desc: "An open card editor commits its changes whenever the wall re-renders out from under it — switching notes or layouts, opening the Deck, an outside change to the file — instead of discarding them. Escape on a card with unsaved typing asks whether to save or discard.",
 						control: { type: "toggle", key: "saveOnLeave" },
 					},
 					{

@@ -18,7 +18,7 @@ export interface EmbeddedEditorOptions {
 	mode: "live" | "source";
 	/** Mod+Enter inside the editor. */
 	onSave: () => void;
-	/** Escape inside the editor. */
+	/** Escape inside the editor — the caller decides whether that discards or asks first. */
 	onCancel: () => void;
 	/** The document changed — the caller re-measures card layout. */
 	onChange: () => void;
@@ -27,6 +27,8 @@ export interface EmbeddedEditorOptions {
 /** The slice of the editor the card code is allowed to touch. */
 export interface EmbeddedEditor {
 	readonly value: string;
+	/** Return focus to the editor, leaving the cursor where it was. */
+	focus(): void;
 	focusEnd(): void;
 	destroy(): void;
 }
@@ -170,6 +172,9 @@ export function createEmbeddedEditor(
 		return {
 			get value(): string {
 				return editor.editor.cm.state.doc.toString();
+			},
+			focus(): void {
+				editor.editor.cm.focus();
 			},
 			focusEnd(): void {
 				const cm = editor.editor.cm;
