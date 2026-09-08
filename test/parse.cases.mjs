@@ -962,6 +962,25 @@ t("rectsCollide: overlap, touching, and near-touching all count within the gap",
   assert.ok(!rectsCollide(R(0, 0, 100, 100), R(0, 300, 100, 100), 12), "far apart");
 });
 
+t("rectsCollide with a zero gap: overlap collides, flush edges and corners don't", () => {
+  assert.ok(rectsCollide(R(0, 0, 100, 100), R(99, 0, 100, 100), 0), "1px overlap");
+  assert.ok(!rectsCollide(R(0, 0, 100, 100), R(100, 0, 100, 100), 0), "edge-touching is allowed");
+  assert.ok(!rectsCollide(R(0, 0, 100, 100), R(0, 100, 100, 100), 0), "stacked flush is allowed");
+  assert.ok(!rectsCollide(R(0, 0, 100, 100), R(100, 100, 100, 100), 0), "corner-touching is allowed");
+});
+
+t("findFreeSpot with a zero gap lands a card flush below an obstacle", () => {
+  const placed = [R(0, 0, 288, 192)];
+  const spot = findFreeSpot(R(0, 24, 288, 192), placed, 0, 24);
+  assert.deepEqual(spot, R(0, 192, 288, 192));
+  assert.ok(!placed.some((o) => rectsCollide(spot, o, 0)));
+});
+
+t("findFreeSpot with a zero gap and no step still makes progress", () => {
+  const spot = findFreeSpot(R(0, 0, 288, 192), [R(0, 0, 288, 192)], 0);
+  assert.ok(spot.y >= 192, "cleared the obstacle, got y=" + spot.y);
+});
+
 t("findFreeSpot returns the request when it's legal, clamped to the canvas", () => {
   assert.deepEqual(findFreeSpot(R(40, 60, 280, 200), [], 12), R(40, 60, 280, 200));
   assert.deepEqual(findFreeSpot(R(-30, -5, 280, 200), [], 12), R(0, 0, 280, 200));
