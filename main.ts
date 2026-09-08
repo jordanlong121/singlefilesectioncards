@@ -1858,7 +1858,10 @@ export interface CardRect {
 
 /** Canvas geometry: snap step matches the dot pattern; sizes are multiples of it. */
 const CUSTOM_SNAP = 24;
-const CUSTOM_GAP = 12;
+/** Required clearance between placed items. Zero: they may sit flush on the grid
+ * (the snap already keeps them a whole cell apart otherwise); only real overlap
+ * counts as a collision. */
+const CUSTOM_GAP = 0;
 const CUSTOM_MIN_W = 192;
 const CUSTOM_MIN_H = 120;
 const CUSTOM_DEFAULT_W = 288;
@@ -2009,6 +2012,8 @@ export function snapRect(rect: CardRect, step: number, minW: number, minH: numbe
 }
 
 /** Cards on the canvas may neither overlap nor touch: `gap` px of air is required. */
+/** True when the rects overlap or come within `gap` px of each other; with a gap of 0,
+ * edge-to-edge touching is allowed and only genuine overlap collides. */
 export function rectsCollide(a: CardRect, b: CardRect, gap: number): boolean {
 	return a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap;
 }
@@ -2018,6 +2023,7 @@ export function rectsCollide(a: CardRect, b: CardRect, gap: number): boolean {
  * gap-sized steps until it clears every other card, falling back to below the lowest one.
  */
 export function findFreeSpot(want: CardRect, others: CardRect[], gap: number, step = gap): CardRect {
+	if (step <= 0) step = CUSTOM_SNAP; // a zero gap must still make progress
 	const spot: CardRect = { ...want, x: Math.max(0, Math.round(want.x)), y: Math.max(0, Math.round(want.y)) };
 	for (let i = 0; i < 4000; i++) {
 		if (!others.some((other) => rectsCollide(spot, other, gap))) return spot;
@@ -6433,6 +6439,13 @@ export class SectionCardsView extends ItemView {
 	): void {
 		if (evt.button !== 0 || this.pointerDrag) return;
 		evt.preventDefault();
+		// Grab offsets in content px. A placed card keeps its exact grab point so it
+		// starts moving from where it sits (it renders zoomed, so unscale). A tray tile
+		// is a small label standing in for a full-size card, so its offset is clamped
+		// to keep the ghost — and the drop — near the pointer.
+		const zoom = kind === "card" ? this.canvasZoom() : 1;
+		const rawX = (evt.clientX - grabbed.left) / zoom;
+		const rawY = (evt.clientY - grabbed.top) / zoom;
 		const drag = {
 			kind,
 			key,
@@ -6441,9 +6454,8 @@ export class SectionCardsView extends ItemView {
 			obstacles: this.otherPlacements(key),
 			w: size.w,
 			h: size.h,
-			// Grab offsets in content px: placed cards render zoomed, tray tiles don't.
-			offX: Math.min((evt.clientX - grabbed.left) / (kind === "card" ? this.canvasZoom() : 1), size.w - 24),
-			offY: Math.min((evt.clientY - grabbed.top) / (kind === "card" ? this.canvasZoom() : 1), size.h - 24),
+			offX: kind === "card" ? rawX : Math.min(rawX, size.w - 24, 140),
+			offY: kind === "card" ? rawY : Math.min(rawY, size.h - 24, 20),
 			startX: evt.clientX,
 			startY: evt.clientY,
 			active: false,
@@ -6467,13 +6479,17 @@ export class SectionCardsView extends ItemView {
 			const ghost = document.body.createDiv({ cls: "sc-pointer-ghost" });
 			ghost.setText(drag.label);
 			if (drag.kind === "card") {
-				ghost.setCssStyles({ width: `${drag.w}px`, height: `${drag.h}px` });
+				// Screen-sized to match the zoomed card it stands in for.
+				const zoom = this.canvasZoom();
+				ghost.setCssStyles({ width: `${drag.w * zoom}px`, height: `${drag.h * zoom}px` });
 			}
 			drag.ghost = ghost;
 		}
+		// Offsets are content px; the ghost lives in screen px.
+		const ghostZoom = drag.kind === "card" ? this.canvasZoom() : 1;
 		drag.ghost?.setCssStyles({
-			left: `${evt.clientX - Math.min(drag.offX, 140)}px`,
-			top: `${evt.clientY - Math.min(drag.offY, 20)}px`,
+			left: `${evt.clientX - drag.offX * ghostZoom}px`,
+			top: `${evt.clientY - drag.offY * ghostZoom}px`,
 		});
 		const canvas = this.gridEl.getBoundingClientRect();
 		const overCanvas =
@@ -6486,7 +6502,7 @@ export class SectionCardsView extends ItemView {
 			const py = (evt.clientY - canvas.top + this.gridEl.scrollTop) / this.canvasZoom();
 			const mins = this.canvasMins();
 			const want = snapRect(
-				{ x: px - Math.min(drag.offX, 140), y: py - Math.min(drag.offY, 20), w: drag.w, h: drag.h },
+				{ x: px - drag.offX, y: py - drag.offY, w: drag.w, h: drag.h },
 				CUSTOM_SNAP,
 				mins.w,
 				mins.h,
@@ -6522,7 +6538,7 @@ export class SectionCardsView extends ItemView {
 			const py = (evt.clientY - canvas.top + this.gridEl.scrollTop) / this.canvasZoom();
 			const mins = this.canvasMins();
 			const want = snapRect(
-				{ x: px - Math.min(drag.offX, 140), y: py - Math.min(drag.offY, 20), w: drag.w, h: drag.h },
+				{ x: px - drag.offX, y: py - drag.offY, w: drag.w, h: drag.h },
 				CUSTOM_SNAP,
 				mins.w,
 				mins.h,
