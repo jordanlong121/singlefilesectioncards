@@ -8,10 +8,11 @@
 
 [![The note's images arranged freely on a canvas](screenshots/hero-images.png)](#images)
 
+[![Flash cards: a question on the front, the answer on the back](screenshots/hero-flashcards.png)](#card-flip)
+
 An [Obsidian](https://obsidian.md) plugin that shows the sections of **one** note as a wall of
-cards — one card per heading — and lets you edit any section in place. With the freeform **Custom Grid** canvas, it doubles as a home for ad hoc
-dashboards, sticky notes, task management, brainstorming, and a diary or journal — one
-dated card per day.
+cards — one card per heading — and lets you edit any section in place. With many layout and view options, it functions as as a home for ad hoc
+dashboards, sticky notes, flash cards, task management, brainstorming, and a diary or journal.
 
 While this is a standalone plugin that works on any note, it pairs nicely with
 [Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes) as well as
@@ -34,13 +35,19 @@ If this plugin is useful to you, you can support its development:
 - **Plays with the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin.**
   Ticking a checkbox uses its toggle (recurring tasks recur), and the right-click menu gains its
   create/edit dialogs.
-- **Templates and dates.** New cards can start from a template note.
+- **Flash cards.** A marker line splits a section into a front and a back; the card's flip
+  button turns it over to the answer, definition, or notes behind (see [Card Flip](#card-flip)).
 - **Make it yours.** Apply custom card colors and background images (remembered per note),
   and tune the look with the [Style Settings](https://github.com/mgmeyers/obsidian-style-settings) plugin.
 - **Navigate as cards.** Wikilinks open the linked note's card wall, the ↗ button opens the section in a
   normal editor.
+- **Templates and dates.** New cards can start from a template note.
 - **Deck.** The toolbar's deck button (or `D`) flips the view to thumbnails of your pinned
   and most recent card notes — click one to hop over.
+- **Pick or create a note.** The toolbar's note button (or `O`) opens a picker of recent notes
+  that searches the vault as you type. Type a title that isn't a note yet and the last row
+  offers to create it (`Shift+Enter`, or the footer's "Create new note…" button), in Obsidian's default new-note folder —
+  or include a `folder/` to place it.
 - **Keyboard shortcuts.** `1`–`6` heading level, `L` layouts, `V` view modes, `D` deck,
   `,`/`.` previous/next heading, `N` new card, `O` pick a note, `S` starred lines only,
   `Ctrl/⌘+F` filter. Click `?` to show keyboard shortcuts.
@@ -241,6 +248,50 @@ Style Settings everything simply uses the defaults.
 Every card's title bar has a palette button offering nine colors, which tint the card's border and
 title bar in every layout. Colors are remembered per note in the plugin's data.
 
+## Card Flip
+
+A card can have two faces. Put a **back-side marker** line in a section and everything above it
+is the card's front, everything below it the card's back — hidden until you turn the card over.
+Use it for a study prompt with the answer behind it, a term and its definition, or a card's
+notes, sources, and metadata kept out of the way until wanted.
+
+```markdown
+### Capital of France?
+
+%% flip %%
+Paris — since 508, with a gap for Vichy.
+```
+
+**Turning a card.** Cards that hold the marker get a flip button (a horizontal loop arrow) at the
+end of the title bar's action strip, and a matching **Flip the card over** item in the title bar's
+right-click menu; cards without a marker show neither. The showing face slides out and the
+other slides in from the far side — leftward to the back, rightward home; the button lights up in the accent color while the back is showing, and
+the same button or menu item turns it back. A flipped card also inverts its colors — a light card
+goes dark and vice versa, with its hue kept — so a card on its back is obvious at a glance, even
+in a wall of cards. Pictures on the back still look like themselves. Flipping never changes a
+card's size: the back is given exactly the front's height, scrolls if it's longer, and the rest
+of the layout stays put. Reduced-motion systems get the swap without the slide.
+
+**What the back can hold.** Anything markdown: paragraphs, lists, links, images, embeds, code.
+The back renders on the first flip and stays rendered after. It is read-only display — click the
+card to edit the whole section, front and back together, in the usual card editor (which always
+opens on the front, uninverted). Tasks written on the back are not tickable from the back, but
+they still count in the Tasks layout and the filter box, which read the whole section. Making a
+flipped card big shows its back at full size. The card's quick-add dialog offers **Card front**
+and **Card back** rows, each with its own *Add to top* and *Add to bottom*, so a line lands on the
+face you mean without opening the editor.
+
+**The marker.** The default `%% flip %%` is an Obsidian comment, so the note's own reading view
+hides it too. Matching is exact after trimming and ignores case, and a marker quoted inside a
+code fence doesn't count. Any text works as the marker (settings → Card Flip → **Back-side
+marker**): `---` or `<!-- back -->`, say — pick one that never appears in your sections for another
+reason. Leave a blank line above the marker so the last front paragraph stays its own block. Only
+the first marker in a section splits the card; a second one is ordinary back text.
+
+**Turning it off.** The **Flip-over button** setting (settings → Card Flip, on by default) removes
+the buttons and menu items and renders every section whole, marker line included (invisible when
+it's a comment).
+
 ## New-card options, per note
 
 The toolbar button beside **+ New card** holds the open note's new-card options: a template
@@ -315,6 +366,7 @@ prompt offers to create it (template applied, default placement).
 | Jump to today's card | Scroll to today's card when a note opens in the view (on by default; needs the note's Dates checkbox) |
 | Keep pinned cards on screen | Pinned cards stay on screen while the rest scroll — below the toolbar, or left of the row in Vertical (on by default; not in Custom Grid) |
 | Card colors | Each of the nine card colors' RGB value and label, with preset palettes to apply in one pick |
+| Card Flip | Flip-over button on cards that hold the back-side marker line; the marker text itself (default `%% flip %%`) |
 | Default sort | A→Z, Z→A, or document order |
 | Default layout | Grid, Grid Aligned, Tight, Horizontal, Vertical, Custom Grid |
 | Show open-task counts in Hierarchy columns | Square badge per column row counting the unfinished tasks beneath it (on by default) |

@@ -54,6 +54,14 @@ const DECK_SVG = `<g transform="scale(4.1667)" fill="none" stroke="currentColor"
 	<path d="M8.5 3h10a2 2 0 0 1 2 2v10"/>
 </g>`;
 
+/** The card-flip button: a circle seen edge-on — a horizontal ellipse arrow running
+ * around a vertical axis, the way the card itself turns. Lucide has no such glyph. */
+const FLIP_ICON = "sfsc-flip";
+const FLIP_SVG = `<g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+	<path d="M16.75 8.54A9.5 4 0 1 1 7.25 8.54"/>
+	<path d="M4.7 11.6 7.25 8.54 3.6 7"/>
+</g>`;
+
 export type SortOrder = "doc" | "asc" | "desc" | "count-asc" | "count-desc";
 
 /** Where a newly created section is inserted into the file. */
@@ -158,6 +166,11 @@ interface SectionCardsSettings {
 	jumpToToday: boolean;
 	/** Keep the pinned band on screen while the rest of the cards scroll. */
 	stickyPinned: boolean;
+	/** Cards with a back-side marker in their body get a flip button; the text below
+	 * the marker is hidden from the front and shown on the back. */
+	flipEnabled: boolean;
+	/** The line that, on its own, starts a card's back (trimmed, exact match). */
+	flipMarker: string;
 	taskDoneDate: boolean;
 	/** Route task toggles through the Tasks plugin when it's installed, so recurring
 	 * tasks spawn their next occurrence and done dates follow its settings. */
@@ -427,6 +440,8 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	unfiledTitle: "_Unfiled_",
 	jumpToToday: true,
 	stickyPinned: true,
+	flipEnabled: true,
+	flipMarker: "%% flip %%",
 	taskDoneDate: true,
 	tasksToggle: true,
 	strikeNestedUnderDone: true,
@@ -1401,6 +1416,48 @@ export function bodyForRender(body: string): string {
 	return out.startsWith("---") ? "\n" + out : out;
 }
 
+/** The two faces of a card whose body holds a back-side marker line. */
+export interface CardFaces {
+	/** Body lines above the marker (the whole body when there is no marker). */
+	front: string;
+	/** Body lines below the marker; null when the body has no marker. */
+	back: string | null;
+}
+
+/**
+ * Split a section body at its back-side marker: the first line that, trimmed, is
+ * exactly the marker (itself trimmed; case-insensitive). Everything above is the
+ * card's front, everything below its back. Fenced code is skipped, so a marker
+ * quoted inside a code block doesn't split the card. An empty marker never splits.
+ */
+export function splitCardFaces(body: string, marker: string): CardFaces {
+	const lines = body.split("\n");
+	const i = flipMarkerLine(lines, marker);
+	if (i < 0) return { front: body, back: null };
+	return { front: trimTrailingBlankLines(lines.slice(0, i).join("\n")), back: lines.slice(i + 1).join("\n") };
+}
+
+/** Index of the back-side marker line among body lines (-1 if none): the first line
+ * that, trimmed, is the marker (trimmed, case-insensitive), skipping fenced code. */
+export function flipMarkerLine(lines: string[], marker: string): number {
+	const want = marker.trim().toLowerCase();
+	if (!want) return -1;
+	let fence: string | null = null;
+	for (let i = 0; i < lines.length; i++) {
+		const open = /^\s*(`{3,}|~{3,})/.exec(lines[i]);
+		if (fence) {
+			if (open && open[1][0] === fence[0] && open[1].length >= fence.length) fence = null;
+			continue;
+		}
+		if (open) {
+			fence = open[1];
+			continue;
+		}
+		if (lines[i].trim().toLowerCase() === want) return i;
+	}
+	return -1;
+}
+
 /**
  * Move one movable block from a section to a position in another (or the same) section:
  * beside that section's movable block `anchorIndex` — above it ("before") or directly
@@ -2317,21 +2374,43 @@ async function retitleSectionInFile(
 	return ok;
 }
 
-/** Where Quick Add drops its text within the section body. */
-export type QuickAddPlacement = "top" | "bottom";
+/** Where Quick Add drops its text within the section body. The "back-" pair targets
+ * the text below the card's back-side marker (Card Flip); without one they act on the
+ * whole body like their front counterparts. */
+export type QuickAddPlacement = "top" | "bottom" | "back-top" | "back-bottom";
 
 /**
  * Insert text lines into a section's body: "top" goes right under the heading, "bottom"
  * right after the last content line (before the blank separator, which endLine excludes).
+ * With a back-side `marker` present in the body, "bottom" stops above the marker (and
+ * the blank gap before it), "back-top" lands right under the marker, and "back-bottom"
+ * at the section's end.
  */
 export function insertIntoSection(
 	lines: string[],
 	section: Section,
 	text: string,
 	where: QuickAddPlacement,
+	marker = "",
 ): string[] {
 	const insert = text.replace(/\s+$/, "").split(/\r?\n/);
-	const at = where === "top" ? bodyStartLine(section) : section.endLine;
+	const bodyStart = bodyStartLine(section);
+	const body = lines.slice(bodyStart, section.endLine);
+	const m = marker ? flipMarkerLine(body, marker) : -1;
+	let at: number;
+	if (m < 0) {
+		at = where === "top" || where === "back-top" ? bodyStart : section.endLine;
+	} else if (where === "top") {
+		at = bodyStart;
+	} else if (where === "bottom") {
+		let end = m;
+		while (end > 0 && body[end - 1].trim() === "") end--;
+		at = bodyStart + end;
+	} else if (where === "back-top") {
+		at = bodyStart + m + 1;
+	} else {
+		at = section.endLine;
+	}
 	const out = lines.slice();
 	out.splice(at, 0, ...insert);
 	return out;
@@ -2345,6 +2424,7 @@ async function quickAddToSection(
 	original: Section,
 	text: string,
 	where: QuickAddPlacement,
+	marker = "",
 ): Promise<boolean> {
 	let ok = true;
 
@@ -2356,7 +2436,7 @@ async function quickAddToSection(
 			ok = false;
 			return data;
 		}
-		return insertIntoSection(lines, target, text, where).join(eol);
+		return insertIntoSection(lines, target, text, where, marker).join(eol);
 	});
 
 	return ok;
@@ -2565,6 +2645,8 @@ interface CardEntry {
 	el: HTMLElement;
 	/** The card's body container, cached so refreshes don't re-query it per card. */
 	bodyEl: HTMLElement;
+	/** The card's back face (text below the back-side marker), null when it has none. */
+	backEl: HTMLElement | null;
 	scope: Component;
 	holder: { section: Section };
 	raw: string;
@@ -3190,7 +3272,7 @@ export class SectionCardsView extends ItemView {
 		// Allowed in the Deck too — it's another way of picking a note.
 		this.scope.register([], "O", (evt) => {
 			if (!this.plainShortcutOk(evt, true)) return true;
-			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path)).open();
+			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path), true).open();
 			return false;
 		});
 		// S: show only starred lines / show everything, same as the toolbar star.
@@ -3481,6 +3563,84 @@ export class SectionCardsView extends ItemView {
 		this.repack(); // masonry and row rules re-pack around the hidden cards
 	}
 
+	/** A body's front and back, per the flip setting (one face, no back, when it's off). */
+	private cardFaces(body: string): CardFaces {
+		return splitCardFaces(body, this.flipMarker());
+	}
+
+	/** The back-side marker in force — empty while Card Flip is off, so nothing splits. */
+	private flipMarker(): string {
+		const { flipEnabled, flipMarker } = this.plugin.settings;
+		return flipEnabled ? flipMarker : "";
+	}
+
+	/** In flight while a card's faces are mid-turn, so a double-click can't tangle them. */
+	private flipping = new WeakSet<HTMLElement>();
+
+	/**
+	 * Turn a card over (or back): the showing face slides out, the other slides in
+	 * from the far side. The back's markdown renders on the first flip only.
+	 * Reduced-motion users get the swap without the slide.
+	 */
+	private async flipCard(
+		card: HTMLElement,
+		bodyEl: HTMLElement,
+		backEl: HTMLElement | null,
+		holder: { section: Section },
+		file: TFile,
+		scope: Component,
+	): Promise<void> {
+		if (!backEl || this.flipping.has(card) || card.hasClass("is-editing")) return;
+		this.flipping.add(card);
+		try {
+			const toBack = !card.hasClass("is-flipped");
+			// The card keeps its size through the turn: the back takes the front's exact
+			// height (scrolling if it's longer), measured now while the front still shows.
+			// It holds that height until it's hidden again (below), so the turn back
+			// doesn't reflow the card mid-animation.
+			if (toBack) backEl.setCssStyles({ height: `${bodyEl.offsetHeight}px` });
+			const animate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+			// A slide, not a 3D turn: the showing face slides out one way and the other
+			// slides in behind it from the opposite side — leftward to reach the back,
+			// rightward to come home. Reads the same on a square Grid card and a
+			// pane-wide Horizontal row, where a perspective turn distorted badly. The
+			// card clips (overflow hidden), so the faces travel their own full width.
+			const slide = (el: HTMLElement, from: string, to: string, fade: [number, number], easing: string) =>
+				el.animate(
+					[
+						{ transform: `translateX(${from})`, opacity: fade[0] },
+						{ transform: `translateX(${to})`, opacity: fade[1] },
+					],
+					{ duration: 140, easing },
+				).finished;
+			const out = toBack ? "-100%" : "100%";
+			const inFrom = toBack ? "100%" : "-100%";
+			if (animate) await slide(toBack ? bodyEl : backEl, "0", out, [1, 0.4], "ease-in").catch(() => {});
+			if (toBack && !backEl.dataset.rendered) {
+				backEl.dataset.rendered = "1";
+				const back = this.cardFaces(holder.section.body).back ?? "";
+				if (back.trim()) {
+					await MarkdownRenderer.render(this.app, bodyForRender(back), backEl, file.path, scope);
+				} else {
+					backEl.createDiv({ cls: "section-card-placeholder", text: "Nothing on the back." });
+				}
+			}
+			card.toggleClass("is-flipped", toBack);
+			if (!toBack) backEl.setCssStyles({ height: "" });
+			const flipBtn = card.querySelector<HTMLElement>(".section-card-flip");
+			flipBtn?.setAttr("aria-label", toBack ? "Flip back to the front" : "Flip the card over");
+			if (animate) await slide(toBack ? backEl : bodyEl, inFrom, "0", [0.4, 1], "ease-out").catch(() => {});
+		} finally {
+			this.flipping.delete(card);
+		}
+	}
+
+	/** Forget every card's identity so the next refresh rebuilds them all — for
+	 * settings that change how a body renders, which card reuse would otherwise keep. */
+	invalidateCards(): void {
+		for (const entry of this.cardEntries) entry.raw = "\0stale";
+	}
+
 	/** The card-body height cap for the current layout; also re-applied to reused cards. */
 	private applyBodyHeight(bodyEl: HTMLElement | null): void {
 		if (!bodyEl) return;
@@ -3531,7 +3691,8 @@ export class SectionCardsView extends ItemView {
 				box.removeAttribute("disabled");
 				box.removeAttribute("readonly");
 			}
-			const body = entry.holder.section.body.split("\n");
+			// Only the front is rendered here, so only its blocks can correspond to elements.
+			const body = this.cardFaces(entry.holder.section.body).front.split("\n");
 			const blocks = movableBlocks(body);
 			const emoji = this.plugin.starEmoji();
 			const els = this.eligibleBlockEls(bodyEl);
@@ -4171,7 +4332,7 @@ export class SectionCardsView extends ItemView {
 		fileBtn.setAttr("aria-label", "Pick a different note (O)");
 		fileBtn.createSpan({ text: this.filePath || "(no file)" });
 		fileBtn.addEventListener("click", () => {
-			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path)).open();
+			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path), true).open();
 		});
 
 		// The Deck toggle: a wall of note thumbnails instead of the cards. While it's
@@ -4311,7 +4472,12 @@ export class SectionCardsView extends ItemView {
 			attr: { type: "date", "aria-hidden": "true", tabindex: "-1" },
 		});
 		const openJumpPicker = () => {
-			if (!jumpInput.value) jumpInput.value = mo().format("YYYY-MM-DD");
+			// Start empty every time: the picker then opens on the current month with
+			// today marked, and any day picked — today included — differs from the
+			// input's value, so `change` fires. A value left over from an earlier pick
+			// (or from yesterday, in a view open overnight) would park the picker on
+			// that day and swallow a re-pick of it, since an unchanged value fires nothing.
+			jumpInput.value = "";
 			const picker = jumpInput as HTMLInputElement & { showPicker?: () => void };
 			try {
 				if (picker.showPicker) picker.showPicker();
@@ -5581,6 +5747,7 @@ export class SectionCardsView extends ItemView {
 				entry.holder.section = section;
 				entry.el.toggleClass("is-today", !!today && isTodayTitle(section.title, today.iso, today.formatted));
 				this.applyBodyHeight(entry.bodyEl);
+				this.applyBodyHeight(entry.backEl);
 			} else {
 				entry = this.renderCard(file, section, today);
 			}
@@ -5810,6 +5977,15 @@ export class SectionCardsView extends ItemView {
 					}),
 			);
 			menu.addItem((item) => item.setTitle("Delete card").setIcon("trash-2").onClick(confirmDeleteCard));
+			const flipBtn = card.querySelector<HTMLElement>(".section-card-flip");
+			if (flipBtn) {
+				menu.addItem((item) =>
+					item
+						.setTitle(card.hasClass("is-flipped") ? "Flip back to the front" : "Flip the card over")
+						.setIcon(FLIP_ICON)
+						.onClick(() => flipBtn.click()),
+				);
+			}
 			this.addCommonMenuItems(menu);
 			menu.showAtMouseEvent(evt);
 		});
@@ -5879,8 +6055,9 @@ export class SectionCardsView extends ItemView {
 		quickAddBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
 			const target = holder.section;
-			new QuickAddModal(this.plugin, target.title || "(untitled)", async (text, where) => {
-				const ok = await quickAddToSection(this.app, file, this.headingLevel, target, text, where);
+			const hasBack = this.cardFaces(target.body).back !== null;
+			new QuickAddModal(this.plugin, target.title || "(untitled)", hasBack, async (text, where) => {
+				const ok = await quickAddToSection(this.app, file, this.headingLevel, target, text, where, this.flipMarker());
 				if (!ok) {
 					new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
 				}
@@ -5928,12 +6105,32 @@ export class SectionCardsView extends ItemView {
 		const bodyEl = card.createDiv({ cls: "section-card-body markdown-rendered" });
 		this.applyBodyHeight(bodyEl);
 
+		// With the flip option on, a back-side marker splits the body: the front renders
+		// here, the back into its own face, shown when the card is flipped over.
+		const faces = this.cardFaces(section.body);
 		let renderBody: (() => Promise<void>) | null = null;
-		if (section.body.trim()) {
+		if (faces.front.trim()) {
 			renderBody = () =>
-				MarkdownRenderer.render(this.app, bodyForRender(holder.section.body), bodyEl, file.path, scope);
+				MarkdownRenderer.render(this.app, bodyForRender(this.cardFaces(holder.section.body).front), bodyEl, file.path, scope);
+		} else if (faces.back !== null) {
+			bodyEl.createDiv({ cls: "section-card-placeholder", text: "Nothing on the front — flip the card over." });
 		} else {
 			bodyEl.createDiv({ cls: "section-card-placeholder", text: "Empty section — click to add content." });
+		}
+
+		let backEl: HTMLElement | null = null;
+		if (faces.back !== null) {
+			// It wears section-card-body too, so each layout's body styling carries over;
+			// the front stays the card's first .section-card-body for every lookup.
+			backEl = card.createDiv({ cls: "section-card-body section-card-back markdown-rendered" });
+			this.applyBodyHeight(backEl);
+			const flipBtn = actions.createEl("button", { cls: "section-card-flip" });
+			setIcon(flipBtn, FLIP_ICON);
+			flipBtn.setAttr("aria-label", "Flip the card over");
+			flipBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				void this.flipCard(card, bodyEl, backEl, holder, file, scope);
+			});
 		}
 
 		// A wikilink to another note opens that note as cards, in its own remembered view.
@@ -6254,7 +6451,7 @@ export class SectionCardsView extends ItemView {
 			void this.completeDrag(file, moved, holder.section, this.isDropBefore(evt, card));
 		});
 
-		return { el: card, bodyEl, scope, holder, raw: section.raw, renderBody };
+		return { el: card, bodyEl, backEl, scope, holder, raw: section.raw, renderBody };
 	}
 
 	/**
@@ -6333,6 +6530,8 @@ export class SectionCardsView extends ItemView {
 		overlay.appendChild(card);
 		card.addClass("is-maximized");
 		body.setCssStyles({ maxHeight: "" });
+		// Big, the back is free to grow like the front; the next flip re-measures it.
+		card.querySelector<HTMLElement>(".section-card-back")?.setCssStyles({ maxHeight: "", height: "" });
 		setIcon(button, "zoom-out");
 		button.setAttr("aria-label", "Shrink this card (Esc)");
 		restoreCaret(caret);
@@ -6346,6 +6545,7 @@ export class SectionCardsView extends ItemView {
 		open.card.removeClass("is-maximized");
 		open.card.setCssStyles(open.inlineRect);
 		open.body.setCssStyles({ maxHeight: open.bodyMaxHeight });
+		this.applyBodyHeight(open.card.querySelector<HTMLElement>(".section-card-back"));
 		setIcon(open.button, "zoom-in");
 		open.button.setAttr("aria-label", "Make this card big · drag to reorder");
 
@@ -8142,7 +8342,7 @@ export class SectionCardsView extends ItemView {
 
 		const ok =
 			blockIndex === null || blockText === null
-				? await quickAddToSection(this.app, file, this.headingLevel, section, line, "bottom")
+				? await quickAddToSection(this.app, file, this.headingLevel, section, line, "bottom", this.flipMarker())
 				: await insertAfterBlockInFile(this.app, file, this.headingLevel, section, blockIndex, blockText, line);
 		if (!ok) {
 			new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
@@ -8896,17 +9096,59 @@ class GradientBackgroundModal extends Modal {
 	}
 }
 
-class FileSuggestModal extends SuggestModal<string> {
+/** One row in the note picker: an existing note, or an offer to create the typed one. */
+interface FileSuggestion {
+	path: string;
+	create: boolean;
+}
+
+class FileSuggestModal extends SuggestModal<FileSuggestion> {
 	private readonly plugin: SectionCardsPlugin;
 	private readonly onChoose: (path: string) => void;
+	private readonly allowCreate: boolean;
 
-	constructor(app: App, plugin: SectionCardsPlugin, onChoose: (path: string) => void) {
+	/**
+	 * @param allowCreate  Offer to create a note when the typed title doesn't match one.
+	 *   On for picking the note to show; off where a fresh empty note makes no sense
+	 *   (choosing a template).
+	 */
+	constructor(app: App, plugin: SectionCardsPlugin, onChoose: (path: string) => void, allowCreate = false) {
 		super(app);
 		this.plugin = plugin;
 		this.onChoose = onChoose;
-		this.setPlaceholder("Recent note, or search the vault…");
+		this.allowCreate = allowCreate;
+		this.setPlaceholder(allowCreate ? "Recent note, search the vault, or type a new title…" : "Recent note, or search the vault…");
 		this.emptyStateText = "No matching note in the vault.";
 		this.limit = 100;
+		if (allowCreate) {
+			this.setInstructions([
+				{ command: "↵", purpose: "open" },
+				{ command: "shift ↵", purpose: "create the typed note" },
+			]);
+			// A "Create new note…" button at the end of that footer, for anyone who
+			// doesn't discover the shortcut: creates whatever is typed, or asks for a title.
+			const instructions = this.modalEl.querySelector(".prompt-instructions");
+			if (instructions instanceof HTMLElement) {
+				const btn = instructions.createEl("button", {
+					cls: "section-cards-suggest-create-btn",
+					text: "Create new note…",
+				});
+				btn.addEventListener("click", (evt) => {
+					evt.preventDefault();
+					this.close();
+					this.createFromTitle(this.inputEl.value);
+				});
+			}
+			// Shift+Enter creates whatever was typed, even while an existing note is highlighted.
+			this.scope.register(["Shift"], "Enter", (evt) => {
+				const path = this.createPathFor(this.inputEl.value);
+				if (!path) return true;
+				evt.preventDefault();
+				this.close();
+				void this.createAndChoose(path);
+				return false;
+			});
+		}
 	}
 
 	/** Adds a path if it names a real markdown file that isn't already listed. */
@@ -8921,16 +9163,74 @@ class FileSuggestModal extends SuggestModal<string> {
 	}
 
 	/**
+	 * Where a note typed as `title` would be created, or null if the title is
+	 * empty or already names a note. A title with a slash is taken as a vault
+	 * path; a bare title lands in Obsidian's configured new-note folder.
+	 */
+	private createPathFor(title: string): string | null {
+		if (!this.allowCreate) return null;
+		const q = normalizePath(title.trim().replace(/\.md$/i, ""));
+		if (!q || q === "/" || q === ".") return null;
+		if (this.app.metadataCache.getFirstLinkpathDest(q, "")) return null;
+		let path: string;
+		if (q.includes("/")) {
+			path = `${q}.md`;
+		} else {
+			const parent = this.app.fileManager.getNewFileParent(this.plugin.settings.filePath ?? "");
+			path = normalizePath(`${parent.path}/${q}.md`);
+		}
+		if (this.app.vault.getAbstractFileByPath(path)) return null;
+		return path;
+	}
+
+	/**
+	 * The footer button's path: create the typed title straight away; with nothing
+	 * typed, ask for one. A title that already names a note simply opens it.
+	 */
+	private createFromTitle(typed: string): void {
+		const typedPath = this.createPathFor(typed);
+		if (typedPath) {
+			void this.createAndChoose(typedPath);
+			return;
+		}
+		new TextInputModal(this.app, "New note", typed.trim(), "Create", (title) => {
+			const path = this.createPathFor(title);
+			if (path) {
+				void this.createAndChoose(path);
+				return;
+			}
+			const q = normalizePath(title.trim().replace(/\.md$/i, ""));
+			const existing = q && q !== "/" && q !== "." ? this.app.metadataCache.getFirstLinkpathDest(q, "") : null;
+			if (existing) this.onChoose(existing.path);
+		}).open();
+	}
+
+	private async createAndChoose(path: string): Promise<void> {
+		try {
+			const folder = path.slice(0, path.lastIndexOf("/"));
+			if (folder && !this.app.vault.getAbstractFileByPath(folder)) {
+				await this.app.vault.createFolder(folder);
+			}
+			const file = await this.app.vault.create(path, "");
+			this.onChoose(file.path);
+		} catch (err) {
+			new Notice(`Couldn't create "${path}": ${err instanceof Error ? err.message : String(err)}`);
+		}
+	}
+
+	/**
 	 * With no query, suggests only notes the plugin already knows about — the
 	 * configured default, notes with a remembered cards view, recently opened
 	 * notes. Once the user types, their query is resolved the way a wikilink
-	 * would be, then fuzzy-matched against the vault's markdown files.
+	 * would be, then fuzzy-matched against the vault's markdown files. When
+	 * creating is allowed and the typed title isn't a note yet, a "create" row
+	 * follows the matches — it's the only row (so Enter creates) when nothing matches.
 	 *
 	 * Vault enumeration happens only here, only while the user is actively
 	 * searching this picker, and only to fuzzy-match the query they typed;
 	 * the file list is discarded as soon as the suggestions are computed.
 	 */
-	getSuggestions(query: string): string[] {
+	getSuggestions(query: string): FileSuggestion[] {
 		const typed: string[] = [];
 		const known: string[] = [];
 		const seen = new Set<string>();
@@ -8946,8 +9246,9 @@ class FileSuggestModal extends SuggestModal<string> {
 		for (const path of Object.keys(this.plugin.settings.perFile ?? {})) this.addCandidate(known, seen, path);
 		for (const path of this.app.workspace.getLastOpenFiles()) this.addCandidate(known, seen, path);
 
+		const existing = (path: string): FileSuggestion => ({ path, create: false });
 		const needle = q.toLowerCase();
-		if (!needle) return typed.concat(known);
+		if (!needle) return typed.concat(known).map(existing);
 
 		const fuzzy = prepareFuzzySearch(q);
 		const rest = this.app.vault
@@ -8957,15 +9258,31 @@ class FileSuggestModal extends SuggestModal<string> {
 			.sort((a, b) => b.match.score - a.match.score || a.path.localeCompare(b.path))
 			.map((entry) => entry.path);
 
-		return typed.concat(known.filter((path) => path.toLowerCase().includes(needle))).concat(rest);
+		const out = typed
+			.concat(known.filter((path) => path.toLowerCase().includes(needle)))
+			.concat(rest)
+			.map(existing);
+		const createPath = this.createPathFor(q);
+		if (createPath) out.push({ path: createPath, create: true });
+		return out;
 	}
 
-	renderSuggestion(path: string, el: HTMLElement): void {
-		el.setText(path);
+	renderSuggestion(item: FileSuggestion, el: HTMLElement): void {
+		if (!item.create) {
+			el.setText(item.path);
+			return;
+		}
+		el.addClass("section-cards-suggest-create");
+		el.createSpan({ text: "Create note " });
+		el.createSpan({ cls: "section-cards-suggest-create-path", text: item.path });
 	}
 
-	onChooseSuggestion(path: string): void {
-		this.onChoose(path);
+	onChooseSuggestion(item: FileSuggestion): void {
+		if (item.create) {
+			void this.createAndChoose(item.path);
+			return;
+		}
+		this.onChoose(item.path);
 	}
 }
 
@@ -9769,18 +10086,22 @@ class HeadingFormatModal extends Modal {
 class QuickAddModal extends Modal {
 	private readonly plugin: SectionCardsPlugin;
 	private readonly title: string;
+	private readonly hasBack: boolean;
 	private readonly onSubmit: (text: string, where: QuickAddPlacement) => void | Promise<void>;
 	private editor: EmbeddedEditor | null = null;
 	private box: HTMLTextAreaElement | null = null;
 
+	/** @param hasBack  The card has a back (Card Flip): offer front and back placements. */
 	constructor(
 		plugin: SectionCardsPlugin,
 		title: string,
+		hasBack: boolean,
 		onSubmit: (text: string, where: QuickAddPlacement) => void | Promise<void>,
 	) {
 		super(plugin.app);
 		this.plugin = plugin;
 		this.title = title;
+		this.hasBack = hasBack;
 		this.onSubmit = onSubmit;
 	}
 
@@ -9822,10 +10143,26 @@ class QuickAddModal extends Modal {
 			});
 		}
 
-		new Setting(contentEl)
-			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
-			.addButton((b) => b.setButtonText("Add to top").onClick(() => this.submit("top")))
-			.addButton((b) => b.setButtonText("Add to bottom").setCta().onClick(() => this.submit("bottom")));
+		if (this.hasBack) {
+			// A two-faced card: a labelled row of placements per face. The front's bottom
+			// stays the default (Ctrl/⌘+Enter), as on any other card.
+			new Setting(contentEl)
+				.setName("Card front")
+				.setClass("section-cards-quickadd-face")
+				.addButton((b) => b.setButtonText("Add to top").onClick(() => this.submit("top")))
+				.addButton((b) => b.setButtonText("Add to bottom").setCta().onClick(() => this.submit("bottom")));
+			new Setting(contentEl)
+				.setName("Card back")
+				.setClass("section-cards-quickadd-face")
+				.addButton((b) => b.setButtonText("Add to top").onClick(() => this.submit("back-top")))
+				.addButton((b) => b.setButtonText("Add to bottom").onClick(() => this.submit("back-bottom")));
+			new Setting(contentEl).addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
+		} else {
+			new Setting(contentEl)
+				.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+				.addButton((b) => b.setButtonText("Add to top").onClick(() => this.submit("top")))
+				.addButton((b) => b.setButtonText("Add to bottom").setCta().onClick(() => this.submit("bottom")));
+		}
 
 		if (this.editor) this.editor.focusEnd();
 		else this.box?.focus();
@@ -10079,6 +10416,22 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			},
 			{
 				type: "group",
+				heading: "Card Flip",
+				items: [
+					{
+						name: "Flip-over button",
+						desc: "A card whose section holds the back-side marker line gets a flip button in its title bar's action strip (and right-click menu). Text below the marker is kept off the card's front and shown on its back — a study question's answer, a definition, notes or metadata about the card.",
+						control: { type: "toggle", key: "flipEnabled" },
+					},
+					{
+						name: "Back-side marker",
+						desc: "The line that, alone on its own line, starts a card's back. The default is an Obsidian comment, so it's invisible in the note's reading view; a plain --- or <!-- back --> works too. Leave a blank line above it.",
+						control: { type: "text", key: "flipMarker", placeholder: "%% flip %%" },
+					},
+				],
+			},
+			{
+				type: "group",
 				heading: "Card colors",
 				items: [
 					{
@@ -10251,6 +10604,17 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			this.plugin.refreshAllViews();
 			return;
 		}
+		if (key === "flipMarker") {
+			const text = typeof value === "string" ? value.trim() : "";
+			await super.setControlValue(key, text || DEFAULT_SETTINGS.flipMarker);
+			this.plugin.rebuildAllViews();
+			return;
+		}
+		if (key === "flipEnabled") {
+			await super.setControlValue(key, value);
+			this.plugin.rebuildAllViews();
+			return;
+		}
 		await super.setControlValue(key, value);
 		if (key === "strikeNestedUnderDone") this.plugin.applyBodyClasses();
 		if (key === "toolbarStyle") this.plugin.applyToolbarStyle();
@@ -10277,6 +10641,7 @@ export default class SectionCardsPlugin extends Plugin {
 		await this.loadSettings();
 
 		addIcon(DECK_ICON, DECK_SVG);
+		addIcon(FLIP_ICON, FLIP_SVG);
 
 		this.registerView(VIEW_TYPE_SECTION_CARDS, (leaf) => new SectionCardsView(leaf, this));
 
@@ -11017,6 +11382,16 @@ export default class SectionCardsPlugin extends Plugin {
 		// refresh anyway: it renders fresh from settings when it loads.
 		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
 			if (leaf.view instanceof SectionCardsView) void leaf.view.refresh();
+		}
+	}
+
+	/** Refresh every view with card reuse switched off, so bodies re-render from scratch. */
+	rebuildAllViews(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
+			if (leaf.view instanceof SectionCardsView) {
+				leaf.view.invalidateCards();
+				void leaf.view.refresh();
+			}
 		}
 	}
 

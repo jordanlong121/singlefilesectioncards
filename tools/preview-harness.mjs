@@ -86,19 +86,41 @@ function renderBody(md) {
 }
 
 /** Header buttons exist on every card (hidden until hover), matching renderCard: the
- * untray hugs the title's left in Custom Grid; the rest overlay from the right edge. */
-const HEADER_BUTTONS = `<button class="section-card-untray"></button><div class="section-card-actions"><button class="section-card-quickadd"></button><button class="section-card-color"></button><button class="section-card-delete"></button><button class="section-card-big"></button><button class="section-card-open"></button><button class="section-card-pin"></button></div>`;
+ * untray hugs the title's left in Custom Grid; the rest overlay from the right edge.
+ * Cards with a back (see splitFaces) get the flip button too. */
+const headerButtons = (flip) =>
+	`<button class="section-card-untray"></button><div class="section-card-actions"><button class="section-card-quickadd"></button><button class="section-card-color"></button><button class="section-card-delete"></button><button class="section-card-big"></button><button class="section-card-open"></button>${flip ? '<button class="section-card-flip"></button>' : ""}<button class="section-card-pin"></button></div>`;
+
+/** Card Flip: the back-side marker (settings default) and, for staging, the titles of
+ * the cards to show flipped over — FLIPPED="mitochondrion,Ohm" matches by substring. */
+const FLIP_MARKER = (process.env.FLIP_MARKER ?? "%% flip %%").trim().toLowerCase();
+const FLIPPED = (process.env.FLIPPED ?? "").split(",").map((t) => t.trim()).filter(Boolean);
+
+/** Mirrors splitCardFaces (minus the fence skipping the sample notes don't need). */
+function splitFaces(body) {
+	const lines = body.split("\n");
+	const at = lines.findIndex((l) => l.trim().toLowerCase() === FLIP_MARKER);
+	if (at < 0) return { front: body, back: null };
+	return { front: lines.slice(0, at).join("\n").replace(/\s+$/, ""), back: lines.slice(at + 1).join("\n") };
+}
 
 function cardHtml(s, { maxHeight = null, placed = null, hierHidden = false } = {}) {
 	const today = s.title.includes(TODAY) ? " is-today" : "";
 	const placedCls = (placed ? " is-placed" : "") + (hierHidden ? " is-hier-hidden" : "");
 	const style = placed ? ` style="left:${placed.x}px;top:${placed.y}px;width:${placed.w}px;height:${placed.h}px"` : "";
 	const bodyStyle = maxHeight ? ` style="max-height: ${maxHeight}px;"` : "";
-	return `<div class="section-card${today}${placedCls}"${style} draggable="true">
+	const faces = splitFaces(s.body);
+	const flipped = faces.back !== null && FLIPPED.some((t) => s.title.includes(t));
+	const placeholder = faces.back !== null ? "Nothing on the front — flip the card over." : "Empty section — click to add content.";
+	const backHtml =
+		faces.back !== null
+			? `\n\t<div class="section-card-body section-card-back markdown-rendered"${bodyStyle}>${renderBody(faces.back)}</div>`
+			: "";
+	return `<div class="section-card${today}${placedCls}${flipped ? " is-flipped" : ""}"${style} draggable="true">
 	<div class="section-card-header is-click-big">
-		<div class="section-card-title">${esc(s.title || "(untitled)")}</div><div class="sfsc-task-count">${(s.body.match(/^\s*- \[[ x]\]/gm) || []).length}</div>${HEADER_BUTTONS}
+		<div class="section-card-title">${esc(s.title || "(untitled)")}</div><div class="sfsc-task-count">${(s.body.match(/^\s*- \[[ x]\]/gm) || []).length}</div>${headerButtons(faces.back !== null)}
 	</div>
-	<div class="section-card-body markdown-rendered"${bodyStyle}>${renderBody(s.body) || '<div class="section-card-placeholder">Empty section — click to add content.</div>'}</div>
+	<div class="section-card-body markdown-rendered"${bodyStyle}>${renderBody(faces.front) || `<div class="section-card-placeholder">${placeholder}</div>`}</div>${backHtml}
 </div>`;
 }
 

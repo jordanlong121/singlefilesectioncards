@@ -580,6 +580,16 @@ body.sfsc-flat-cards .section-cards-view {
 	padding-top: 8px;
 }
 
+/* Two-faced cards: a "Card front" / "Card back" label leads each row of placements. */
+.section-cards-quickadd-modal .section-cards-quickadd-face .setting-item-name {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.section-cards-quickadd-modal .section-cards-quickadd-face + .section-cards-quickadd-face {
+	padding-top: 0;
+}
+
 /* Quick Add's live-preview editor: the card embed's chrome, sized like the old box. */
 .section-cards-quickadd-modal .section-cards-quickadd-editor {
 	min-height: 90px;
@@ -2849,6 +2859,7 @@ body.is-mobile .sfsc-library-btn {
 .section-card-big,
 .section-card-open,
 .section-card-color,
+.section-card-flip,
 .section-card-quickadd {
 	flex: 0 0 auto;
 	padding: 2px 7px;
@@ -2864,6 +2875,7 @@ body.is-mobile .sfsc-library-btn {
 	.section-card:hover .section-card-big,
 	.section-card:hover .section-card-open,
 	.section-card:hover .section-card-color,
+	.section-card:hover .section-card-flip,
 	.section-card:hover .section-card-quickadd {
 		opacity: 1;
 	}
@@ -3031,6 +3043,7 @@ body.is-mobile .section-card-actions button {
 .section-card-open:focus-visible,
 .section-card-pin:focus-visible,
 .section-card-color:focus-visible,
+.section-card-flip:focus-visible,
 .section-card-quickadd:focus-visible {
 	opacity: 1;
 }
@@ -3039,6 +3052,7 @@ body.is-mobile .section-card-actions button {
 .section-card-open:hover,
 .section-card-pin:hover,
 .section-card-color:hover,
+.section-card-flip:hover,
 .section-card-quickadd:hover {
 	color: var(--text-accent);
 }
@@ -3047,9 +3061,51 @@ body.is-mobile .section-card-actions button {
 .section-card-big svg,
 .section-card-open svg,
 .section-card-color svg,
+.section-card-flip svg,
 .section-card-quickadd svg {
 	width: 13px;
 	height: 13px;
+}
+
+/* A flipped card's button reads as "on", like the pin. */
+.section-card.is-flipped .section-card-flip {
+	color: var(--text-accent);
+}
+
+/* Card backs (settings → Card backs). The back face is a second body element that
+   shows only while the card is flipped; the front hides in turn. An open editor
+   always shows in the front element, whichever face was up. The turn itself is a
+   Web Animations rotateY on the faces (see flipCard), so nothing here transitions. */
+.section-card-back {
+	display: none;
+}
+
+.section-card.is-flipped:not(.is-editing) > .section-card-back {
+	display: block;
+}
+
+.section-card.is-flipped:not(.is-editing) > .section-card-body:not(.section-card-back) {
+	display: none;
+}
+
+/* The back's rendered checkboxes stay read-only; they aren't wired to the note. */
+.section-card-back input[type="checkbox"] {
+	pointer-events: none;
+}
+
+/* A flipped card shows in inverted colors, so the back is unmistakable at a glance:
+   light cards go dark and vice versa. The hue rotation keeps the card's own color
+   (and the accent) recognisable rather than turning it into its complement. An
+   editor opened on a flipped card runs on the front, uninverted. */
+.section-card.is-flipped:not(.is-editing) {
+	filter: invert(1) hue-rotate(180deg);
+}
+
+/* Pictures and video on the back should still look like themselves. */
+.section-card.is-flipped:not(.is-editing) .section-card-back img,
+.section-card.is-flipped:not(.is-editing) .section-card-back video,
+.section-card.is-flipped:not(.is-editing) .section-card-back canvas {
+	filter: invert(1) hue-rotate(180deg);
 }
 
 .section-card-delete:hover {
@@ -3349,6 +3405,7 @@ body.is-mobile .section-card-delete,
 body.is-mobile .section-card-big,
 body.is-mobile .section-card-open,
 body.is-mobile .section-card-color,
+body.is-mobile .section-card-flip,
 body.is-mobile .section-card-quickadd {
 	opacity: 1;
 	padding: 6px 9px;
@@ -3452,4 +3509,19 @@ body.is-phone .section-cards-label {
 	border: 1px solid var(--background-modifier-border);
 	background: var(--sfsc-gradient, var(--background-secondary));
 	margin-bottom: var(--size-4-3, 12px);
+}
+
+/* Note picker: the "Create note …" row offered for a title that isn't a note yet. */
+.section-cards-suggest-create {
+	color: var(--text-muted);
+}
+.section-cards-suggest-create-path {
+	color: var(--text-normal);
+}
+.section-cards-suggest-create-btn {
+	margin-left: auto;
+	font-size: var(--font-ui-smaller);
+	padding: 2px 10px;
+	height: auto;
+	line-height: 1.6;
 }
