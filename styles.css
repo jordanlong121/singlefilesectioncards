@@ -3097,15 +3097,41 @@ body.is-mobile .section-card-actions button {
    light cards go dark and vice versa. The hue rotation keeps the card's own color
    (and the accent) recognisable rather than turning it into its complement. An
    editor opened on a flipped card runs on the front, uninverted. */
-.section-card.is-flipped:not(.is-editing) {
+.section-card.is-flipped:not(.is-editing):not(.is-maximized) {
 	filter: invert(1) hue-rotate(180deg);
 }
 
 /* Pictures and video on the back should still look like themselves. */
-.section-card.is-flipped:not(.is-editing) .section-card-back img,
-.section-card.is-flipped:not(.is-editing) .section-card-back video,
-.section-card.is-flipped:not(.is-editing) .section-card-back canvas {
+.section-card.is-flipped:not(.is-editing):not(.is-maximized) .section-card-back img,
+.section-card.is-flipped:not(.is-editing):not(.is-maximized) .section-card-back video,
+.section-card.is-flipped:not(.is-editing):not(.is-maximized) .section-card-back canvas {
 	filter: invert(1) hue-rotate(180deg);
+}
+
+/* Big, a two-faced card is a review page: front on top, back beneath a labelled
+   rule, both showing whichever face was up — so no inversion and no flip button.
+   (Same specificity as the flipped-face rules above; later, so it wins.) */
+.section-card.is-maximized:not(.is-editing) > .section-card-body.markdown-rendered {
+	display: block;
+}
+
+.section-card.is-maximized .section-card-back {
+	border-top: 1px dashed var(--background-modifier-border);
+}
+
+.section-card.is-maximized .section-card-back::before {
+	content: "Back";
+	display: block;
+	margin-bottom: 6px;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-muted);
+}
+
+.section-card.is-maximized .section-card-flip {
+	display: none;
 }
 
 .section-card-delete:hover {
