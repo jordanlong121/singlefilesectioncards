@@ -5,7 +5,12 @@ The calendar banner uses screenshots/calendar-full.png, staged from tools/calend
   chrome --headless=new --screenshot=calendar-full.png --window-size=1280,760 <outdir>/calendar.html
 (Copy the note as "Daily Notes 2026.md" first so the tab wears that name.)
 """
+import sys
+
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+# `python3 tools/make_heroes.py hero-flashcards.png` rebuilds just the named banners.
+ONLY = set(sys.argv[1:])
 
 FONTS = "/mnt/c/Windows/Fonts"
 BOLD = f"{FONTS}/segoeuib.ttf"
@@ -30,6 +35,8 @@ def rounded(img, radius):
 
 
 def banner(shot_name, lines, subtitle, out_name):
+    if ONLY and out_name not in ONLY:
+        return
     panel = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(panel)
     draw.rounded_rectangle([0, 0, W - 1, H - 1], 40, fill=PANEL_BG)
@@ -73,6 +80,7 @@ PURPLE = (177, 140, 255, 255)
 TEAL = (95, 212, 196, 255)
 GREEN = (158, 219, 106, 255)
 CORAL = (242, 131, 107, 255)
+ORANGE = (255, 176, 92, 255)
 
 banner(
     "grid.png",
@@ -123,4 +131,20 @@ banner(
     ],
     "The note's images, arranged freely on a canvas.",
     "hero-images.png",
+)
+
+# The flash-card banner uses screenshots/flashcards-full.png, staged from tools/flashcards-hero-note.md
+# (copied in as "Study Deck.md") with a few cards shown flipped:
+#   NOTE=<outdir>/Study\ Deck.md SORT=doc FLIPPED="mitochondrion,Ohm,gato,Krebs" node tools/preview-harness.mjs <outdir>
+#   chrome --headless=new --screenshot=flashcards-full.png --window-size=1280,760 <outdir>/grid.html
+banner(
+    "flashcards-full.png",
+    [
+        [("The best of", WHITE)],
+        [("flash cards", ORANGE)],
+        [("and ", WHITE), ("a study guide", BLUE), (".", WHITE)],
+        [("One file, no complexity.", WHITE)],
+    ],
+    "A question on the front, the answer on the back — flip a card.",
+    "hero-flashcards.png",
 )

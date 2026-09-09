@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -822,6 +822,48 @@ t("bodyForRender: a plain line under a list item becomes its own paragraph", () 
   assert.equal(bodyForRender("- [ ] task\n\nplain"), "- [ ] task\n\nplain");
   assert.equal(bodyForRender("- a\n#### sub"), "- a\n#### sub");
   assert.equal(bodyForRender("```\n- a\ntext\n```"), "```\n- a\ntext\n```"); // fences stay byte-exact
+});
+
+t("splitCardFaces: the marker line splits front from back", () => {
+  assert.deepEqual(splitCardFaces("Q: capital of France?\n\n%% flip %%\nParis", "%% flip %%"),
+    { front: "Q: capital of France?", back: "Paris" });
+  // Marker matching is trimmed and case-insensitive; the back keeps its lines as written.
+  assert.deepEqual(splitCardFaces("front\n  %% FLIP %%  \n\nback\nmore", "%% flip %%"),
+    { front: "front", back: "\nback\nmore" });
+  // Any marker text works — a horizontal rule, an HTML comment.
+  assert.deepEqual(splitCardFaces("a\n---\nb", "---"), { front: "a", back: "b" });
+  assert.deepEqual(splitCardFaces("a\n<!-- back -->\nb", " <!-- back --> "), { front: "a", back: "b" });
+});
+
+t("insertIntoSection with a back-side marker: front and back placements", () => {
+  const doc = L("### Q\nfront line\n\n%% flip %%\nback line\n\n### Next\nx");
+  const s = parseSections(doc, 3)[0];
+  const M = "%% flip %%";
+  assert.deepEqual(insertIntoSection(doc, s, "NEW", "top", M).slice(0, 3), ["### Q", "NEW", "front line"]);
+  // Front bottom stops above the marker's blank gap, not at the section's end.
+  assert.deepEqual(insertIntoSection(doc, s, "NEW", "bottom", M).slice(0, 5), ["### Q", "front line", "NEW", "", "%% flip %%"]);
+  assert.deepEqual(insertIntoSection(doc, s, "NEW", "back-top", M).slice(3, 6), ["%% flip %%", "NEW", "back line"]);
+  assert.deepEqual(insertIntoSection(doc, s, "NEW", "back-bottom", M).slice(4, 7), ["back line", "NEW", ""]);
+  // No marker in force (empty marker, or none in the body): the back placements act on the whole body.
+  assert.deepEqual(insertIntoSection(doc, s, "NEW", "back-bottom", "").slice(5, 7), ["NEW", ""]);
+  assert.deepEqual(insertIntoSection(doc, s, "NEW", "bottom", "").slice(5, 7), ["NEW", ""]);
+  const plain = L("### Q\nonly front\n\n### Next");
+  const p = parseSections(plain, 3)[0];
+  assert.deepEqual(insertIntoSection(plain, p, "NEW", "back-top", M).slice(0, 3), ["### Q", "NEW", "only front"]);
+  assert.equal(flipMarkerLine(["a", "  %% FLIP %%", "b"], M), 1);
+  assert.equal(flipMarkerLine(["```", "%% flip %%", "```"], M), -1);
+});
+
+t("splitCardFaces: no marker, an empty marker, or a marker inside a code fence leaves one face", () => {
+  assert.deepEqual(splitCardFaces("just text", "%% flip %%"), { front: "just text", back: null });
+  assert.deepEqual(splitCardFaces("a\n%% flip %%\nb", ""), { front: "a\n%% flip %%\nb", back: null });
+  assert.deepEqual(splitCardFaces("```\n%% flip %%\n```\ntext", "%% flip %%"),
+    { front: "```\n%% flip %%\n```\ntext", back: null });
+  // A marker after the fence closes still splits; only the first marker counts.
+  assert.deepEqual(splitCardFaces("```\n%% flip %%\n```\n%% flip %%\nb\n%% flip %%\nc", "%% flip %%"),
+    { front: "```\n%% flip %%\n```", back: "b\n%% flip %%\nc" });
+  // An empty front (marker first) is allowed: the card is all back.
+  assert.deepEqual(splitCardFaces("%% flip %%\nanswer", "%% flip %%"), { front: "", back: "answer" });
 });
 
 t("bodyForRender: a blank line stops a leading '---' being swallowed as frontmatter", () => {
