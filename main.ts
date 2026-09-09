@@ -3286,6 +3286,21 @@ export class SectionCardsView extends ItemView {
 			this.app.workspace.requestSaveLayout();
 			return false;
 		});
+		// F: flip the card under the pointer over (or back). A big card shows both
+		// faces already, so there's nothing to flip there.
+		this.scope.register([], "F", (evt) => {
+			if (!this.plainShortcutOk(evt)) return true;
+			const card = this.contentEl.querySelector<HTMLElement>(".section-card:hover");
+			if (!card || card.hasClass("is-maximized")) return true;
+			void this.flipCard(card);
+			return false;
+		});
+		// Shift+F: every card back to its front.
+		this.scope.register(["Shift"], "F", (evt) => {
+			if (!this.plainShortcutOk(evt)) return true;
+			this.flipAll(false);
+			return false;
+		});
 		// Ctrl/⌘+F: jump to the filter box (from anywhere in the view, fields included).
 		this.scope.register(["Mod"], "F", (evt) => {
 			if (this.activeEditor || this.deckMode) return true; // no filter box to jump to
@@ -3577,23 +3592,41 @@ export class SectionCardsView extends ItemView {
 	/** In flight while a card's faces are mid-turn, so a double-click can't tangle them. */
 	private flipping = new WeakSet<HTMLElement>();
 
+	/** Cards showing their back, by note and heading, so a rebuild (an edit, a file
+	 * change) brings a card back still flipped instead of popping its answer into view. */
+	private flippedKeys = new Set<string>();
+
+	private flipKey(headingRaw: string): string {
+		return `${this.filePath}\0${headingRaw}`;
+	}
+
+	/** Render a card's back face once (its first showing), whichever path needs it. */
+	private async renderBack(backEl: HTMLElement, holder: { section: Section }, file: TFile, scope: Component): Promise<void> {
+		if (backEl.dataset.rendered) return;
+		backEl.dataset.rendered = "1";
+		const back = this.cardFaces(holder.section.body).back ?? "";
+		if (back.trim()) {
+			await MarkdownRenderer.render(this.app, bodyForRender(back), backEl, file.path, scope);
+		} else {
+			backEl.createDiv({ cls: "section-card-placeholder", text: "Nothing on the back." });
+		}
+	}
+
 	/**
 	 * Turn a card over (or back): the showing face slides out, the other slides in
-	 * from the far side. The back's markdown renders on the first flip only.
-	 * Reduced-motion users get the swap without the slide.
+	 * from the far side. `to` forces a face (true = back) and is a no-op when the
+	 * card already shows it; without it the card toggles. Reduced-motion users get
+	 * the swap without the slide.
 	 */
-	private async flipCard(
-		card: HTMLElement,
-		bodyEl: HTMLElement,
-		backEl: HTMLElement | null,
-		holder: { section: Section },
-		file: TFile,
-		scope: Component,
-	): Promise<void> {
-		if (!backEl || this.flipping.has(card) || card.hasClass("is-editing")) return;
+	private async flipCard(card: HTMLElement, to?: boolean): Promise<void> {
+		const entry = this.cardEntries.find((e) => e.el === card);
+		const file = this.getFile();
+		if (!entry?.backEl || !file || this.flipping.has(card) || card.hasClass("is-editing")) return;
+		const { bodyEl, backEl, holder, scope } = entry;
+		const toBack = !card.hasClass("is-flipped");
+		if (to !== undefined && to !== toBack) return;
 		this.flipping.add(card);
 		try {
-			const toBack = !card.hasClass("is-flipped");
 			// The card keeps its size through the turn: the back takes the front's exact
 			// height (scrolling if it's longer), measured now while the front still shows.
 			// It holds that height until it's hidden again (below), so the turn back
@@ -3616,23 +3649,37 @@ export class SectionCardsView extends ItemView {
 			const out = toBack ? "-100%" : "100%";
 			const inFrom = toBack ? "100%" : "-100%";
 			if (animate) await slide(toBack ? bodyEl : backEl, "0", out, [1, 0.4], "ease-in").catch(() => {});
-			if (toBack && !backEl.dataset.rendered) {
-				backEl.dataset.rendered = "1";
-				const back = this.cardFaces(holder.section.body).back ?? "";
-				if (back.trim()) {
-					await MarkdownRenderer.render(this.app, bodyForRender(back), backEl, file.path, scope);
-				} else {
-					backEl.createDiv({ cls: "section-card-placeholder", text: "Nothing on the back." });
-				}
-			}
-			card.toggleClass("is-flipped", toBack);
+			if (toBack) await this.renderBack(backEl, holder, file, scope);
+			this.setFlipped(card, holder.section.headingRaw, toBack);
 			if (!toBack) backEl.setCssStyles({ height: "" });
-			const flipBtn = card.querySelector<HTMLElement>(".section-card-flip");
-			flipBtn?.setAttr("aria-label", toBack ? "Flip back to the front" : "Flip the card over");
 			if (animate) await slide(toBack ? backEl : bodyEl, inFrom, "0", [0.4, 1], "ease-out").catch(() => {});
 		} finally {
 			this.flipping.delete(card);
 		}
+	}
+
+	/** Stamp a card's face: the class the CSS keys on, the button's label, and the memory. */
+	private setFlipped(card: HTMLElement, headingRaw: string, flipped: boolean): void {
+		card.toggleClass("is-flipped", flipped);
+		card.querySelector<HTMLElement>(".section-card-flip")?.setAttr(
+			"aria-label",
+			flipped ? "Flip back to the front" : "Flip the card over",
+		);
+		const key = this.flipKey(headingRaw);
+		if (flipped) this.flippedKeys.add(key);
+		else this.flippedKeys.delete(key);
+	}
+
+	/** Turn every two-faced card to its back (true) or front (false). */
+	private flipAll(toBack: boolean): void {
+		for (const entry of this.cardEntries) {
+			if (entry.backEl) void this.flipCard(entry.el, toBack);
+		}
+	}
+
+	/** Whether any card on the wall has a back to flip to. */
+	private anyFlippable(): boolean {
+		return this.cardEntries.some((entry) => entry.backEl !== null);
 	}
 
 	/** Forget every card's identity so the next refresh rebuilds them all — for
@@ -4975,6 +5022,20 @@ export class SectionCardsView extends ItemView {
 					.onClick(() => this.openJumpPicker?.()),
 			);
 		}
+		if (this.anyFlippable()) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Flip all cards over")
+					.setIcon(FLIP_ICON)
+					.onClick(() => this.flipAll(true)),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Flip all cards back")
+					.setIcon(FLIP_ICON)
+					.onClick(() => this.flipAll(false)),
+			);
+		}
 
 		menu.addSeparator();
 		this.addBackgroundItems(menu, base);
@@ -6129,8 +6190,13 @@ export class SectionCardsView extends ItemView {
 			flipBtn.setAttr("aria-label", "Flip the card over");
 			flipBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
-				void this.flipCard(card, bodyEl, backEl, holder, file, scope);
+				void this.flipCard(card);
 			});
+			// A card that was showing its back before this rebuild comes back the same way.
+			if (this.flippedKeys.has(this.flipKey(section.headingRaw))) {
+				this.setFlipped(card, section.headingRaw, true);
+				void this.renderBack(backEl, holder, file, scope);
+			}
 		}
 
 		// A wikilink to another note opens that note as cards, in its own remembered view.
@@ -6522,6 +6588,9 @@ export class SectionCardsView extends ItemView {
 				this.prepareBodies([owed]);
 				this.repack();
 			});
+			// Big, a two-faced card shows both faces stacked (CSS), so the back is needed.
+			const file = this.getFile();
+			if (owed.backEl && file) void this.renderBack(owed.backEl, owed.holder, file, owed.scope);
 		}
 
 		// Scrolling is locked while blown up, so the overlay's inset covers the visible tab.
@@ -9839,6 +9908,8 @@ class ShortcutsModal extends Modal {
 			["D", "Show or hide the Deck of notes"],
 			[", / .", "Previous / next heading in the Hierarchy and Dividers view modes"],
 			["S", "Show only starred lines / show everything"],
+			["F", "Flip the card under the pointer over / back"],
+			["Shift+F", "Flip every card back to the front"],
 			["N", "New card"],
 			["O", "Open a different note"],
 			[`${MOD_LABEL}+F`, "Jump to the filter box"],
