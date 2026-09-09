@@ -264,8 +264,7 @@ Paris — since 508, with a gap for Vichy.
 Cards with a back get a flip button (a horizontal loop arrow) at the end of the title bar's action
 strip, and a **Flip the card over** item in its right-click menu. The faces slide past each other,
 the flipped card shows in inverted colors so it stands out, and the card keeps its size — a longer
-back scrolls. The back is display-only; click the card to edit the whole section. Quick add offers
-**Card front** and **Card back** rows, each with *Add to top* and *Add to bottom*.
+back scrolls. The back is display-only; click the card to edit the whole section.
 
 The default marker `%% flip %%` is an Obsidian comment, invisible in reading view. Any text works
 (settings → Card Flip → **Back-side marker**), such as `---` or `<!-- back -->`. Leave a blank line
