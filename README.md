@@ -250,10 +250,9 @@ title bar in every layout. Colors are remembered per note in the plugin's data.
 
 ## Card Flip
 
-A card can have two faces. Put a **back-side marker** line in a section and everything above it
-is the card's front, everything below it the card's back — hidden until you turn the card over.
-Use it for a study prompt with the answer behind it, a term and its definition, or a card's
-notes, sources, and metadata kept out of the way until wanted.
+A card can have two faces. Put the **back-side marker** on its own line and everything above it is
+the card's front, everything below its back — a study question with the answer behind it, a term
+and its definition, or notes and metadata kept out of the way.
 
 ```markdown
 ### Capital of France?
@@ -262,35 +261,15 @@ notes, sources, and metadata kept out of the way until wanted.
 Paris — since 508, with a gap for Vichy.
 ```
 
-**Turning a card.** Cards that hold the marker get a flip button (a horizontal loop arrow) at the
-end of the title bar's action strip, and a matching **Flip the card over** item in the title bar's
-right-click menu; cards without a marker show neither. The showing face slides out and the
-other slides in from the far side — leftward to the back, rightward home; the button lights up in the accent color while the back is showing, and
-the same button or menu item turns it back. A flipped card also inverts its colors — a light card
-goes dark and vice versa, with its hue kept — so a card on its back is obvious at a glance, even
-in a wall of cards. Pictures on the back still look like themselves. Flipping never changes a
-card's size: the back is given exactly the front's height, scrolls if it's longer, and the rest
-of the layout stays put. Reduced-motion systems get the swap without the slide.
+Cards with a back get a flip button (a horizontal loop arrow) at the end of the title bar's action
+strip, and a **Flip the card over** item in its right-click menu. The faces slide past each other,
+the flipped card shows in inverted colors so it stands out, and the card keeps its size — a longer
+back scrolls. The back is display-only; click the card to edit the whole section. Quick add offers
+**Card front** and **Card back** rows, each with *Add to top* and *Add to bottom*.
 
-**What the back can hold.** Anything markdown: paragraphs, lists, links, images, embeds, code.
-The back renders on the first flip and stays rendered after. It is read-only display — click the
-card to edit the whole section, front and back together, in the usual card editor (which always
-opens on the front, uninverted). Tasks written on the back are not tickable from the back, but
-they still count in the Tasks layout and the filter box, which read the whole section. Making a
-flipped card big shows its back at full size. The card's quick-add dialog offers **Card front**
-and **Card back** rows, each with its own *Add to top* and *Add to bottom*, so a line lands on the
-face you mean without opening the editor.
-
-**The marker.** The default `%% flip %%` is an Obsidian comment, so the note's own reading view
-hides it too. Matching is exact after trimming and ignores case, and a marker quoted inside a
-code fence doesn't count. Any text works as the marker (settings → Card Flip → **Back-side
-marker**): `---` or `<!-- back -->`, say — pick one that never appears in your sections for another
-reason. Leave a blank line above the marker so the last front paragraph stays its own block. Only
-the first marker in a section splits the card; a second one is ordinary back text.
-
-**Turning it off.** The **Flip-over button** setting (settings → Card Flip, on by default) removes
-the buttons and menu items and renders every section whole, marker line included (invisible when
-it's a comment).
+The default marker `%% flip %%` is an Obsidian comment, invisible in reading view. Any text works
+(settings → Card Flip → **Back-side marker**), such as `---` or `<!-- back -->`. Leave a blank line
+above it. The **Flip-over button** setting (on by default) turns the whole feature off.
 
 ## New-card options, per note
 
