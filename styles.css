@@ -1610,7 +1610,8 @@ body.theme-light .sfsc-swatch {
    editor takes the card's height and follows its resizes, footer pinned beneath. */
 .section-card.is-maximized.is-editing .section-card-body,
 .is-layout-custom .section-card.is-placed.is-editing .section-card-body,
-.is-layout-vertical .section-card.is-editing .section-card-body {
+.is-layout-vertical .section-card.is-editing .section-card-body,
+.is-layout-rolodex .section-card.is-editing .section-card-body {
 	display: flex;
 	flex-direction: column;
 }
@@ -1618,9 +1619,11 @@ body.theme-light .sfsc-swatch {
 .section-card.is-maximized .section-card-editor,
 .is-layout-custom .section-card.is-placed .section-card-editor,
 .is-layout-vertical .section-card .section-card-editor,
+.is-layout-rolodex .section-card .section-card-editor,
 .section-card.is-maximized .section-card-editor-embed,
 .is-layout-custom .section-card.is-placed .section-card-editor-embed,
-.is-layout-vertical .section-card .section-card-editor-embed {
+.is-layout-vertical .section-card .section-card-editor-embed,
+.is-layout-rolodex .section-card .section-card-editor-embed {
 	flex: 1 1 auto;
 	height: auto;
 	min-height: 0;
@@ -1630,8 +1633,311 @@ body.theme-light .sfsc-swatch {
 
 .section-card.is-maximized .section-card-footer,
 .is-layout-custom .section-card.is-placed .section-card-footer,
-.is-layout-vertical .section-card .section-card-footer {
+.is-layout-vertical .section-card .section-card-footer,
+.is-layout-rolodex .section-card .section-card-footer {
 	flex: 0 0 auto;
+}
+
+/* ---------- Rolodex: one card fills the pane, title tabs across the top ---------- */
+
+/* Toolbar, tab strip, card — stacked; only the card's body scrolls. */
+.workspace-leaf-content .view-content.section-cards-view.is-layout-rolodex {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.is-layout-rolodex .section-cards-toolbar {
+	position: static;
+	flex: 0 0 auto;
+}
+
+/* No pinned band or hierarchy pane here: the strip does the picking. */
+.is-layout-rolodex .section-cards-pinned,
+.is-layout-rolodex .section-cards-hier {
+	display: none;
+}
+
+.sfsc-rolo-wrap {
+	display: none;
+}
+
+/* The wrapper: zoom buttons at the left, then the scrolling strip with its edge
+   indicators. */
+.is-layout-rolodex .sfsc-rolo-wrap {
+	display: flex;
+	align-items: stretch;
+	gap: 6px;
+	flex: 0 0 auto;
+	padding: 10px var(--sc-pad) 0;
+	/* The strip overlaps the card's top border by a pixel and paints above it, so the
+	   active tab (which reaches down that pixel) joins the card with no line between. */
+	position: relative;
+	z-index: 1;
+	margin-bottom: -1px;
+}
+
+.sfsc-rolo-scroll {
+	position: relative;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* Zoom: a narrow column of two buttons — more rows above, fewer below — that
+   stretches to the strip's height, so they grow with the rows. */
+.sfsc-rolo-zoom {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 2px;
+	flex: 0 0 auto;
+}
+
+.sfsc-rolo-zoom-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 1 1 0;
+	width: 22px;
+	height: auto;
+	min-height: 14px;
+	margin: 0;
+	padding: 0;
+	color: var(--text-muted);
+	background: transparent;
+	border: 1px solid var(--sc-line);
+	border-radius: var(--radius-s, 4px);
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.sfsc-rolo-zoom-btn:hover:not([disabled]) {
+	color: var(--text-normal);
+	background: var(--sc-surface-hover);
+}
+
+.sfsc-rolo-zoom-btn[disabled] {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.sfsc-rolo-zoom-btn svg {
+	width: 12px;
+	height: 12px;
+}
+
+/* A grid of tabs: as many columns as the rows computed in code need (--rolo-cols),
+   each at least 120px, sharing the width when they fit — one title spans the strip,
+   two take half each. Past four rows the grid outgrows the strip and scrolls sideways;
+   the scrollbar stays hidden because the indicators say what's cut off. */
+.is-layout-rolodex .sfsc-rolo-tabs {
+	display: grid;
+	grid-template-columns: repeat(var(--rolo-cols, 1), minmax(120px, 1fr));
+	grid-auto-rows: auto;
+	gap: 4px;
+	padding-bottom: 1px; /* room for the active tab's one-pixel reach onto the card */
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
+}
+
+.is-layout-rolodex .sfsc-rolo-tabs::-webkit-scrollbar {
+	display: none;
+}
+
+/* One cell per card, holding its title tab. */
+.sfsc-rolo-cell {
+	position: relative; /* anchors the drop marker */
+	display: flex;
+	align-items: stretch;
+	min-width: 0;
+}
+
+.sfsc-rolo-tab {
+	flex: 0 0 auto;
+	margin: 0;
+	padding: 6px 10px;
+	height: auto;
+	line-height: 1.3;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-muted);
+	background: var(--sc-header);
+	border: 1px solid var(--sc-line);
+	border-bottom: none;
+	border-radius: var(--radius-m, 8px) var(--radius-m, 8px) 0 0;
+	box-shadow: none;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.sfsc-rolo-tab {
+	display: block;
+	flex: 1 1 0;
+	min-width: 0;
+	overflow: hidden;
+	text-align: left;
+	text-overflow: ellipsis;
+}
+
+/* Dragging a tab to reorder: the lifted tab fades; the slot it would take shows as
+   an accent edge on the left or right of the tab under the pointer. */
+.sfsc-rolo-cell.is-dragging {
+	opacity: 0.45;
+}
+
+.sfsc-rolo-cell.sc-drop-before::after,
+.sfsc-rolo-cell.sc-drop-after::after {
+	/* A bar laid over the tab's edge — a box-shadow on the cell sat under the tab's
+	   own background and only showed where the tab didn't cover it. */
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 3px;
+	border-radius: 2px;
+	background: var(--interactive-accent);
+	pointer-events: none;
+	z-index: 2;
+}
+
+.sfsc-rolo-cell.sc-drop-before::after {
+	left: 0;
+}
+
+.sfsc-rolo-cell.sc-drop-after::after {
+	right: 0;
+}
+
+/* Rows above the last are closed tabs; only the bottom row opens onto the card. */
+.sfsc-rolo-cell.is-upper > .sfsc-rolo-tab {
+	border-bottom: 1px solid var(--sc-line);
+	border-radius: var(--radius-s, 4px);
+}
+
+.sfsc-rolo-tab:hover {
+	color: var(--text-normal);
+	background: var(--sc-surface-hover);
+}
+
+/* The showing card's tab is part of the card: the title bar's own background and
+   border, reaching one pixel down over the card's top edge. An accent line along
+   its top says which tab is open. */
+.sfsc-rolo-cell.is-active {
+	margin-bottom: -1px;
+}
+
+.sfsc-rolo-tab.is-active {
+	color: var(--text-normal);
+	background: linear-gradient(var(--sc-header), var(--sc-header)),
+		linear-gradient(var(--sc-surface), var(--sc-surface)), var(--background-primary);
+	border-color: var(--sc-line);
+	box-shadow: inset 0 3px 0 var(--interactive-accent);
+}
+
+.sfsc-rolo-tab.is-today {
+	color: var(--text-accent);
+}
+
+/* A colored card's tab carries the color along its top edge. */
+.sfsc-rolo-tab[data-sfsc-color] {
+	box-shadow: inset 0 3px 0 rgb(var(--sfsc-c));
+}
+
+/* Edge indicators: a fade plus a chevron over the side where tabs are cut off,
+   shown only while the strip actually scrolls (classes from syncRoloMore). A click
+   pages the strip that way. */
+.sfsc-rolo-more {
+	display: none;
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 44px;
+	height: auto; /* the theme's fixed button height would leave it one row tall */
+	margin: 0;
+	padding: 0;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-normal);
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+	cursor: pointer;
+	z-index: 1;
+}
+
+.sfsc-rolo-more.is-left {
+	left: 0;
+	background: linear-gradient(to right, rgba(var(--mono-rgb-0), 0.9), rgba(var(--mono-rgb-0), 0));
+}
+
+.sfsc-rolo-more.is-right {
+	right: 0;
+	background: linear-gradient(to left, rgba(var(--mono-rgb-0), 0.9), rgba(var(--mono-rgb-0), 0));
+}
+
+.sfsc-rolo-wrap.has-more-left .sfsc-rolo-more.is-left,
+.sfsc-rolo-wrap.has-more-right .sfsc-rolo-more.is-right {
+	display: flex;
+}
+
+.sfsc-rolo-more svg {
+	width: 18px;
+	height: 18px;
+}
+
+/* The card: the one marked active fills what's left; the rest are simply not shown. */
+.is-layout-rolodex .section-cards-grid {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch; /* the base grid's align-items: start would shrink-wrap the card */
+	flex: 1 1 auto;
+	min-height: 0;
+	padding: 0 var(--sc-pad) var(--sc-pad);
+}
+
+.is-layout-rolodex .section-card {
+	display: none;
+}
+
+.is-layout-rolodex .section-card.is-rolo-active {
+	display: flex;
+	flex: 1 1 auto;
+	min-height: 0;
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
+}
+
+/* The card already fills the pane, so "make it big" has nothing to do; the strip's
+   other buttons close up the gap. */
+.is-layout-rolodex .section-card-big {
+	display: none;
+}
+
+/* Hover must not recolor or lift the card: its open tab shares the border and sits flush. */
+@media (hover: hover) {
+	.is-layout-rolodex .section-card.is-rolo-active:hover {
+		border-color: var(--sc-line);
+		box-shadow: var(--sc-shadow);
+		transform: none;
+	}
+}
+
+/* One big card gets roomier margins than a wall of small ones; the top keeps its
+   extra allowance for the hover action strip. */
+.is-layout-rolodex .section-card-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	max-height: none;
+	padding: 30px 28px 28px;
+}
+
+body.is-mobile .is-layout-rolodex .section-card-body {
+	padding: 16px 18px 18px;
+}
+
+.is-layout-rolodex .section-cards-empty {
+	grid-row-end: auto;
 }
 
 /* ---------- Custom Grid + Images: freeform canvas + tray ---------- */
@@ -2235,8 +2541,9 @@ body.theme-light .sfsc-swatch {
 	display: none;
 }
 
-/* Non-task list items hide too, unless a task hides inside them (nesting). */
-.is-layout-tasks .section-card:not(.is-editing) .section-card-body li:not(.task-list-item):not(:has(li.task-list-item)) {
+/* Non-task list items hide too, unless a task hides inside them (nesting) — those
+   carry sc-has-task, stamped after render, since a relational selector lints as a perf hazard. */
+.is-layout-tasks .section-card:not(.is-editing) .section-card-body li:not(.task-list-item):not(.sc-has-task) {
 	display: none;
 }
 

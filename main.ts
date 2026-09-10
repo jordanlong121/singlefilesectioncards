@@ -90,7 +90,8 @@ export type Layout =
 	| "images"
 	| "links"
 	| "calendar"
-	| "heatmap";
+	| "heatmap"
+	| "rolodex";
 
 const SORT_LABELS: Record<SortOrder, string> = {
 	asc: "A → Z",
@@ -108,6 +109,7 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["horizontal", "Horizontal", "One card per row, full width"],
 	["tasks", "Tasks Only", "Just the tasks: each card shows only its task lines, ordered by date and tag"],
 	["vertical", "Vertical", "Full-height cards side by side, scrolling sideways"],
+	["rolodex", "Rolodex", "One card at a time, filling the pane; every card's title is a tab across the top"],
 	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
 	["images", "Images", "Freeform canvas of the note's images: drag previews on from the tray, place and resize them"],
 	["links", "Links", "Freeform canvas of the note's web links: drag page previews on from the tray, place and resize them"],
@@ -232,6 +234,8 @@ export interface PerFileView extends ViewSettings {
 	containsDates?: boolean;
 	/** Per-card colors by heading line; values are CARD_COLORS names. */
 	colors?: Record<string, string>;
+	/** Cards showing their back (Card Flip), by heading line. */
+	flipped?: string[];
 	/** Note whose contents pre-fill the body of every new card made for this note. */
 	templatePath?: string;
 	/** Vault path of the image shown behind this note's card wall (menu → Background). */
@@ -2701,6 +2705,22 @@ export class SectionCardsView extends ItemView {
 	private hasDateHeadings = false;
 	/** The jump-to-date toolbar control, so refresh can show/hide it without a rebuild. */
 	private jumpDateWrap: HTMLElement | null = null;
+	/** Rolodex: the title-tab strip above the one showing card, and the wrapper that
+	 * carries its edge indicators. */
+	private roloTabsEl: HTMLElement | null = null;
+	private roloWrapEl: HTMLElement | null = null;
+	/** Rolodex: the strip width the rows were last computed for. */
+	private roloWidth = 0;
+	/** Rolodex: the tab being dragged to a new place in the note, and the cell marked as its drop slot. */
+	private roloDragging: CardEntry | null = null;
+	private roloDropCell: HTMLElement | null = null;
+	/** Rolodex: rows chosen with the zoom buttons; null = as few as needed, up to four. */
+	private roloRows: number | null = null;
+	/** Rolodex: the row count the strip last showed, and the zoom buttons to sync. */
+	private roloRowsShown = 1;
+	private roloZoomBtns: { fewer: HTMLButtonElement; more: HTMLButtonElement } | null = null;
+	/** Rolodex: which card each note was showing (heading line), for the view's lifetime. */
+	private roloActive = new Map<string, string>();
 	/** The starred-only toolbar toggle, so refresh can hide it in notes with no stars. */
 	private starBtn: HTMLElement | null = null;
 	/** Whether the last render found a starred line, so the star toggle is offered. */
@@ -2991,7 +3011,7 @@ export class SectionCardsView extends ItemView {
 	 * view modes (hierarchy columns, section dividers) don't apply on them. One
 	 * predicate, so the next self-placing layout changes exactly one line. */
 	private layoutOwnsPlacement(): boolean {
-		return this.isCanvasLayout() || this.isDateLayout();
+		return this.isCanvasLayout() || this.isDateLayout() || this.layout === "rolodex";
 	}
 
 	/** Calendar and Heatmap both place by date headings: they borrow the note's date
@@ -3121,6 +3141,58 @@ export class SectionCardsView extends ItemView {
 		// cards here when the setting is on, and CSS hides it while it's empty.
 		this.pinnedEl = this.contentEl.createDiv({ cls: "section-cards-pinned" });
 		this.hierEl = this.contentEl.createDiv({ cls: "section-cards-hier" });
+		// Rolodex: the tab strip sits between the toolbar and the (single) card. The
+		// wheel over it scrolls the strip sideways; over the card, the body scrolls
+		// up and down on its own.
+		this.roloWrapEl = this.contentEl.createDiv({ cls: "sfsc-rolo-wrap" });
+		// Zoom: more or fewer tab rows, at the strip's left edge.
+		const zoom = this.roloWrapEl.createDiv({ cls: "sfsc-rolo-zoom" });
+		const zoomBtn = (icon: string, label: string, delta: number) => {
+			const btn = zoom.createEl("button", { cls: "sfsc-rolo-zoom-btn" });
+			setIcon(btn, icon);
+			btn.setAttr("aria-label", label);
+			btn.addEventListener("click", () => {
+				this.roloRows = Math.max(1, this.roloRowsShown + delta);
+				this.layoutRolodex();
+			});
+			return btn;
+		};
+		this.roloZoomBtns = { more: zoomBtn("plus", "More tab rows", 1), fewer: zoomBtn("minus", "Fewer tab rows", -1) };
+		const scroll = this.roloWrapEl.createDiv({ cls: "sfsc-rolo-scroll" });
+		this.roloTabsEl = scroll.createDiv({ cls: "sfsc-rolo-tabs" });
+		this.registerDomEvent(
+			this.roloTabsEl,
+			"wheel",
+			(evt: WheelEvent) => {
+				const strip = this.roloTabsEl;
+				if (!strip || evt.ctrlKey || evt.metaKey) return;
+				const step = wheelDeltaToPixels(evt, strip.clientWidth);
+				if (!step) return;
+				evt.preventDefault();
+				strip.scrollLeft += step;
+			},
+			{ passive: false },
+		);
+		this.registerDomEvent(this.roloTabsEl, "scroll", () => this.syncRoloMore());
+		// A tab drag near either edge nudges the strip along, so hidden tabs can be reached.
+		this.registerDomEvent(this.roloTabsEl, "dragover", (evt: DragEvent) => {
+			const strip = this.roloTabsEl;
+			if (!strip || !this.roloDragging) return;
+			const rect = strip.getBoundingClientRect();
+			if (evt.clientX < rect.left + 40) strip.scrollLeft -= 10;
+			else if (evt.clientX > rect.right - 40) strip.scrollLeft += 10;
+		});
+		// Edge indicators: tabs are cut off on that side; a click pages the strip.
+		for (const side of ["left", "right"] as const) {
+			const more = scroll.createEl("button", { cls: `sfsc-rolo-more is-${side}` });
+			setIcon(more, side === "left" ? "chevron-left" : "chevron-right");
+			more.setAttr("aria-label", side === "left" ? "More tabs to the left" : "More tabs to the right");
+			more.addEventListener("click", () => {
+				const strip = this.roloTabsEl;
+				if (!strip) return;
+				strip.scrollBy({ left: (side === "left" ? -1 : 1) * strip.clientWidth * 0.8, behavior: "smooth" });
+			});
+		}
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
 		// Right-click on the wall itself — not a card or a control, which have their
 		// own menus — offers the background options where the background actually is.
@@ -3250,6 +3322,10 @@ export class SectionCardsView extends ItemView {
 		// selection; with the dividers showing, jump to the previous/next bar.
 		const stepGrouping = (evt: KeyboardEvent, delta: number): boolean => {
 			if (!this.plainShortcutOk(evt)) return true;
+			if (this.layout === "rolodex") {
+				this.stepRolodex(delta);
+				return false;
+			}
 			if (this.hierarchyActive()) {
 				this.stepHierSelection(delta);
 				return false;
@@ -3444,6 +3520,7 @@ export class SectionCardsView extends ItemView {
 			"links",
 			"calendar",
 			"heatmap",
+			"rolodex",
 		]) {
 			// The Deck replaces the layout wholesale; its class drops the layout chrome.
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name && !this.deckMode);
@@ -3575,6 +3652,7 @@ export class SectionCardsView extends ItemView {
 			const anyShown = bandCards.some((c) => !c.hasClass("is-filtered-out"));
 			this.pinnedEl.toggleClass("is-all-filtered", bandCards.length > 0 && !anyShown);
 		}
+		if (this.layout === "rolodex") this.layoutRolodex(); // a hidden active card hands over
 		this.repack(); // masonry and row rules re-pack around the hidden cards
 	}
 
@@ -3591,14 +3669,6 @@ export class SectionCardsView extends ItemView {
 
 	/** In flight while a card's faces are mid-turn, so a double-click can't tangle them. */
 	private flipping = new WeakSet<HTMLElement>();
-
-	/** Cards showing their back, by note and heading, so a rebuild (an edit, a file
-	 * change) brings a card back still flipped instead of popping its answer into view. */
-	private flippedKeys = new Set<string>();
-
-	private flipKey(headingRaw: string): string {
-		return `${this.filePath}\0${headingRaw}`;
-	}
 
 	/** Render a card's back face once (its first showing), whichever path needs it. */
 	private async renderBack(backEl: HTMLElement, holder: { section: Section }, file: TFile, scope: Component): Promise<void> {
@@ -3658,16 +3728,16 @@ export class SectionCardsView extends ItemView {
 		}
 	}
 
-	/** Stamp a card's face: the class the CSS keys on, the button's label, and the memory. */
+	/** Stamp a card's face: the class the CSS keys on, the button's label, and the
+	 * remembered state (in the plugin's data, per note, so it survives closing the note
+	 * and switching layouts). */
 	private setFlipped(card: HTMLElement, headingRaw: string, flipped: boolean): void {
 		card.toggleClass("is-flipped", flipped);
 		card.querySelector<HTMLElement>(".section-card-flip")?.setAttr(
 			"aria-label",
 			flipped ? "Flip back to the front" : "Flip the card over",
 		);
-		const key = this.flipKey(headingRaw);
-		if (flipped) this.flippedKeys.add(key);
-		else this.flippedKeys.delete(key);
+		void this.plugin.setCardFlipped(this.filePath, headingRaw, flipped, this.viewSettings());
 	}
 
 	/** Turn every two-faced card to its back (true) or front (false). */
@@ -3686,6 +3756,197 @@ export class SectionCardsView extends ItemView {
 	 * settings that change how a body renders, which card reuse would otherwise keep. */
 	invalidateCards(): void {
 		for (const entry of this.cardEntries) entry.raw = "\0stale";
+	}
+
+	/** Rolodex: the cards a tab can reach — everything the filter hasn't hidden. */
+	private roloVisible(): CardEntry[] {
+		return this.cardEntries.filter((e) => !e.el.hasClass("is-filtered-out") && !e.el.hasClass("is-hier-hidden"));
+	}
+
+	/** Rolodex tab geometry: a tab's minimum width and the strip's gap (both in CSS too). */
+	private static readonly ROLO_TAB_MIN = 120;
+	private static readonly ROLO_GAP = 4;
+	private static readonly ROLO_MAX_ROWS = 4;
+
+	/**
+	 * Rolodex layout: one card fills the pane, and every card's title is a tab in the
+	 * strip above. The tabs share the width — a lone title spans the strip, two take
+	 * half each — and once a row can't hold them at their minimum width the strip
+	 * grows to a second row, up to four; past that it scrolls sideways, with edge
+	 * indicators for the tabs cut off. Rebuilt on every refresh, filter pass, and
+	 * tab pick; a resize recomputes the rows.
+	 */
+	private layoutRolodex(): void {
+		const strip = this.roloTabsEl;
+		if (!strip) return;
+		const visible = this.roloVisible();
+		const remembered = this.roloActive.get(this.filePath);
+		const active =
+			visible.find((e) => e.holder.section.headingRaw === remembered) ??
+			visible.find((e) => e.el.hasClass("is-today")) ??
+			visible[0] ??
+			null;
+		for (const entry of this.cardEntries) entry.el.toggleClass("is-rolo-active", entry === active);
+		strip.empty();
+		if (!active) {
+			this.syncRoloMore();
+			return;
+		}
+		this.roloActive.set(this.filePath, active.holder.section.headingRaw);
+
+		// Rows: as few as hold every tab at its minimum width, capped; columns follow.
+		const { ROLO_TAB_MIN: min, ROLO_GAP: gap, ROLO_MAX_ROWS: maxRows } = SectionCardsView;
+		const width = strip.clientWidth || this.contentEl.clientWidth;
+		this.roloWidth = width;
+		const perRow = Math.max(1, Math.floor((width + gap) / (min + gap)));
+		const slots = visible.length;
+		// The zoom buttons override the automatic row count; either way, no more rows
+		// than there are cells to fill them.
+		const needed = Math.max(1, Math.ceil(slots / perRow));
+		const rows = Math.min(slots, Math.max(1, this.roloRows ?? Math.min(maxRows, needed)));
+		this.roloRowsShown = rows;
+		if (this.roloZoomBtns) {
+			this.roloZoomBtns.fewer.toggleAttribute("disabled", rows <= 1);
+			this.roloZoomBtns.more.toggleAttribute("disabled", rows >= slots);
+		}
+		const cols = Math.ceil(slots / rows);
+		strip.setCssProps({ "--rolo-cols": String(cols) });
+		const lastRowStart = (rows - 1) * cols;
+
+		visible.forEach((entry, i) => {
+			const isActive = entry === active;
+			const title = entry.holder.section.title || "(untitled)";
+			const cell = strip.createDiv({ cls: "sfsc-rolo-cell" });
+			cell.toggleClass("is-active", isActive);
+			// Rows above the last are full tabs (closed at the bottom); only the last
+			// row's tabs open onto the card.
+			cell.toggleClass("is-upper", i < lastRowStart);
+			const tab = cell.createEl("button", { cls: "sfsc-rolo-tab", text: title });
+			tab.toggleClass("is-active", isActive);
+			tab.toggleClass("is-today", entry.el.hasClass("is-today"));
+			tab.setAttr("aria-label", title);
+			// The card's color rides along as a top edge (the card resolves --sfsc-c from
+			// its data attribute; the tab borrows the resolved value).
+			const color = entry.el.getAttribute("data-sfsc-color");
+			if (color) {
+				tab.setAttr("data-sfsc-color", color);
+				tab.setCssProps({ "--sfsc-c": window.getComputedStyle(entry.el).getPropertyValue("--sfsc-c").trim() });
+			}
+			tab.addEventListener("click", () => this.setRoloActive(entry));
+			this.wireRoloTabDrag(tab, cell, entry);
+		});
+		strip.querySelector(".sfsc-rolo-cell.is-active")?.scrollIntoView({ inline: "nearest", block: "nearest" });
+		this.syncRoloMore();
+
+		// The showing card's markdown may still be owed from the deferred batches.
+		if (active.renderBody) {
+			void this.runBodyRender(active).then(() => this.prepareBodies([active]));
+		}
+	}
+
+	/** Rolodex: show the edge indicators where tabs are cut off (the strip scrolls). */
+	private syncRoloMore(): void {
+		const strip = this.roloTabsEl;
+		const wrap = this.roloWrapEl;
+		if (!strip || !wrap) return;
+		const overflow = strip.scrollWidth - strip.clientWidth > 2;
+		wrap.toggleClass("has-more-left", overflow && strip.scrollLeft > 2);
+		wrap.toggleClass("has-more-right", overflow && strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 2);
+	}
+
+	/** Rolodex: a pane resize can change how many rows the tabs need. */
+	private roloRelayout = debounce(
+		() => {
+			if (this.layout !== "rolodex" || this.deckMode) return;
+			const width = this.roloTabsEl?.clientWidth ?? 0;
+			if (width && width !== this.roloWidth) this.layoutRolodex();
+			else this.syncRoloMore();
+		},
+		80,
+		true,
+	);
+
+	/**
+	 * Rolodex: drag a tab to move its section in the note — left, right, or into
+	 * another row; it lands before or after the tab it's dropped on, by which half of
+	 * that tab the pointer is over. Same rule as card drags: document order only.
+	 */
+	private wireRoloTabDrag(tab: HTMLElement, cell: HTMLElement, entry: CardEntry): void {
+		tab.draggable = !entry.holder.section.unfiled;
+		tab.addEventListener("dragstart", (evt) => {
+			if (entry.holder.section.unfiled || this.activeEditor) {
+				evt.preventDefault();
+				return;
+			}
+			evt.stopPropagation();
+			if (this.sortOrder !== "doc") {
+				evt.preventDefault();
+				new SwitchToDocumentOrderModal(this.app, SORT_LABELS[this.sortOrder], async () => {
+					this.sortOrder = "doc";
+					this.rememberView();
+					await this.syncView();
+					this.app.workspace.requestSaveLayout();
+				}).open();
+				return;
+			}
+			this.roloDragging = entry;
+			cell.addClass("is-dragging");
+			if (evt.dataTransfer) {
+				evt.dataTransfer.effectAllowed = "move";
+				evt.dataTransfer.setData("text/plain", entry.holder.section.headingRaw);
+			}
+		});
+		tab.addEventListener("dragend", () => {
+			cell.removeClass("is-dragging");
+			this.setRoloDrop(null, false);
+			this.roloDragging = null;
+		});
+		tab.addEventListener("dragover", (evt) => {
+			const from = this.roloDragging;
+			if (!from || from === entry || entry.holder.section.unfiled) return;
+			evt.preventDefault();
+			if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
+			const rect = tab.getBoundingClientRect();
+			this.setRoloDrop(cell, evt.clientX < rect.left + rect.width / 2);
+		});
+		tab.addEventListener("drop", (evt) => {
+			const from = this.roloDragging;
+			if (!from || from === entry || entry.holder.section.unfiled) return;
+			evt.preventDefault();
+			evt.stopPropagation();
+			const rect = tab.getBoundingClientRect();
+			const before = evt.clientX < rect.left + rect.width / 2;
+			this.setRoloDrop(null, false);
+			this.roloDragging = null;
+			const file = this.getFile();
+			if (file) void this.completeDrag(file, from.holder.section, entry.holder.section, before);
+		});
+	}
+
+	private setRoloDrop(cell: HTMLElement | null, before: boolean): void {
+		if (this.roloDropCell && this.roloDropCell !== cell) {
+			this.roloDropCell.removeClass("sc-drop-before");
+			this.roloDropCell.removeClass("sc-drop-after");
+		}
+		this.roloDropCell = cell;
+		if (!cell) return;
+		cell.toggleClass("sc-drop-before", before);
+		cell.toggleClass("sc-drop-after", !before);
+	}
+
+	/** Rolodex: turn to a card (its tab, or `,`/`.`). */
+	private setRoloActive(entry: CardEntry): void {
+		this.roloActive.set(this.filePath, entry.holder.section.headingRaw);
+		this.layoutRolodex();
+	}
+
+	/** Rolodex: the previous/next card in the strip, wrapping around like a rolodex ring. */
+	private stepRolodex(delta: number): void {
+		const visible = this.roloVisible();
+		if (!visible.length) return;
+		const at = visible.findIndex((e) => e.el.hasClass("is-rolo-active"));
+		const next = ((at < 0 ? 0 : at + delta) + visible.length) % visible.length;
+		this.setRoloActive(visible[next]);
 	}
 
 	/** The card-body height cap for the current layout; also re-applied to reused cards. */
@@ -3737,6 +3998,16 @@ export class SectionCardsView extends ItemView {
 			for (const box of Array.from(bodyEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]"))) {
 				box.removeAttribute("disabled");
 				box.removeAttribute("readonly");
+			}
+			// Tag plain list items that nest a task, so the Tasks layout can keep them
+			// visible with a class instead of a :has() selector (Obsidian's CSS lint flags
+			// :has for its invalidation cost).
+			for (const task of Array.from(bodyEl.querySelectorAll<HTMLElement>("li.task-list-item"))) {
+				let parent = task.parentElement?.closest<HTMLElement>("li") ?? null;
+				while (parent && bodyEl.contains(parent)) {
+					parent.addClass("sc-has-task");
+					parent = parent.parentElement?.closest<HTMLElement>("li") ?? null;
+				}
 			}
 			// Only the front is rendered here, so only its blocks can correspond to elements.
 			const body = this.cardFaces(entry.holder.section.body).front.split("\n");
@@ -4314,6 +4585,7 @@ export class SectionCardsView extends ItemView {
 		this.cardObserver = new ResizeObserver(() => {
 			// Resize feedback must be immediate; the debounced repack settles it after.
 			if (this.isCanvasLayout()) this.previewCanvasResize();
+			if (this.layout === "rolodex") this.roloRelayout();
 			this.repack();
 			// A narrower pane wraps the toolbar taller; the sticky band rides below it.
 			this.updateToolbarOffset();
@@ -4593,7 +4865,7 @@ export class SectionCardsView extends ItemView {
 				btn.toggleClass("is-active", isOn());
 				btn.toggleAttribute("disabled", modesOff);
 				if (modesOff) {
-					btn.setAttr("aria-label", "View modes aren't available on the canvas layouts or the Calendar");
+					btn.setAttr("aria-label", "View modes aren't available on the canvas layouts, the Calendar, or the Rolodex");
 				}
 			}
 		};
@@ -4941,6 +5213,8 @@ export class SectionCardsView extends ItemView {
 			}
 			if (showing === 0) this.peekNoTasks(entry.el);
 		}
+		// The Rolodex shows one card: turn to this one, or there'd be nothing to scroll to.
+		if (this.layout === "rolodex") this.setRoloActive(entry);
 		entry.el.scrollIntoView({ block: "center", inline: "center" });
 		entry.el.addClass("is-linked");
 		window.setTimeout(() => entry.el.removeClass("is-linked"), 1600);
@@ -5488,7 +5762,9 @@ export class SectionCardsView extends ItemView {
 					new Notice(`Created an H${written} section; this view is showing H${this.headingLevel}.`);
 				}
 
-				// Open the new card's editor once it has been re-rendered.
+				// Open the new card's editor once it has been re-rendered (the Rolodex
+				// turns to it first, or the editor would open on a hidden card).
+				if (this.layout === "rolodex") this.roloActive.set(this.filePath, headingRaw);
 				this.pendingEditHeading = headingRaw;
 				await this.refresh();
 			},
@@ -5873,6 +6149,7 @@ export class SectionCardsView extends ItemView {
 		// Calendar: interleave the date-ordered cards with month labels and blank day
 		// cells, so grid auto-placement puts every day in its weekday column.
 		if (calendar) this.layoutCalendar(isoByHeading);
+		if (this.layout === "rolodex") this.layoutRolodex();
 
 		// Hierarchy: rebuild the drill-down columns and hide off-branch cards before the
 		// masonry pass below measures anything.
@@ -6081,6 +6358,8 @@ export class SectionCardsView extends ItemView {
 		if (titleClick === "maximize") {
 			header.addEventListener("click", (evt) => {
 				if ((evt.target as HTMLElement | null)?.closest("button")) return;
+				// The Rolodex card already fills the pane (its big button is hidden too).
+				if (this.layout === "rolodex") return;
 				evt.stopPropagation();
 				this.toggleMaximized(card);
 			});
@@ -6192,9 +6471,11 @@ export class SectionCardsView extends ItemView {
 				evt.stopPropagation();
 				void this.flipCard(card);
 			});
-			// A card that was showing its back before this rebuild comes back the same way.
-			if (this.flippedKeys.has(this.flipKey(section.headingRaw))) {
-				this.setFlipped(card, section.headingRaw, true);
+			// A card remembered as showing its back comes back the same way — across
+			// rebuilds, layout switches, and reopening the note.
+			if (this.plugin.getFlipped(file.path).includes(section.headingRaw)) {
+				card.addClass("is-flipped");
+				flipBtn.setAttr("aria-label", "Flip back to the front");
 				void this.renderBack(backEl, holder, file, scope);
 			}
 		}
@@ -6529,6 +6810,10 @@ export class SectionCardsView extends ItemView {
 		const wanted = heading.replace(/^#+\s*/, "").trim().toLowerCase();
 		for (const { el, section } of this.cardsByHeading.values()) {
 			if (section.title.trim().toLowerCase() !== wanted) continue;
+			if (this.layout === "rolodex") {
+				const entry = this.cardEntries.find((e) => e.el === el);
+				if (entry) this.setRoloActive(entry);
+			}
 			el.scrollIntoView({ block: "center", inline: "center" });
 			el.addClass("is-linked");
 			window.setTimeout(() => el.removeClass("is-linked"), 1600);
@@ -9906,7 +10191,7 @@ class ShortcutsModal extends Modal {
 			["L", "Cycle the layouts"],
 			["V", "Cycle the view modes: default / hierarchy / dividers"],
 			["D", "Show or hide the Deck of notes"],
-			[", / .", "Previous / next heading in the Hierarchy and Dividers view modes"],
+			[", / .", "Previous / next heading in the Hierarchy and Dividers view modes, or card in the Rolodex"],
 			["S", "Show only starred lines / show everything"],
 			["F", "Flip the card under the pointer over / back"],
 			["Shift+F", "Flip every card back to the front"],
@@ -10779,6 +11064,21 @@ export default class SectionCardsPlugin extends Plugin {
 			}),
 		);
 
+		// Right-clicking a note in the file explorer (or a tab header, or a link)
+		// offers to open it as cards.
+		this.registerEvent(
+			this.app.workspace.on("file-menu", (menu, file) => {
+				if (!(file instanceof TFile) || file.extension !== "md") return;
+				menu.addItem((item) =>
+					item
+						.setTitle("Open as cards")
+						.setIcon(DECK_ICON)
+						.setSection("open")
+						.onClick(() => void this.openCardsView(file.path)),
+				);
+			}),
+		);
+
 		// Keep a note's remembered view attached to it when it is renamed or moved —
 		// and Images-canvas placements attached to a renamed image, on every note.
 		this.registerEvent(
@@ -11085,6 +11385,11 @@ export default class SectionCardsPlugin extends Plugin {
 			delete entry.colors[oldRaw];
 			changed = true;
 		}
+		const flippedAt = entry.flipped?.indexOf(oldRaw) ?? -1;
+		if (entry.flipped && flippedAt >= 0) {
+			entry.flipped[flippedAt] = newRaw;
+			changed = true;
+		}
 		if (entry.customGrid?.[oldRaw]) {
 			entry.customGrid[newRaw] = entry.customGrid[oldRaw];
 			delete entry.customGrid[oldRaw];
@@ -11190,6 +11495,26 @@ export default class SectionCardsPlugin extends Plugin {
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
 		this.refreshAllViews();
+	}
+
+	/** The cards of a note showing their back (Card Flip), by heading line. */
+	getFlipped(path: string): string[] {
+		return this.settings.perFile?.[path]?.flipped ?? [];
+	}
+
+	/** Remember (or forget) that a card shows its back. Keyed to the heading line like
+	 * pins and colors; the view has already turned the card, so no refresh here. */
+	async setCardFlipped(path: string, headingRaw: string, flipped: boolean, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		const list = this.getFlipped(path);
+		if (flipped === list.includes(headingRaw)) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		const next = flipped ? [...list, headingRaw] : list.filter((h) => h !== headingRaw);
+		if (next.length) current.flipped = next;
+		else delete current.flipped;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
 	}
 
 	/** A note's own heading-name format, or null when it uses the global default. */

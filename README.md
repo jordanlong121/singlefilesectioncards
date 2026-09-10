@@ -107,6 +107,16 @@ One card per row, full pane width.
 
 ![Horizontal](screenshots/horizontal.png)
 
+### Rolodex
+
+One card at a time, filling the pane, with every card's title as a tab across the top. A lone
+title spans the strip, two take half each, and so on; when a row can't hold them the strip grows
+to a second row, up to four, and past that it scrolls sideways — edge chevrons show where tabs
+are cut off, and the wheel over the strip scrolls it, while the wheel over the card scrolls its
+body. The `+` / `−` buttons at the strip's left edge force more or fewer rows. Click a tab (or
+press `,` / `.`) to turn to that card; drag a tab onto another to move its section there in the
+note (in document order, like dragging a card).
+
 ### Calendar
 
 Date cards on a monthly grid, today highlighted. Click an empty day to start its card,
@@ -266,8 +276,8 @@ Cards with a back get a flip button (a horizontal loop arrow) at the end of the 
 strip, and a **Flip the card over** item in its right-click menu. The faces slide past each other,
 the flipped card shows in inverted colors so it stands out, and the card keeps its size — a longer
 back scrolls. `F` flips the card under the pointer, `Shift+F` turns every card face up, and the
-toolbar menu has **Flip all cards over / back**. Flipped cards stay flipped through edits and
-refreshes. Making a card big shows both faces stacked, the back under a labelled rule. The back is
+toolbar menu has **Flip all cards over / back**. Flipped cards stay flipped through edits,
+layout switches, and closing and reopening the note (remembered per note in the plugin's data). Making a card big shows both faces stacked, the back under a labelled rule. The back is
 display-only; click the card to edit the whole section.
 
 The default marker `%% flip %%` is an Obsidian comment, invisible in reading view. Any text works
@@ -330,6 +340,7 @@ prompt offers to create it (template applied, default placement).
 
 ## Usage
 
+- Right-click any note in the file explorer (or its tab header) and choose **Open as cards**.
 - Click the deck-of-cards icon in the ribbon, or run one of the commands:
   - `Single File Section Cards: Open section cards (default note)`
   - `Single File Section Cards: Open section cards for the active note`

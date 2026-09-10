@@ -126,12 +126,16 @@ function cardHtml(s, { maxHeight = null, placed = null, hierHidden = false } = {
 
 const DECK_ICON = `<svg viewBox="0 0 100 100" class="svg-icon" width="16" height="16"><g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="9" width="12" height="12.5" rx="2"/><path d="M5.5 6h10a2 2 0 0 1 2 2v10"/><path d="M8.5 3h10a2 2 0 0 1 2 2v10"/></g></svg>`;
 
-const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", tasks: "Tasks Only", horizontal: "Horizontal", vertical: "Vertical", custom: "Custom Grid", images: "Images", links: "Links", calendar: "Calendar", heatmap: "Heatmap" };
+const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", tasks: "Tasks Only", horizontal: "Horizontal", vertical: "Vertical", rolodex: "Rolodex", custom: "Custom Grid", images: "Images", links: "Links", calendar: "Calendar", heatmap: "Heatmap" };
 const SORT_LABELS = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 /* On the Calendar the sort control orders the months instead of the cards. */
 const CAL_SORT_LABELS = { asc: "Ascending", desc: "Descending", doc: "Ascending" };
 
 const CAL_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-calendar-days"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`;
+const CHEVRON_LEFT = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-chevron-left"><path d="m15 18-6-6 6-6"/></svg>`;
+const CHEVRON_RIGHT = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-chevron-right"><path d="m9 18 6-6-6-6"/></svg>`;
+const MINUS_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-minus"><path d="M5 12h14"/></svg>`;
+const PLUS_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-plus"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`;
 const MENU_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-menu"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>`;
 const TEMPLATE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-layout-template"><rect width="18" height="7" x="3" y="3" rx="1"/><rect width="9" height="7" x="3" y="14" rx="1"/><rect width="5" height="7" x="16" y="14" rx="1"/></svg>`;
 
@@ -393,6 +397,29 @@ function gridHtml(layout, mode = "default") {
 	if (layout === "images") return imagesHtml();
 	if (layout === "links") return linksHtml();
 	if (layout === "heatmap") return heatmapHtml();
+	if (layout === "rolodex") {
+		// Mirrors layoutRolodex: a grid of title cells (ROLO_ACTIVE picks the active one
+		// by title substring; default the first card). Rows: as
+		// few as hold every tab at 120px across a 1280px page, at most four.
+		const activeAt = Math.max(0, sections.findIndex((s) => process.env.ROLO_ACTIVE && s.title.includes(process.env.ROLO_ACTIVE)));
+		const perRow = Math.max(1, Math.floor((Number(process.env.PAGE_W ?? 1280) - 28 - 28 + 4) / 124)); // minus padding and the zoom column
+		const rows = Math.min(4, Math.max(1, Math.ceil(sections.length / perRow)));
+		const cols = Math.ceil(sections.length / rows);
+		const cells = sections
+			.map((s, i) => {
+				const active = i === activeAt;
+				const tab = `<button class="sfsc-rolo-tab${active ? " is-active" : ""}${s.title.includes(TODAY) ? " is-today" : ""}">${esc(s.title)}</button>`;
+				return `<div class="sfsc-rolo-cell${active ? " is-active" : ""}${i < (rows - 1) * cols ? " is-upper" : ""}">${tab}</div>`;
+			})
+			.join("");
+		// The edge indicators: the plugin's syncRoloMore, replayed inline.
+		const more = `<button class="sfsc-rolo-more is-left">${CHEVRON_LEFT}</button><button class="sfsc-rolo-more is-right">${CHEVRON_RIGHT}</button>
+<script>(function(){var w=document.querySelector(".sfsc-rolo-wrap"),s=w&&w.querySelector(".sfsc-rolo-tabs");if(!s)return;function sync(){var o=s.scrollWidth-s.clientWidth>2;w.classList.toggle("has-more-left",o&&s.scrollLeft>2);w.classList.toggle("has-more-right",o&&s.scrollLeft+s.clientWidth<s.scrollWidth-2)}s.addEventListener("scroll",sync);window.addEventListener("load",sync);sync()})()</script>`;
+		return `<div class="sfsc-rolo-wrap"><div class="sfsc-rolo-zoom"><button class="sfsc-rolo-zoom-btn">${PLUS_ICON}</button><button class="sfsc-rolo-zoom-btn">${MINUS_ICON}</button></div><div class="sfsc-rolo-scroll"><div class="sfsc-rolo-tabs" style="--rolo-cols: ${cols}">${cells}</div>${more}</div></div>
+<div class="section-cards-grid">
+${sections.map((s, i) => cardHtml(s).replace('class="section-card', `class="section-card${i === activeAt ? " is-rolo-active" : ""}`)).join("\n")}
+</div>`;
+	}
 	if (layout === "custom") {
 		const placedCards = sections.slice(0, PLACEMENTS.length).map((s, i) => cardHtml(s, { placed: PLACEMENTS[i] }));
 		const hidden = sections.slice(PLACEMENTS.length).map((s) => cardHtml(s));
