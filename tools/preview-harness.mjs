@@ -117,7 +117,7 @@ function cardHtml(s, { maxHeight = null, placed = null, hierHidden = false } = {
 			? `\n\t<div class="section-card-body section-card-back markdown-rendered"${bodyStyle}>${renderBody(faces.back)}</div>`
 			: "";
 	return `<div class="section-card${today}${placedCls}${flipped ? " is-flipped" : ""}"${style} draggable="true">
-	<div class="section-card-header is-click-big">
+	<div class="section-card-header is-click-select">
 		<div class="section-card-title">${esc(s.title || "(untitled)")}</div><div class="sfsc-task-count">${(s.body.match(/^\s*- \[[ x]\]/gm) || []).length}</div>${headerButtons(faces.back !== null)}
 	</div>
 	<div class="section-card-body markdown-rendered"${bodyStyle}>${renderBody(faces.front) || `<div class="section-card-placeholder">${placeholder}</div>`}</div>${backHtml}
@@ -151,6 +151,7 @@ function toolbarHtml(layout, mode = "default") {
 	const datesHidden = ["calendar", "heatmap", "images", "links"].includes(layout) ? " is-hidden" : "";
 	return `<div class="section-cards-toolbar${MOBILE ? " is-compact" : ""}">
 	<button class="section-cards-icon-btn section-cards-menu-btn">${MENU_ICON}</button>
+	<button class="section-cards-icon-btn section-cards-deck-btn is-active">${DECK_ICON}</button>
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
 	<div class="section-cards-control section-cards-level-control"><span class="section-cards-label">Card level</span><select class="dropdown"${["calendar", "heatmap"].includes(layout) ? " disabled" : ""}><option>H${LEVEL}</option></select></div>
 	<div class="section-cards-control section-cards-filter"><input type="text" class="section-cards-filter-input" placeholder="Filter…" spellcheck="false"><button class="section-cards-filter-clear"></button></div>
@@ -373,7 +374,6 @@ function deckToolbarHtml() {
 	return `<div class="section-cards-toolbar is-compact">
 	<button class="section-cards-icon-btn section-cards-menu-btn">${MENU_ICON}</button>
 	<button class="section-cards-file-btn"><span>${esc(path.basename(notePath))}</span></button>
-	<button class="section-cards-icon-btn section-cards-deck-btn is-active">${DECK_ICON}</button>
 	<div class="section-cards-control section-cards-sort-control"><span class="section-cards-label">Sort</span><select class="dropdown"><option>Recent</option></select></div>
 	<button class="section-cards-help-btn">?</button>
 </div>`;
