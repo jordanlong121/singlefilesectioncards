@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -822,6 +822,24 @@ t("bodyForRender: a plain line under a list item becomes its own paragraph", () 
   assert.equal(bodyForRender("- [ ] task\n\nplain"), "- [ ] task\n\nplain");
   assert.equal(bodyForRender("- a\n#### sub"), "- a\n#### sub");
   assert.equal(bodyForRender("```\n- a\ntext\n```"), "```\n- a\ntext\n```"); // fences stay byte-exact
+});
+
+t("pickNearViewport: cards near the visible area render first, hidden ones wait", () => {
+  const box = (top, h = 100, hidden = false) => hidden ? { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 } : { top, bottom: top + h, left: 0, right: 300, width: 300, height: h };
+  const view = { top: 0, bottom: 800, left: 0, right: 1200, width: 1200, height: 800 };
+  // 30 cards stacked 120px apart; the viewport plus one viewport of padding reaches y=1600.
+  const rects = Array.from({ length: 30 }, (_, i) => box(i * 120));
+  assert.deepEqual(pickNearViewport(rects, view, 4), [0, 1, 2, 3]);
+  // Scrolled down (view at y 2800–3600, so reach starts at 1600): the first cards whose
+  // bottom edge crosses 1600 are 13, 14, 15 — not the top of the document.
+  const low = { ...view, top: 2800, bottom: 3600 };
+  assert.deepEqual(pickNearViewport(rects, low, 3), [13, 14, 15]);
+  // Hidden (zero-size) cards are skipped even when in range.
+  const withHidden = rects.map((r, i) => (i < 2 ? box(0, 100, true) : r));
+  assert.deepEqual(pickNearViewport(withHidden, view, 2), [2, 3]);
+  // Nothing near at all: fall back to document order.
+  const far = { ...view, top: 90000, bottom: 90800 };
+  assert.deepEqual(pickNearViewport(rects, far, 3), [0, 1, 2]);
 });
 
 t("splitCardFaces: the marker line splits front from back", () => {

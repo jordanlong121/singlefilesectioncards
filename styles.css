@@ -1786,6 +1786,13 @@ body.theme-light .sfsc-swatch {
 	opacity: 0.45;
 }
 
+/* A paragraph or task dragged over a tab: that card will take it (at its end). */
+.sfsc-rolo-cell.sc-blockdrop-end > .sfsc-rolo-tab {
+	color: var(--text-normal);
+	border-color: var(--interactive-accent);
+	background: var(--sc-surface-hover);
+}
+
 .sfsc-rolo-cell.sc-drop-before::after,
 .sfsc-rolo-cell.sc-drop-after::after {
 	/* A bar laid over the tab's edge — a box-shadow on the cell sat under the tab's

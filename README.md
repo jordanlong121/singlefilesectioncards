@@ -115,7 +115,8 @@ to a second row, up to four, and past that it scrolls sideways — edge chevrons
 are cut off, and the wheel over the strip scrolls it, while the wheel over the card scrolls its
 body. The `+` / `−` buttons at the strip's left edge force more or fewer rows. Click a tab (or
 press `,` / `.`) to turn to that card; drag a tab onto another to move its section there in the
-note (in document order, like dragging a card).
+note (in document order, like dragging a card). Drag a paragraph or task from the card onto a
+tab to send it to that card.
 
 ### Calendar
 
