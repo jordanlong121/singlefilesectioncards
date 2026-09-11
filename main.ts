@@ -1843,6 +1843,35 @@ export function pickHeadingLevel(lines: string[], preferred: number): number {
  * index it can reuse, or -1 when it must be built. Reuse means an edit to one section
  * re-renders one card instead of the whole wall.
  */
+/** A box as getBoundingClientRect reports it. */
+export interface Box {
+	top: number;
+	bottom: number;
+	left: number;
+	right: number;
+	width: number;
+	height: number;
+}
+
+/**
+ * Which of `rects` (card boxes, in document order) to render next: up to `n` that lie
+ * within one viewport of `view` in any direction, in order — else the first `n`. Empty
+ * boxes are hidden cards and never count as near. Returns ascending indexes.
+ */
+export function pickNearViewport(rects: Box[], view: Box, n: number): number[] {
+	const pad = Math.max(view.height, view.width);
+	const near: number[] = [];
+	for (let i = 0; i < rects.length && near.length < n; i++) {
+		const r = rects[i];
+		if (r.width === 0 && r.height === 0) continue;
+		if (r.bottom >= view.top - pad && r.top <= view.bottom + pad && r.right >= view.left - pad && r.left <= view.right + pad) {
+			near.push(i);
+		}
+	}
+	if (near.length) return near;
+	return Array.from({ length: Math.min(n, rects.length) }, (_, i) => i);
+}
+
 export function planCardReuse(prevRaws: string[], nextRaws: string[]): number[] {
 	const pool = new Map<string, number[]>();
 	prevRaws.forEach((raw, i) => {
@@ -2714,6 +2743,8 @@ export class SectionCardsView extends ItemView {
 	/** Rolodex: the tab being dragged to a new place in the note, and the cell marked as its drop slot. */
 	private roloDragging: CardEntry | null = null;
 	private roloDropCell: HTMLElement | null = null;
+	/** Rolodex: each card's tab cell as last built, so a tab switch can restyle in place. */
+	private roloCells = new Map<CardEntry, HTMLElement>();
 	/** Rolodex: rows chosen with the zoom buttons; null = as few as needed, up to four. */
 	private roloRows: number | null = null;
 	/** Rolodex: the row count the strip last showed, and the zoom buttons to sync. */
@@ -3177,7 +3208,7 @@ export class SectionCardsView extends ItemView {
 		// A tab drag near either edge nudges the strip along, so hidden tabs can be reached.
 		this.registerDomEvent(this.roloTabsEl, "dragover", (evt: DragEvent) => {
 			const strip = this.roloTabsEl;
-			if (!strip || !this.roloDragging) return;
+			if (!strip || (!this.roloDragging && !this.draggingBlock)) return;
 			const rect = strip.getBoundingClientRect();
 			if (evt.clientX < rect.left + 40) strip.scrollLeft -= 10;
 			else if (evt.clientX > rect.right - 40) strip.scrollLeft += 10;
@@ -3203,10 +3234,13 @@ export class SectionCardsView extends ItemView {
 			if (target?.closest(".section-card, .sc-image-card, .sfsc-deck-card, button")) return;
 			evt.preventDefault();
 			const menu = new Menu();
+			// Greyed out in the Deck: no note is showing, so it's unclear which one
+			// the card would land in.
 			menu.addItem((item) =>
 				item
 					.setTitle("New card…")
 					.setIcon("plus")
+					.setDisabled(this.deckMode)
 					.onClick(() => this.promptNewCard()),
 			);
 			// On the Images canvas, empty space also takes a clipboard image.
@@ -3788,6 +3822,7 @@ export class SectionCardsView extends ItemView {
 			null;
 		for (const entry of this.cardEntries) entry.el.toggleClass("is-rolo-active", entry === active);
 		strip.empty();
+		this.roloCells.clear();
 		if (!active) {
 			this.syncRoloMore();
 			return;
@@ -3817,6 +3852,7 @@ export class SectionCardsView extends ItemView {
 			const isActive = entry === active;
 			const title = entry.holder.section.title || "(untitled)";
 			const cell = strip.createDiv({ cls: "sfsc-rolo-cell" });
+			this.roloCells.set(entry, cell);
 			cell.toggleClass("is-active", isActive);
 			// Rows above the last are full tabs (closed at the bottom); only the last
 			// row's tabs open onto the card.
@@ -3827,10 +3863,13 @@ export class SectionCardsView extends ItemView {
 			tab.setAttr("aria-label", title);
 			// The card's color rides along as a top edge (the card resolves --sfsc-c from
 			// its data attribute; the tab borrows the resolved value).
+			// The palette lives in --sfsc-color-<name> variables on the body (applyPaletteCss),
+			// so the tab can reference the variable directly — no computed-style read, which
+			// would force a style flush per colored card while the strip is being built.
 			const color = entry.el.getAttribute("data-sfsc-color");
 			if (color) {
 				tab.setAttr("data-sfsc-color", color);
-				tab.setCssProps({ "--sfsc-c": window.getComputedStyle(entry.el).getPropertyValue("--sfsc-c").trim() });
+				tab.setCssProps({ "--sfsc-c": `var(--sfsc-color-${color})` });
 			}
 			tab.addEventListener("click", () => this.setRoloActive(entry));
 			this.wireRoloTabDrag(tab, cell, entry);
@@ -3902,6 +3941,18 @@ export class SectionCardsView extends ItemView {
 			this.roloDragging = null;
 		});
 		tab.addEventListener("dragover", (evt) => {
+			// A paragraph or task dragged off the showing card: the tab stands in for
+			// the card it names (the only way to reach another card here), taking the
+			// block at that card's end.
+			if (this.draggingBlock) {
+				if (this.draggingBlock.holder === entry.holder) return;
+				evt.preventDefault();
+				if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
+				this.clearBlockDropMarks();
+				cell.addClass("sc-blockdrop-end");
+				this.blockDropEndEl = cell;
+				return;
+			}
 			const from = this.roloDragging;
 			if (!from || from === entry || entry.holder.section.unfiled) return;
 			evt.preventDefault();
@@ -3909,7 +3960,29 @@ export class SectionCardsView extends ItemView {
 			const rect = tab.getBoundingClientRect();
 			this.setRoloDrop(cell, evt.clientX < rect.left + rect.width / 2);
 		});
+		tab.addEventListener("dragleave", () => {
+			if (this.blockDropEndEl === cell) this.clearBlockDropMarks();
+		});
 		tab.addEventListener("drop", (evt) => {
+			if (this.draggingBlock) {
+				const block = this.draggingBlock;
+				if (block.holder === entry.holder) return;
+				evt.preventDefault();
+				evt.stopPropagation();
+				this.draggingBlock = null;
+				this.clearBlockDropMarks();
+				block.el.removeClass("is-dragging-block");
+				const file = this.getFile();
+				if (file) {
+					void this.completeBlockDrag(
+						file,
+						{ section: block.holder.section, blockIndex: block.blockIndex, blockText: block.blockText },
+						entry.holder.section,
+						null,
+					);
+				}
+				return;
+			}
 			const from = this.roloDragging;
 			if (!from || from === entry || entry.holder.section.unfiled) return;
 			evt.preventDefault();
@@ -3934,10 +4007,29 @@ export class SectionCardsView extends ItemView {
 		cell.toggleClass("sc-drop-after", !before);
 	}
 
-	/** Rolodex: turn to a card (its tab, or `,`/`.`). */
+	/** Rolodex: turn to a card (its tab, or `,`/`.`). With the strip already built for
+	 * this set of cards, only the two cells and two cards change class — rebuilding a
+	 * thousand tabs per click was the cost that made switching feel sticky on big notes. */
 	private setRoloActive(entry: CardEntry): void {
 		this.roloActive.set(this.filePath, entry.holder.section.headingRaw);
-		this.layoutRolodex();
+		const cell = this.roloCells.get(entry);
+		const current = this.cardEntries.find((e) => e.el.hasClass("is-rolo-active"));
+		if (!cell || !current || !this.roloCells.has(current)) {
+			this.layoutRolodex();
+			return;
+		}
+		if (current !== entry) {
+			const was = this.roloCells.get(current);
+			was?.removeClass("is-active");
+			was?.querySelector(".sfsc-rolo-tab")?.removeClass("is-active");
+			current.el.removeClass("is-rolo-active");
+		}
+		cell.addClass("is-active");
+		cell.querySelector(".sfsc-rolo-tab")?.addClass("is-active");
+		entry.el.addClass("is-rolo-active");
+		cell.scrollIntoView({ inline: "nearest", block: "nearest" });
+		this.syncRoloMore();
+		if (entry.renderBody) void this.runBodyRender(entry).then(() => this.prepareBodies([entry]));
 	}
 
 	/** Rolodex: the previous/next card in the strip, wrapping around like a rolodex ring. */
@@ -4043,6 +4135,26 @@ export class SectionCardsView extends ItemView {
 	}
 
 	/**
+	 * The next deferred batch: cards in or within a viewport of the visible area first
+	 * (wherever the user has scrolled — a jump to today lands mid-note), then document
+	 * order. Rect reads only, after layout has settled, so no reflow is forced; hidden
+	 * cards (filtered out, or off the Rolodex's showing tab) read as empty and wait.
+	 */
+	private takeDeferredBatch(entries: CardEntry[]): CardEntry[] {
+		const n = DEFERRED_RENDER_BATCH;
+		if (entries.length <= n) return entries.splice(0, n);
+		const view = this.contentEl.getBoundingClientRect();
+		const picked = pickNearViewport(
+			entries.map((e) => e.el.getBoundingClientRect()),
+			view,
+			n,
+		);
+		const batch = picked.map((i) => entries[i]);
+		for (let k = picked.length - 1; k >= 0; k--) entries.splice(picked[k], 1);
+		return batch;
+	}
+
+	/**
 	 * Render the bodies that didn't make the synchronous budget, a batch per idle slot.
 	 * The ResizeObserver already re-packs as their heights land. Aborts (leaving each
 	 * card's renderBody owed for the next render) if a newer render supersedes this one.
@@ -4056,7 +4168,7 @@ export class SectionCardsView extends ItemView {
 				: (cb) => window.setTimeout(cb, 50);
 		const step = (): void => {
 			if (gen !== this.renderGeneration) return;
-			const batch = entries.splice(0, DEFERRED_RENDER_BATCH);
+			const batch = this.takeDeferredBatch(entries);
 			if (!batch.length) return;
 			void Promise.all(batch.map((entry) => this.runBodyRender(entry))).then(() => {
 				if (gen !== this.renderGeneration) return;
@@ -4723,12 +4835,20 @@ export class SectionCardsView extends ItemView {
 		const clearBtn = filterWrap.createEl("button", { cls: "section-cards-filter-clear" });
 		setIcon(clearBtn, "x");
 		clearBtn.setAttr("aria-label", "Clear the filter and show all cards (Esc)");
-		const setQuery = (q: string) => {
+		// Typing coalesces: every keystroke would otherwise re-filter and re-pack the
+		// whole wall (a third of a second on a few thousand cards). Clearing is immediate.
+		const applyTyped = debounce(() => this.applyFilter(), 90, true);
+		const setQuery = (q: string, immediate = true) => {
 			this.filterQuery = q;
 			filterWrap.toggleClass("has-query", q.length > 0);
-			this.applyFilter();
+			if (immediate) {
+				applyTyped.cancel();
+				this.applyFilter();
+			} else {
+				applyTyped();
+			}
 		};
-		filterInput.addEventListener("input", () => setQuery(filterInput.value));
+		filterInput.addEventListener("input", () => setQuery(filterInput.value, false));
 		filterInput.addEventListener("keydown", (evt) => {
 			if (evt.key !== "Escape") return;
 			evt.preventDefault();
@@ -5257,10 +5377,13 @@ export class SectionCardsView extends ItemView {
 		};
 
 		addHeading("Cards");
+		// Greyed out in the Deck: no note is showing, so it's unclear which one the
+		// card would land in.
 		menu.addItem((item) =>
 			item
 				.setTitle("New card…")
 				.setIcon("plus")
+				.setDisabled(this.deckMode)
 				.onClick(() => this.promptNewCard()),
 		);
 		menu.addItem((item) =>
@@ -5703,8 +5826,10 @@ export class SectionCardsView extends ItemView {
 		menu.showAtMouseEvent(evt);
 	}
 
-	/** Ask for a heading and placement, write the new section, then open it for editing. */
+	/** Ask for a heading and placement, write the new section, then open it for editing.
+	 * Not from the Deck, where no note is showing to receive it. */
 	promptNewCard(): void {
+		if (this.deckMode) return;
 		const file = this.getFile();
 		if (!file) {
 			new Notice(`Single File Section Cards: can't find "${this.filePath}".`);

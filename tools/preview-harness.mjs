@@ -576,6 +576,72 @@ const MENU_SCRIPT = `<script>
 </script>`;
 
 /** Replays layoutMasonry + insertRowRules so styles.css packs cards like the app does. */
+/** BENCH=1: time the DOM work a refresh does on this many cards, logged as SFSC_BENCH lines
+ * (headless Chrome prints console output with --enable-logging=stderr). */
+const BENCH_SCRIPT = `<script>
+window.addEventListener("load", () => {
+	const grid = document.querySelector(".section-cards-grid");
+	const cards = [...grid.querySelectorAll(".section-card")];
+	const nav = performance.getEntriesByType("navigation")[0];
+	const log = (k, v) => console.log("SFSC_BENCH " + k + " = " + v.toFixed(2));
+	const t = (fn) => { const a = performance.now(); fn(); return performance.now() - a; };
+	log("cards", cards.length);
+	log("parse+style+layout (DOMContentLoaded ms)", nav.domContentLoadedEventEnd - nav.startTime);
+	// Masonry pack: read every height, then write every span (layoutMasonry).
+	const pack = () => {
+		const style = getComputedStyle(grid);
+		const rowH = parseFloat(style.gridAutoRows) || 4, gap = parseFloat(style.rowGap) || 0;
+		const shown = cards.filter((c) => !c.classList.contains("is-filtered-out"));
+		const hs = shown.map((c) => c.getBoundingClientRect().height);
+		shown.forEach((c, i) => { c.style.gridRowEnd = "span " + Math.max(1, Math.ceil((hs[i] + 12) / (rowH + gap))); });
+		void grid.offsetHeight;
+	};
+	log("masonry pack #1 (ms)", t(pack));
+	log("masonry pack #2 (ms)", t(pack));
+	// prepareBodies-style passes: block selection and the nested-task tagging.
+	log("eligibleBlockEls xN (ms)", t(() => cards.forEach((c) => c.querySelector(".section-card-body").querySelectorAll(":scope > p, :scope > ul > li, :scope > ol > li"))));
+	log("sc-has-task tagging xN (ms)", t(() => cards.forEach((c) => { const b = c.querySelector(".section-card-body"); for (const task of b.querySelectorAll("li.task-list-item")) { let p = task.parentElement?.closest("li"); while (p && b.contains(p)) { p.classList.add("sc-has-task"); p = p.parentElement?.closest("li"); } } })));
+	log("checkbox enable xN (ms)", t(() => cards.forEach((c) => c.querySelectorAll("input[type=checkbox]").forEach((b) => { b.removeAttribute("disabled"); b.removeAttribute("readonly"); }))));
+	// Filter: hide half the cards, then repack (applyFilter → repack).
+	log("filter half + pack (ms)", t(() => { cards.forEach((c, i) => c.classList.toggle("is-filtered-out", i % 2 === 1)); pack(); }));
+	log("unfilter + pack (ms)", t(() => { cards.forEach((c) => c.classList.remove("is-filtered-out")); pack(); }));
+	// renderCard's own DOM cost, approximated: build N card shells with the same element
+	// count and listener count, detached, then attach in one go.
+	log("build N card shells + attach (ms)", t(() => {
+		const frag = document.createDocumentFragment();
+		for (let i = 0; i < cards.length; i++) {
+			const card = document.createElement("div"); card.className = "section-card";
+			const header = card.appendChild(document.createElement("div")); header.className = "section-card-header";
+			const title = header.appendChild(document.createElement("div")); title.className = "section-card-title"; title.textContent = "Card " + i;
+			const actions = header.appendChild(document.createElement("div")); actions.className = "section-card-actions";
+			for (let b = 0; b < 8; b++) { const btn = actions.appendChild(document.createElement("button")); btn.addEventListener("click", () => {}); }
+			const body = card.appendChild(document.createElement("div")); body.className = "section-card-body markdown-rendered";
+			for (const ev of ["click","click","dblclick","contextmenu","dragstart","dragend"]) body.addEventListener(ev, () => {});
+			for (const ev of ["click","pointerdown","dragstart","dragend","dragover","drop"]) card.addEventListener(ev, () => {});
+			frag.appendChild(card);
+		}
+		const sink = document.createElement("div"); sink.style.display = "none"; sink.appendChild(frag); document.body.appendChild(sink); sink.remove();
+	}));
+	// Rolodex: switching tabs — rebuilding every cell (the old way) vs toggling classes.
+	const strip = document.querySelector(".sfsc-rolo-tabs");
+	if (strip) {
+		const html = strip.innerHTML;
+		log("rolodex rebuild strip xN (ms)", t(() => { strip.innerHTML = ""; strip.innerHTML = html; void strip.offsetHeight; }));
+		const cellsR = [...strip.querySelectorAll(".sfsc-rolo-cell")];
+		log("rolodex toggle 2 cells (ms)", t(() => { cellsR[0].classList.toggle("is-active"); cellsR[1].classList.toggle("is-active"); void strip.offsetHeight; }));
+		const tabs = [...strip.querySelectorAll(".sfsc-rolo-tab")];
+		log("getComputedStyle per tab xN (ms)", t(() => tabs.forEach((tb, i) => { tb.style.setProperty("--x", String(i)); getComputedStyle(tb).getPropertyValue("--x"); })));
+		log("set var per tab xN (ms)", t(() => tabs.forEach((tb) => tb.style.setProperty("--sfsc-c", "var(--sfsc-color-red)"))));
+	}
+	log("DONE", 1);
+	// Scroll the wall for ~1.5s so a trace captures steady-state paint/composite work.
+	const scroller = document.querySelector(".view-content");
+	let frame = 0;
+	const step = () => { scroller.scrollTop = (frame * 37) % Math.max(1, scroller.scrollHeight - scroller.clientHeight); if (++frame < 90) requestAnimationFrame(step); else console.log("SFSC_BENCH SCROLLED = 1"); };
+	requestAnimationFrame(step);
+});
+</script>`;
+
 const PACK_SCRIPT = `<script>
 (() => {
 	const layout = document.currentScript.dataset.layout;
@@ -734,6 +800,8 @@ ${MOBILE ? mobileChromeCss() : ""}
 ${MOBILE ? phoneShell : desktopShell}
 ${withMenu ? menuHtml() : ""}
 ${PACK_SCRIPT.replace("<script>", `<script data-layout="${layout}">`)}
+${process.env.BENCH ? BENCH_SCRIPT : ""}
+${process.env.BENCH_CSS ? `<style>${process.env.BENCH_CSS}</style>` : ""}
 ${withMenu ? MENU_SCRIPT : ""}
 </body></html>`;
 }
