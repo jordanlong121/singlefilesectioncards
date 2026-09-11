@@ -239,6 +239,9 @@ body.sfsc-flat-cards .section-cards-view {
 
 .section-cards-file-btn {
 	font-weight: 600;
+	/* Shrinks with the pane, but never below a readable stub of the note name —
+	   past that the compact bar pans sideways instead (wheel or drag). */
+	min-width: 14ch;
 	max-width: 36ch;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -321,6 +324,7 @@ body.sfsc-flat-cards .section-cards-view {
 }
 
 .section-cards-toolbar.is-compact .section-cards-file-btn {
+	min-width: 14ch;
 	max-width: 24ch;
 	flex: 0 1 auto;
 }
