@@ -32,6 +32,12 @@ If this plugin is useful to you, you can support its development:
 - **Work directly on the cards.** Click a card to edit its markdown, tick task checkboxes (with
   optional `✅` done dates), quick-add text or delete it. Pinned cards stay at the top.
 - **Drag and drop.** Reorder cards, or drag a task, paragraph, or image onto another card.
+- **Select many.** Click a title bar to select its card, Shift-click to select a run (or press
+  `Ctrl/⌘+A`), then pin, color, flip, move, or delete them together from the bar that appears
+  (or a title bar's menu). Ctrl/⌘-click makes a card big. Arrow keys walk the cards; Enter
+  edits, Space selects, Shift+arrow extends.
+- **Group by.** Divider bars over buckets — first tag, date, open tasks, stars, or length —
+  from the toolbar's Group dropdown. Collapse any card to its title bar; both are remembered.
 - **Plays with the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin.**
   Ticking a checkbox uses its toggle (recurring tasks recur), and the right-click menu gains its
   create/edit dialogs.
@@ -50,8 +56,9 @@ If this plugin is useful to you, you can support its development:
   or include a `folder/` to place it.
 - **Keyboard shortcuts.** `1`–`6` heading level, `L` layouts, `V` view modes, `D` deck,
   `,`/`.` previous/next heading, `N` new card, `O` pick a note, `S` starred lines only,
-  `F` flip the card under the pointer, `Shift+F` all cards face up, `Ctrl/⌘+F` filter. Click `?`
-  to show keyboard shortcuts.
+  `F` flip the card under the pointer, `Shift+F` all cards face up, arrows move the card focus
+  (Enter edits, Space selects), `Ctrl/⌘+A` select all, `Ctrl/⌘+F` filter, `Ctrl/⌘+T` a new task
+  in a card editor via the Tasks plugin. Click `?` to show keyboard shortcuts.
 
 ## Layouts
 
@@ -161,6 +168,34 @@ in-place editing a thumb-tap away.
 
 <img src="screenshots/mobile-horizontal.png" alt="The Horizontal layout on an iPhone" width="320">
 
+### Group by
+
+The toolbar's **Group** dropdown puts divider bars over buckets of cards instead of the ancestor
+headings: **Tag** (a card's first `#tag`), **Date** (the heading's date, else the latest date in
+the body — Upcoming, Today, Yesterday, This week, This month, Older), **Open tasks** (6+, 3–5,
+1–2, none), **Stars**, or **Length** (long, medium, short). Cards keep the active sort inside a
+bucket; click a bar to collapse its bucket. The choice is remembered per note, like the sort.
+
+## Selecting many cards
+
+Selection works like a file manager: click a card's title bar to select it, Shift-click another
+card to select the run between them, `Ctrl/⌘+A` for every visible card, and click empty space (or
+press Esc) to clear. Ctrl/⌘-click makes a card big
+instead; the *Clicking a card's title bar* setting can make a plain title click do that, or edit.
+Changing the sort or grouping keeps the selected card in view. A bar along the bottom then offers **Pin**, **Unpin**,
+**Color…**, **Flip** / **Unflip** (two-faced cards), and **Delete…**; a title bar's right-click menu
+has the same, plus **Move selected before / after this card**. Dragging one selected card drags
+them all (document order). Esc clears the selection.
+
+**Keyboard.** The arrow keys move a dashed focus ring to the nearest card in that direction;
+Enter opens that card's editor, Space selects or deselects it, and Shift+arrow extends the
+selection as it moves. In the Rolodex, left and right step the tabs.
+
+## Collapsing cards
+
+The chevron in a title bar's action strip (or **Collapse card** in its right-click menu) folds a
+card to its title bar; click again to open it. Collapsed cards are remembered per note.
+
 ## Brainstorming with cards
 
 A single note makes a whole brainstorm: one `###` heading per theme, and the wall becomes your
@@ -208,6 +243,15 @@ the integration switches on by itself:
 
 Without Tasks, the menu omits those entries and this plugin's own toggle applies — with the
 optional `✅ YYYY-MM-DD` done date.
+
+**Ctrl/⌘+T in a card editor** opens the Tasks plugin's dialog for the task on the cursor line, or
+creates a new task there — the same as Tasks' own *Create or edit task* command. (The plain-text
+editor has no cursor for Tasks to read, so it gets the create dialog and the line drops in at
+the cursor.)
+
+**Due-task marks** (settings → Tasks → *Mark cards with due tasks*, on by default): a card with an
+open task due today gets an amber pill and edge; one with an overdue task, red. Both Tasks-style
+`📅 2026-09-10` dates and Dataview `[due:: 2026-09-10]` fields count.
 
 ## Pinned cards
 
@@ -333,6 +377,14 @@ The toolbar's **Dates** checkbox says whether the open note's headings name date
 the today-card highlight, the jump-to-today scroll, and the calendar button — per note. Until
 clicked, it decides from the note itself; click it once and your choice is remembered.
 
+## Hide future or past dates
+
+With **Dates** on, two toggle buttons beside the toolbar's calendar button (and the same items in
+the toolbar menu) offer **Hide future dates** and **Hide past dates**: dated
+cards after today, or before it, drop out of the wall (today's card and undated cards always
+show). Remembered per note. The Calendar and Heatmap ignore them, since their grids place
+every day.
+
 ## Jump to a date
 
 With **Dates** on and date headings present, a calendar button appears beside the checkbox.
@@ -341,6 +393,8 @@ prompt offers to create it (template applied, default placement).
 
 ## Usage
 
+- Click the deck icon in a note's top-right corner: that tab becomes the note's cards view
+  (settings → *Cards button on notes* turns the icon off).
 - Right-click any note in the file explorer (or its tab header) and choose **Open as cards**.
 - Click the deck-of-cards icon in the ribbon, or run one of the commands:
   - `Single File Section Cards: Open section cards (default note)`
@@ -355,10 +409,12 @@ prompt offers to create it (template applied, default placement).
 | Setting | What it does |
 | --- | --- |
 | Default note | Vault-relative path opened by the ribbon icon and command |
+| Cards button on notes | A deck icon in every note's top-right that opens the note as cards in the same tab (on by default) |
 | Reopen remembered notes as cards | A note you've viewed as cards before opens in the cards view instead of the editor; a card's ↗ button still reaches the editor (off by default) |
 | Heading level | Which heading rank becomes a card (H1–H6) |
 | Jump to today's card | Scroll to today's card when a note opens in the view (on by default; needs the note's Dates checkbox) |
 | Keep pinned cards on screen | Pinned cards stay on screen while the rest scroll — below the toolbar, or left of the row in Vertical (on by default; not in Custom Grid) |
+| Mark cards with due tasks | Amber badge and edge for cards with an open task due today, red for overdue (Tasks 📅 or Dataview due fields) |
 | Card colors | Each of the nine card colors' RGB value and label, with preset palettes to apply in one pick |
 | Card Flip | Flip-over button on cards that hold the back-side marker line; the marker text itself (default `%% flip %%`) |
 | Default sort | A→Z, Z→A, or document order |
@@ -366,7 +422,7 @@ prompt offers to create it (template applied, default placement).
 | Show open-task counts in Hierarchy columns | Square badge per column row counting the unfinished tasks beneath it (on by default) |
 | Default heading name | Date format used to pre-fill "New card" (any note can set its own from the toolbar's new-card options menu) |
 | Default placement | Where a new card is inserted |
-| Clicking a card's title bar | Makes the card big (default), or edits the raw markdown |
+| Clicking a card's title bar | Selects the card (default), makes it big, or edits the raw markdown; Shift-click always selects, Ctrl/⌘-click always makes it big |
 | Autosave open card editors | Write an open editor's content to the note every few minutes, and when the view closes, so an edit left open isn't lost (on by default) |
 | Autosave interval | Minutes between autosaves while a card editor is open (default 5) |
 | Toggle tasks with the Tasks plugin | Route checkbox ticks through the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin when it's installed (recurrence, its done dates) |

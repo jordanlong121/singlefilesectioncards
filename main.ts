@@ -19,6 +19,7 @@ import {
 	type SettingDefinition,
 	type SettingDefinitionItem,
 	setIcon,
+	type Modifier,
 	TFile,
 	WorkspaceLeaf,
 	debounce,
@@ -130,7 +131,7 @@ const DECK_SORT_LABELS: [DeckSort, string][] = [
 ];
 
 /** What clicking a card's title bar does. */
-export type TitleBarClick = "maximize" | "edit";
+export type TitleBarClick = "select" | "maximize" | "edit";
 
 /** "live" renders markdown while editing, "source" shows it highlighted — both via
  * Obsidian's editor, falling back to "plain" (a bare textarea) if it's unavailable. */
@@ -149,6 +150,8 @@ interface SectionCardsSettings {
 	filePath: string;
 	/** A note with a remembered cards view reopens in the cards view, not the editor. */
 	autoOpenCards: boolean;
+	/** An "Open as cards" button in every note's top-right, swapping that tab to the cards view. */
+	noteCardsButton: boolean;
 	headingLevel: number;
 	/** Heading dropdown lists only the levels the open note contains (else always H1–H6). */
 	dynamicLevelOptions: boolean;
@@ -168,6 +171,8 @@ interface SectionCardsSettings {
 	jumpToToday: boolean;
 	/** Keep the pinned band on screen while the rest of the cards scroll. */
 	stickyPinned: boolean;
+	/** Mark cards holding open tasks due today (amber) or overdue (red): a badge and an edge. */
+	dueTaskMarks: boolean;
 	/** Cards with a back-side marker in their body get a flip button; the text below
 	 * the marker is hidden from the front and shown on the back. */
 	flipEnabled: boolean;
@@ -236,6 +241,11 @@ export interface PerFileView extends ViewSettings {
 	colors?: Record<string, string>;
 	/** Cards showing their back (Card Flip), by heading line. */
 	flipped?: string[];
+	/** Cards collapsed to their title bar, by heading line. */
+	collapsed?: string[];
+	/** Dated cards hidden relative to today (menu → Hide future / past dates). */
+	hideFutureDates?: boolean;
+	hidePastDates?: boolean;
 	/** Note whose contents pre-fill the body of every new card made for this note. */
 	templatePath?: string;
 	/** Vault path of the image shown behind this note's card wall (menu → Background). */
@@ -263,10 +273,24 @@ export interface ViewSettings {
 	starredOnly?: boolean;
 	/** Tasks layout: which task states show — everything, open only, or done only. */
 	taskFilter?: TaskFilter;
+	/** Divider bars over buckets: first tag, date, open-task count, stars, or length. */
+	groupBy?: GroupBy;
 }
 
 /** The Tasks layout's complete/incomplete filter. */
 export type TaskFilter = "all" | "open" | "done";
+
+/** Group-by: divider bars over buckets of cards, instead of (or as well as) ancestor headings. */
+export type GroupBy = "none" | "tag" | "date" | "tasks" | "stars" | "length";
+
+const GROUP_BY_LABELS: [GroupBy, string][] = [
+	["none", "None"],
+	["tag", "Tag"],
+	["date", "Date"],
+	["tasks", "Open tasks"],
+	["stars", "Stars"],
+	["length", "Length"],
+];
 
 /**
  * The card color palette's nine slots. Slot names key the stored per-card choice and the
@@ -432,6 +456,7 @@ export function normalizePalette(saved: Partial<PaletteColor>[] | undefined): Pa
 const DEFAULT_SETTINGS: SectionCardsSettings = {
 	filePath: "Daily Notes 2026.md",
 	autoOpenCards: false,
+	noteCardsButton: true,
 	headingLevel: 3,
 	dynamicLevelOptions: true,
 	sortOrder: "asc",
@@ -444,13 +469,14 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	unfiledTitle: "_Unfiled_",
 	jumpToToday: true,
 	stickyPinned: true,
+	dueTaskMarks: true,
 	flipEnabled: true,
 	flipMarker: "%% flip %%",
 	taskDoneDate: true,
 	tasksToggle: true,
 	strikeNestedUnderDone: true,
 	starEmoji: "⭐",
-	titleBarClick: "maximize",
+	titleBarClick: "select",
 	toolbarStyle: "compact",
 	weekStart: "locale",
 	dateDetectFormat: "",
@@ -825,6 +851,93 @@ export function groupByAncestor(sections: Section[], ancestors: AncestorHeading[
 		group.sections.push(section);
 	}
 	return [...groups.values()];
+}
+
+/** What groupCards needs to bucket a card: the star emoji, the note's date format and
+ * detect pattern, and today's ISO date. */
+export interface GroupOptions {
+	emoji: string;
+	format: string;
+	detect: string;
+	todayIso: string;
+}
+
+const ISO_ANYWHERE_RE = /\b(\d{4}-\d{2}-\d{2})\b/g;
+
+/** The date a card is "about": its heading's date, else the latest ISO date in its body. */
+function cardDateIso(section: Section, format: string, detect: string): string | null {
+	const fromTitle = titleToIso(section.title, format, detect);
+	if (fromTitle) return fromTitle;
+	let latest: string | null = null;
+	for (const m of section.body.matchAll(ISO_ANYWHERE_RE)) {
+		if (validIsoDate(m[1]) && (!latest || m[1] > latest)) latest = m[1];
+	}
+	return latest;
+}
+
+function dateBucket(iso: string | null, todayIso: string): string {
+	if (!iso) return "No date";
+	if (iso > todayIso) return "Upcoming";
+	if (iso === todayIso) return "Today";
+	const days = Math.round((Date.parse(todayIso) - Date.parse(iso)) / 86400000);
+	if (days === 1) return "Yesterday";
+	if (days < 7) return "This week";
+	if (iso.slice(0, 7) === todayIso.slice(0, 7)) return "This month";
+	return "Older";
+}
+
+const DATE_BUCKETS = ["Upcoming", "Today", "Yesterday", "This week", "This month", "Older", "No date"];
+const TASK_BUCKETS = ["6+ open tasks", "3–5 open tasks", "1–2 open tasks", "No open tasks"];
+const LENGTH_BUCKETS = ["Long (20+ lines)", "Medium (6–19 lines)", "Short (≤5 lines)"];
+
+/**
+ * Group-by: split an ordered card list into buckets by first tag, date, open-task
+ * count, stars, or length. Cards keep their order inside a bucket; the buckets come in
+ * a fixed order (tags alphabetically, the tagless last). Empty buckets are omitted.
+ */
+export function groupCards(sections: Section[], by: GroupBy, opts: GroupOptions): SectionGroup[] {
+	const groups = new Map<string, SectionGroup>();
+	const add = (title: string, section: Section) => {
+		let g = groups.get(title);
+		if (!g) {
+			g = { key: `group:${by}:${title}`, title, sections: [] };
+			groups.set(title, g);
+		}
+		g.sections.push(section);
+	};
+	for (const s of sections) {
+		switch (by) {
+			case "tag": {
+				const tag = firstBodyTag(s.body);
+				add(tag ? `#${tag}` : "No tag", s);
+				break;
+			}
+			case "date":
+				add(dateBucket(cardDateIso(s, opts.format, opts.detect), opts.todayIso), s);
+				break;
+			case "tasks": {
+				const n = openTaskCount(s.body);
+				add(n === 0 ? TASK_BUCKETS[3] : n <= 2 ? TASK_BUCKETS[2] : n <= 5 ? TASK_BUCKETS[1] : TASK_BUCKETS[0], s);
+				break;
+			}
+			case "stars":
+				add(starInfo(s.body.split("\n"), opts.emoji).count > 0 ? "Starred" : "Not starred", s);
+				break;
+			case "length": {
+				const n = s.body.split("\n").filter((l) => l.trim()).length;
+				add(n >= 20 ? LENGTH_BUCKETS[0] : n >= 6 ? LENGTH_BUCKETS[1] : LENGTH_BUCKETS[2], s);
+				break;
+			}
+			default:
+				return [{ key: "", title: "", sections }];
+		}
+	}
+	const order =
+		by === "date" ? DATE_BUCKETS : by === "tasks" ? TASK_BUCKETS : by === "stars" ? ["Starred", "Not starred"] : by === "length" ? LENGTH_BUCKETS : null;
+	const titles = [...groups.keys()];
+	if (order) titles.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+	else titles.sort((a, b) => (a === "No tag" ? 1 : b === "No tag" ? -1 : a.localeCompare(b)));
+	return titles.map((t) => groups.get(t) as SectionGroup);
 }
 
 /** First line of a section's body: the unfiled card has no heading line to skip. */
@@ -1259,6 +1372,24 @@ export interface BodyBlock {
 }
 
 const LIST_START_RE = /^(?:[-*+]|\d+[.)])\s+/;
+/** A list item as CommonMark allows it at the top level: up to three leading spaces. */
+const TOP_ITEM_RE = /^ {0,3}(?:[-*+]|\d+[.)])\s+/;
+/** Any indented list item, with its indentation captured. */
+const INDENTED_ITEM_RE = /^([ \t]+)(?:[-*+]|\d+[.)])\s+/;
+
+/** Column width of leading whitespace, tabs as four. */
+function indentWidth(ws: string): number {
+	let w = 0;
+	for (const c of ws) w += c === "\t" ? 4 : 1;
+	return w;
+}
+
+/** The column an item's content starts at — a nested item must indent at least this far;
+ * a list item indented less is the NEXT item of the same list, as the renderer shows it. */
+function itemContentColumn(line: string): number {
+	const m = /^([ \t]*)((?:[-*+]|\d+[.)])\s+)/.exec(line);
+	return m ? indentWidth(m[1]) + m[2].length : 0;
+}
 /** A thematic break: 3+ of the same marker, optionally space-separated — rendered <hr>. */
 const HR_RE = /^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/;
 /** A setext underline: with a paragraph line directly above, the pair renders <h1>/<h2>. */
@@ -1271,6 +1402,11 @@ const SETEXT_RE = /^ {0,3}(?:=+|-+)[ \t]*$/;
  * renders as neither — fences, headings, blockquotes, tables, raw HTML — which is not
  * draggable and keeps the DOM↔source mapping honest.
  */
+/** A line that is nothing but an Obsidian `%% … %%` or HTML `<!-- … -->` comment: invisible
+ * in reading view, so it's its own (non-draggable) block and ends any paragraph above it —
+ * the Card Flip marker sits on such a line, and must never be swept into a paragraph. */
+const COMMENT_LINE_RE = /^\s*(?:%%.*%%|<!--.*-->)\s*$/;
+
 export function sectionBlocks(body: string[]): BodyBlock[] {
 	const blocks: BodyBlock[] = [];
 	let i = 0;
@@ -1289,6 +1425,8 @@ export function sectionBlocks(body: string[]): BodyBlock[] {
 			while (i < body.length && !FENCE_RE.test(body[i])) i++;
 			if (i < body.length) i++;
 			blocks.push({ kind: "other", start, end: i });
+		} else if (COMMENT_LINE_RE.test(line)) {
+			blocks.push({ kind: "other", start, end: ++i });
 		} else if (HEADING_RE.test(line)) {
 			blocks.push({ kind: "other", start, end: ++i });
 		} else if (/^\s*>/.test(line)) {
@@ -1312,10 +1450,17 @@ export function sectionBlocks(body: string[]): BodyBlock[] {
 		} else if (HR_RE.test(line)) {
 			// A thematic break renders <hr> — and outranks a list reading ("- - -").
 			blocks.push({ kind: "other", start, end: ++i });
-		} else if (LIST_START_RE.test(line)) {
+		} else if (TOP_ITEM_RE.test(line)) {
 			i++;
-			// children: every following non-blank line that is indented deeper
-			while (i < body.length && !isBlank(body[i]) && /^[\t ]/.test(body[i])) i++;
+			// Children: following non-blank indented lines — except a list item whose
+			// indent falls short of this item's content column, which Markdown renders
+			// as the next item of the same list (" - [ ] x" under "- [ ] y", say).
+			const contentCol = itemContentColumn(line);
+			while (i < body.length && !isBlank(body[i]) && /^[\t ]/.test(body[i])) {
+				const nested = INDENTED_ITEM_RE.exec(body[i]);
+				if (nested && indentWidth(nested[1]) < contentCol) break;
+				i++;
+			}
 			blocks.push({ kind: "item", start, end: i });
 		} else if (/^[\t ]/.test(line)) {
 			// stray indented run (indent-style code, continuation) — not draggable
@@ -1327,7 +1472,7 @@ export function sectionBlocks(body: string[]): BodyBlock[] {
 			while (
 				i < body.length &&
 				!isBlank(body[i]) &&
-				!LIST_START_RE.test(body[i]) &&
+				!TOP_ITEM_RE.test(body[i]) &&
 				!FENCE_RE.test(body[i]) &&
 				!HEADING_RE.test(body[i]) &&
 				!/^\s*>/.test(body[i]) &&
@@ -1342,6 +1487,8 @@ export function sectionBlocks(body: string[]): BodyBlock[] {
 				}
 				// A "***"/"___" rule below the paragraph is its own <hr>, not part of it.
 				if (HR_RE.test(body[i])) break;
+				// A comment-only line (the flip marker, say) isn't paragraph text either.
+				if (COMMENT_LINE_RE.test(body[i])) break;
 				i++;
 			}
 			blocks.push({ kind, start, end: i });
@@ -1669,6 +1816,25 @@ const DONE_DATE_RE = /\s*✅\s*\d{4}-\d{2}-\d{2}/g;
  * Indexes of the task lines in `lines`, in document order and skipping fenced code —
  * the same order and set that MarkdownRenderer turns into checkboxes.
  */
+/** Due dates on task lines: Tasks' 📅 emoji, or a Dataview `[due:: …]` / `(due:: …)` field. */
+const DUE_DATE_RE = /(?:📅\s*|[[(]due::\s*)(\d{4}-\d{2}-\d{2})/u;
+
+/** How many OPEN tasks in a body are overdue (due before today) or due today. */
+export function dueTaskSummary(body: string, todayIso: string): { overdue: number; dueToday: number } {
+	let overdue = 0;
+	let dueToday = 0;
+	if (!body.includes("📅") && !body.includes("due::")) return { overdue, dueToday };
+	for (const line of body.split("\n")) {
+		const m = TASK_RE.exec(line);
+		if (!m || m[2] !== " ") continue;
+		const due = DUE_DATE_RE.exec(m[4])?.[1];
+		if (!due) continue;
+		if (due < todayIso) overdue++;
+		else if (due === todayIso) dueToday++;
+	}
+	return { overdue, dueToday };
+}
+
 export function taskLineIndexes(lines: string[]): number[] {
 	const out: number[] = [];
 	let inFence = false;
@@ -2213,6 +2379,7 @@ export function resolveViewSettings(
 		sections: saved?.sections ?? fromState.sections ?? defaults.sections ?? false,
 		starredOnly: saved?.starredOnly ?? fromState.starredOnly ?? defaults.starredOnly ?? false,
 		taskFilter: saved?.taskFilter ?? fromState.taskFilter ?? defaults.taskFilter ?? "all",
+		groupBy: saved?.groupBy ?? fromState.groupBy ?? defaults.groupBy ?? "none",
 	};
 	// Hierarchy briefly shipped as a layout; stored views from then become grid + columns.
 	if ((resolved.layout as string) === "hierarchy") {
@@ -2613,6 +2780,62 @@ async function deleteSection(app: App, file: TFile, level: number, original: Sec
 	return ok;
 }
 
+/** Delete several sections in one write; each is re-located by content before its splice. */
+async function deleteSectionsInFile(app: App, file: TFile, level: number, targets: Section[]): Promise<number> {
+	let removed = 0;
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		for (const original of targets) {
+			const target = locateCard(lines, level, original);
+			if (!target) continue;
+			const [start, end] = sectionDeleteRange(lines, target);
+			lines.splice(start, end - start);
+			removed++;
+		}
+		return lines.join(eol);
+	});
+	return removed;
+}
+
+/**
+ * Move several sections to sit, in their document order, before or after `target` —
+ * one write. Placing before: each in order lands right before the target; after: each
+ * in reverse order lands right after it, so the run keeps its order either way.
+ */
+async function moveSectionsInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	moved: Section[],
+	target: Section,
+	before: boolean,
+): Promise<boolean> {
+	let ok = true;
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		let lines = data.split(/\r?\n/);
+		const order = [...moved].sort((a, b) => a.startLine - b.startLine);
+		for (const m of before ? order : order.reverse()) {
+			const sections = parseSections(lines, level);
+			const from = locateSection(sections, m);
+			const to = locateSection(sections, target);
+			if (!from || !to || from === to) {
+				ok = false;
+				return data;
+			}
+			const next = moveSection(lines, level, sections.indexOf(from), sections.indexOf(to) + (before ? 0 : 1));
+			if (!next) {
+				ok = false;
+				return data;
+			}
+			lines = next;
+		}
+		return lines.join(eol);
+	});
+	return ok;
+}
+
 /** Insert a new section — empty, or with a template body — and return the heading level written. */
 async function insertSection(
 	app: App,
@@ -2696,6 +2919,7 @@ interface CardsViewState {
 	sections?: boolean;
 	starredOnly?: boolean;
 	taskFilter?: TaskFilter;
+	groupBy?: GroupBy;
 	deck?: boolean;
 }
 
@@ -2712,6 +2936,8 @@ export class SectionCardsView extends ItemView {
 	sectionsOn = false;
 	/** The Deck: a wall of note thumbnails replacing the cards until a note is picked. */
 	deckMode = false;
+	/** Group-by: divider bars over buckets of cards (per note, like the sort). */
+	groupBy: GroupBy = "none";
 	/** Tasks layout: which task states its cards show. */
 	taskFilter: TaskFilter = "all";
 	/** Starred-only toggled on (toolbar star): only starred lines and their cards show. */
@@ -2734,6 +2960,13 @@ export class SectionCardsView extends ItemView {
 	private hasDateHeadings = false;
 	/** The jump-to-date toolbar control, so refresh can show/hide it without a rebuild. */
 	private jumpDateWrap: HTMLElement | null = null;
+	/** Multi-select: the selected cards' heading lines, and the card with keyboard focus. */
+	private selected = new Set<string>();
+	private focusedKey: string | null = null;
+	/** The selection action bar (bottom of the view); built once, shown while anything is selected. */
+	private selectionBar: HTMLElement | null = null;
+	/** A card drag that carries the whole selection along (document order only). */
+	private draggingMany: Section[] | null = null;
 	/** Rolodex: the title-tab strip above the one showing card, and the wrapper that
 	 * carries its edge indicators. */
 	private roloTabsEl: HTMLElement | null = null;
@@ -2779,6 +3012,8 @@ export class SectionCardsView extends ItemView {
 		card: HTMLElement;
 		finish: (save: boolean) => Promise<void>;
 		autosave: () => Promise<void>;
+		/** Ctrl/⌘+T: a new task line via the Tasks plugin's dialog, at the cursor. */
+		insertTask: () => void;
 	} | null = null;
 	/** Interval handle for the open editor's periodic autosave; null when not editing. */
 	private autosaveTimer: number | null = null;
@@ -2980,6 +3215,7 @@ export class SectionCardsView extends ItemView {
 			sections: this.sectionsOn,
 			starredOnly: this.starredOnly,
 			taskFilter: this.taskFilter,
+			groupBy: this.groupBy,
 			deck: this.deckMode,
 		};
 	}
@@ -2997,6 +3233,7 @@ export class SectionCardsView extends ItemView {
 			sections: state?.sections,
 			starredOnly: state?.starredOnly,
 			taskFilter: state?.taskFilter,
+			groupBy: state?.groupBy,
 		});
 		await this.syncView();
 	}
@@ -3021,6 +3258,7 @@ export class SectionCardsView extends ItemView {
 		this.sectionsOn = resolved.sections ?? false;
 		this.starredOnly = resolved.starredOnly ?? false;
 		this.taskFilter = resolved.taskFilter ?? "all";
+		this.groupBy = resolved.groupBy ?? "none";
 	}
 
 	/** The current view as one ViewSettings value — the shape everything persists.
@@ -3035,6 +3273,7 @@ export class SectionCardsView extends ItemView {
 			sections: this.sectionsOn,
 			starredOnly: this.starredOnly,
 			taskFilter: this.taskFilter,
+			groupBy: this.groupBy,
 		};
 	}
 
@@ -3134,7 +3373,11 @@ export class SectionCardsView extends ItemView {
 	 * and never alongside the hierarchy columns — both group by the ancestor headings,
 	 * so the columns win a both-on state. */
 	private sectionsActive(): boolean {
-		return this.sectionsOn && !this.layoutOwnsPlacement() && !this.hierarchyActive();
+		if (this.layoutOwnsPlacement()) return false;
+		// Ancestor dividers and the hierarchy columns both group by ancestor heading, so
+		// the columns win that pair — but group-by buckets are a different cut, and the
+		// bars can sit inside the columns' branch just as well.
+		return this.groupBy !== "none" || (this.sectionsOn && !this.hierarchyActive());
 	}
 
 	/** Remember the current view for the current note (in the plugin's data, not the note). */
@@ -3163,6 +3406,22 @@ export class SectionCardsView extends ItemView {
 		this.toolbarEl = this.contentEl.createDiv({ cls: "section-cards-toolbar" });
 		// Attached once here, not in buildToolbar — the bar element survives rebuilds.
 		this.toolbarEl.addEventListener("contextmenu", (evt) => this.openToolbarMenu(evt));
+		// A narrow pane clips the toolbar's right end (the compact bar pans rather than
+		// wrapping): the wheel over it scrolls it sideways, so every button stays reachable.
+		this.registerDomEvent(
+			this.toolbarEl,
+			"wheel",
+			(evt: WheelEvent) => {
+				const bar = this.toolbarEl;
+				if (!bar || evt.ctrlKey || evt.metaKey) return;
+				if (bar.scrollWidth - bar.clientWidth <= 1) return; // nothing clipped: leave the wheel alone
+				const step = wheelDeltaToPixels(evt, bar.clientWidth);
+				if (!step) return;
+				evt.preventDefault();
+				bar.scrollLeft += step;
+			},
+			{ passive: false },
+		);
 		// Clicking anywhere in the toolbar returns an editing card to its preview.
 		this.registerDomEvent(this.toolbarEl, "click", () => {
 			const open = this.activeEditor;
@@ -3225,13 +3484,22 @@ export class SectionCardsView extends ItemView {
 			});
 		}
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
+		this.selectionBar = this.contentEl.createDiv({ cls: "sfsc-selection-bar is-hidden" });
 		// Right-click on the wall itself — not a card or a control, which have their
 		// own menus — offers the background options where the background actually is.
 		// Registered on the hierarchy columns pane too: it covers the wall's left side
 		// in the Hierarchy view mode.
 		const backgroundMenu = (evt: MouseEvent) => {
 			const target = evt.target as HTMLElement | null;
-			if (target?.closest(".section-card, .sc-image-card, .sfsc-deck-card, button")) return;
+			// Cards, tiles, and controls have their own menus (the toolbar's right-click
+			// switches its style); the pane's tab strip, tray, and bars are controls too.
+			if (
+				target?.closest(
+					".section-card, .sc-image-card, .sfsc-deck-card, button, input, select, .section-cards-toolbar, .sfsc-rolo-wrap, .sfsc-selection-bar, .section-cards-tray, .section-cards-zoom, .section-cards-section-bar",
+				)
+			) {
+				return;
+			}
 			evt.preventDefault();
 			const menu = new Menu();
 			// Greyed out in the Deck: no note is showing, so it's unclear which one
@@ -3255,8 +3523,24 @@ export class SectionCardsView extends ItemView {
 			this.addCommonMenuItems(menu);
 			menu.showAtMouseEvent(evt);
 		};
-		this.registerDomEvent(this.gridEl, "contextmenu", backgroundMenu);
-		this.registerDomEvent(this.hierEl, "contextmenu", backgroundMenu);
+		// On the whole pane, not just the card grid: with most cards hidden (a filter,
+		// Hide past dates) the grid ends well above the bottom, and the blank pane below
+		// it should still offer the menu.
+		this.registerDomEvent(this.contentEl, "contextmenu", backgroundMenu);
+		// A plain click on empty pane clears the selection, as in a file manager. The
+		// same controls are exempt, so pressing a selection-bar button doesn't undo it.
+		this.registerDomEvent(this.contentEl, "click", (evt: MouseEvent) => {
+			if (!this.selected.size && !this.focusedKey) return;
+			const target = evt.target as HTMLElement | null;
+			if (
+				target?.closest(
+					".section-card, .sc-image-card, .sfsc-deck-card, button, input, select, a, .section-cards-toolbar, .sfsc-rolo-wrap, .sfsc-selection-bar, .section-cards-tray, .section-cards-zoom, .section-cards-section-bar, .section-cards-hier-col, .section-cards-overlay",
+				)
+			) {
+				return;
+			}
+			this.clearSelection(true);
+		});
 		// A user scroll or click cancels the pending today-card re-aim, so it can't
 		// yank the view away from wherever they have already navigated to.
 		this.registerDomEvent(this.contentEl, "wheel", () => (this.todayJumpPending = false), { passive: true });
@@ -3276,11 +3560,19 @@ export class SectionCardsView extends ItemView {
 		zoomIn.setAttr("aria-label", "Zoom in");
 		zoomIn.addEventListener("click", () => this.setCanvasZoom(this.canvasZoom() + 0.1));
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
-			if (evt.key !== "Escape" || !this.maximized) return;
+			if (evt.key !== "Escape") return;
 			// An open card editor's own Escape handling wins (textarea or live preview).
 			if (this.activeEditor) return;
-			evt.preventDefault();
-			this.closeMaximized();
+			if (this.maximized) {
+				evt.preventDefault();
+				this.closeMaximized();
+				return;
+			}
+			// Then the selection and keyboard focus, when this view is the active one.
+			if ((this.selected.size || this.focusedKey) && this.app.workspace.getActiveViewOfType(SectionCardsView) === this) {
+				evt.preventDefault();
+				this.clearSelection(true);
+			}
 		});
 		// Ctrl/⌘+Enter must survive Obsidian's own hotkey dispatch, which runs before any
 		// DOM handler and consumes matching combos — so the shortcut is also registered in
@@ -3292,6 +3584,15 @@ export class SectionCardsView extends ItemView {
 			evt.preventDefault();
 			void open.finish(true);
 			return false; // consumed
+		});
+		// Ctrl/⌘+T while a card editor is open: the Tasks plugin's create dialog, its
+		// line inserted at the cursor. Same reasoning as Mod+Enter for living here too.
+		this.scope.register(["Mod"], "T", (evt) => {
+			const open = this.activeEditor;
+			if (!open) return true;
+			evt.preventDefault();
+			open.insertTask();
+			return false;
 		});
 
 		// View shortcuts, none of which run while a card editor is open. The plain keys
@@ -3409,6 +3710,48 @@ export class SectionCardsView extends ItemView {
 		this.scope.register(["Shift"], "F", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
 			this.flipAll(false);
+			return false;
+		});
+		// Arrow keys walk the cards by position (nearest card in that direction); a
+		// focused card takes Enter to edit and Space to select; Shift+arrow extends the
+		// selection as it moves. The Rolodex maps left/right to its tabs.
+		for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"] as const) {
+			const dir = key === "ArrowLeft" ? "left" : key === "ArrowRight" ? "right" : key === "ArrowUp" ? "up" : "down";
+			for (const mods of [[], ["Shift"]] as Modifier[][]) {
+				this.scope.register(mods, key, (evt) => {
+					if (!this.plainShortcutOk(evt) || this.isMaximized()) return true;
+					if (this.layout === "rolodex") {
+						if (dir === "left" || dir === "right") {
+							this.stepRolodex(dir === "left" ? -1 : 1);
+							return false;
+						}
+						return true;
+					}
+					if (!this.moveFocus(dir, mods.length > 0)) return true;
+					return false;
+				});
+			}
+		}
+		this.scope.register([], "Enter", (evt) => {
+			if (!this.plainShortcutOk(evt) || !this.focusedKey) return true;
+			const hit = this.cardsByHeading.get(this.focusedKey);
+			const file = this.getFile();
+			if (!hit || !file) return true;
+			evt.preventDefault();
+			this.startEditing(hit.el, file, hit.section);
+			return false;
+		});
+		this.scope.register([], " ", (evt) => {
+			if (!this.plainShortcutOk(evt) || !this.focusedKey) return true;
+			evt.preventDefault();
+			this.toggleSelected(this.focusedKey);
+			return false;
+		});
+		this.scope.register(["Mod"], "A", (evt) => {
+			if (!this.plainShortcutOk(evt)) return true;
+			evt.preventDefault();
+			for (const entry of this.visibleEntries()) this.selected.add(entry.holder.section.headingRaw);
+			this.applySelectionClasses();
 			return false;
 		});
 		// Ctrl/⌘+F: jump to the filter box (from anywhere in the view, fields included).
@@ -3639,6 +3982,22 @@ export class SectionCardsView extends ItemView {
 		return this.plugin.getNewCardFormat(this.filePath);
 	}
 
+	/** Due-task marks (settings): classes for the edge tint and a badge with the counts.
+	 * Recomputed for reused cards too — the date rolls over under a long-open view. */
+	private applyDueMarks(card: HTMLElement, section: Section, today: { iso: string } | null): void {
+		const badge = card.querySelector<HTMLElement>(".sfsc-due-badge");
+		const iso = today?.iso ?? mo().format("YYYY-MM-DD");
+		const { overdue, dueToday } = this.plugin.settings.dueTaskMarks
+			? dueTaskSummary(section.body, iso)
+			: { overdue: 0, dueToday: 0 };
+		card.toggleClass("has-overdue", overdue > 0);
+		card.toggleClass("has-due", overdue === 0 && dueToday > 0);
+		if (!badge) return;
+		const text = overdue > 0 ? `${overdue} overdue` : dueToday > 0 ? `${dueToday} due today` : "";
+		if (badge.textContent !== text) badge.setText(text);
+		badge.toggleClass("is-hidden", !text);
+	}
+
 	/** Today's date keys, computed once per render instead of once per card. */
 	private todayKeys(): { iso: string; formatted: string } | null {
 		if (!this.containsDates) return null;
@@ -3657,8 +4016,19 @@ export class SectionCardsView extends ItemView {
 		if (!this.cardEntries.length) return;
 		const q = this.filterQuery.trim().toLowerCase();
 		const emoji = this.plugin.starEmoji();
+		// Hide future / past dates (menu): a gate on the heading's date, relative to today.
+		const hide = this.plugin.getDateHide(this.filePath);
+		const dateGate =
+			(hide.future || hide.past) && this.containsDates && !this.isDateLayout()
+				? { today: mo().format("YYYY-MM-DD"), format: this.cardFormat(), detect: this.plugin.settings.dateDetectFormat }
+				: null;
 		for (const entry of this.cardEntries) {
 			const section = entry.holder.section;
+			let dateOk = true;
+			if (dateGate) {
+				const iso = titleToIso(section.title, dateGate.format, dateGate.detect);
+				if (iso && ((hide.future && iso > dateGate.today) || (hide.past && iso < dateGate.today))) dateOk = false;
+			}
 			// Title + raw, lowercased once per section (the title is display-only on
 			// the unfiled card, so raw alone wouldn't cover it).
 			let text = this.searchTextCache.get(section);
@@ -3675,7 +4045,7 @@ export class SectionCardsView extends ItemView {
 			} else {
 				entry.el.removeClass("sc-starred-more");
 			}
-			entry.el.toggleClass("is-filtered-out", !((!q || text.includes(q)) && starOk));
+			entry.el.toggleClass("is-filtered-out", !((!q || text.includes(q)) && starOk && dateOk));
 		}
 		// The sticky pinned band collapses when the filter hides everything in it.
 		// (Stamped here rather than with a CSS :has(), which lints as a perf hazard.)
@@ -3772,6 +4142,270 @@ export class SectionCardsView extends ItemView {
 			flipped ? "Flip back to the front" : "Flip the card over",
 		);
 		void this.plugin.setCardFlipped(this.filePath, headingRaw, flipped, this.viewSettings());
+	}
+
+	/** Fold a card to its title bar (or open it), remember it per note, and re-pack. */
+	private setCollapsed(card: HTMLElement, headingRaw: string, collapsed: boolean): void {
+		if (card.hasClass("is-editing")) return;
+		this.syncCollapseButton(card, collapsed);
+		void this.plugin.setCardCollapsed(this.filePath, headingRaw, collapsed, this.viewSettings());
+		this.repack();
+	}
+
+	/** The collapsed class plus the chevron button's direction and label. */
+	private syncCollapseButton(card: HTMLElement, collapsed: boolean): void {
+		card.toggleClass("is-collapsed", collapsed);
+		const btn = card.querySelector<HTMLElement>(".section-card-collapse");
+		if (!btn) return;
+		setIcon(btn, collapsed ? "chevron-down" : "chevron-up");
+		btn.setAttr("aria-label", collapsed ? "Expand this card" : "Collapse this card");
+	}
+
+	// ---------- multi-select and keyboard focus ----------
+
+	/** Cards that can take focus or a drop: rendered and not hidden by filter, branch, or Rolodex. */
+	private visibleEntries(): CardEntry[] {
+		return this.cardEntries.filter((e) => {
+			if (e.el.hasClass("is-filtered-out") || e.el.hasClass("is-hier-hidden") || e.el.hasClass("is-section-hidden")) return false;
+			const r = e.el.getBoundingClientRect();
+			return r.width > 0 && r.height > 0;
+		});
+	}
+
+	private toggleSelected(key: string): void {
+		if (this.selected.has(key)) this.selected.delete(key);
+		else this.selected.add(key);
+		this.applySelectionClasses();
+	}
+
+	/** After a re-order (sort, group-by): scroll the focused card — else the first
+	 * selected one — back into view, so the card you were working with doesn't vanish. */
+	private revealSelection(): void {
+		const key = this.focusedKey && this.selected.has(this.focusedKey) ? this.focusedKey : [...this.selected][0] ?? this.focusedKey;
+		if (!key) return;
+		const hit = this.cardsByHeading.get(key);
+		if (!hit) return;
+		if (this.layout === "rolodex") {
+			const entry = this.cardEntries.find((e) => e.el === hit.el);
+			if (entry) this.setRoloActive(entry);
+			return;
+		}
+		hit.el.scrollIntoView({ block: "center", inline: "center" });
+	}
+
+	/** A plain title-bar click: this card alone is selected, and becomes the anchor
+	 * (focus) that a later Shift-click ranges from — Explorer-style. */
+	private selectOnly(key: string): void {
+		this.selected.clear();
+		this.selected.add(key);
+		this.focusedKey = key;
+		this.applySelectionClasses();
+	}
+
+	/** Shift-click: select the run of visible cards from the anchor (the focused card)
+	 * to this one, replacing the selection; with no anchor, this card starts one. */
+	private selectRange(key: string): void {
+		const visible = this.visibleEntries().map((e) => e.holder.section.headingRaw);
+		const from = this.focusedKey ? visible.indexOf(this.focusedKey) : -1;
+		const to = visible.indexOf(key);
+		this.selected.clear();
+		if (from < 0 || to < 0) {
+			this.selected.add(key);
+			this.focusedKey = key;
+		} else {
+			for (let i = Math.min(from, to); i <= Math.max(from, to); i++) this.selected.add(visible[i]);
+		}
+		this.applySelectionClasses();
+	}
+
+	private clearSelection(alsoFocus: boolean): void {
+		this.selected.clear();
+		if (alsoFocus) this.focusedKey = null;
+		this.applySelectionClasses();
+	}
+
+	/** Stamp the classes and refresh the action bar; prunes keys whose cards are gone. */
+	private applySelectionClasses(): void {
+		const present = new Set(this.cardEntries.map((e) => e.holder.section.headingRaw));
+		for (const key of [...this.selected]) if (!present.has(key)) this.selected.delete(key);
+		if (this.focusedKey && !present.has(this.focusedKey)) this.focusedKey = null;
+		for (const entry of this.cardEntries) {
+			const key = entry.holder.section.headingRaw;
+			entry.el.toggleClass("is-selected", this.selected.has(key));
+			entry.el.toggleClass("is-focused", key === this.focusedKey);
+		}
+		this.renderSelectionBar();
+	}
+
+	private setFocus(key: string | null, scroll: boolean): void {
+		this.focusedKey = key;
+		this.applySelectionClasses();
+		if (!key || !scroll) return;
+		this.cardsByHeading.get(key)?.el.scrollIntoView({ block: "nearest", inline: "nearest" });
+	}
+
+	/**
+	 * Arrow-key navigation: the nearest visible card in that direction, judged from the
+	 * focused card's box (the first visible card when nothing is focused). With `extend`
+	 * (Shift) the landing card joins the selection. Returns false when there's nowhere to go.
+	 */
+	private moveFocus(dir: "left" | "right" | "up" | "down", extend: boolean): boolean {
+		const visible = this.visibleEntries();
+		if (!visible.length) return false;
+		const current = this.focusedKey ? visible.find((e) => e.holder.section.headingRaw === this.focusedKey) : undefined;
+		let next: CardEntry | undefined;
+		if (!current) {
+			next = visible[0];
+		} else {
+			const a = current.el.getBoundingClientRect();
+			const ax = (a.left + a.right) / 2;
+			const ay = (a.top + a.bottom) / 2;
+			let best = Infinity;
+			for (const cand of visible) {
+				if (cand === current) continue;
+				const b = cand.el.getBoundingClientRect();
+				const bx = (b.left + b.right) / 2;
+				const by = (b.top + b.bottom) / 2;
+				let primary: number;
+				let secondary: number;
+				if (dir === "left" || dir === "right") {
+					primary = dir === "right" ? b.left - a.right : a.left - b.right;
+					secondary = Math.abs(by - ay);
+					if (primary < -a.width / 2) continue; // not in that direction
+				} else {
+					primary = dir === "down" ? b.top - a.bottom : a.top - b.bottom;
+					secondary = Math.abs(bx - ax);
+					if (primary < -a.height / 2) continue;
+				}
+				const score = Math.max(primary, 0) + secondary * 2.5;
+				if (score < best) {
+					best = score;
+					next = cand;
+				}
+			}
+		}
+		if (!next) return false;
+		const key = next.holder.section.headingRaw;
+		if (extend) {
+			if (current) this.selected.add(current.holder.section.headingRaw);
+			this.selected.add(key);
+		}
+		this.setFocus(key, true);
+		return true;
+	}
+
+	/** The selected sections, in document order. */
+	private selectedSections(): Section[] {
+		return this.cardEntries
+			.filter((e) => this.selected.has(e.holder.section.headingRaw))
+			.map((e) => e.holder.section)
+			.sort((a, b) => a.startLine - b.startLine);
+	}
+
+	/** The bar along the bottom while cards are selected: the count and the bulk actions. */
+	private renderSelectionBar(): void {
+		const bar = this.selectionBar;
+		if (!bar) return;
+		const n = this.selected.size;
+		bar.toggleClass("is-hidden", n === 0 || this.deckMode);
+		if (n === 0) return;
+		bar.empty();
+		bar.createSpan({ cls: "sfsc-selection-count", text: `${n} selected` });
+		const action = (label: string, icon: string, onClick: (evt: MouseEvent) => void) => {
+			const btn = bar.createEl("button", { text: label });
+			setIcon(btn.createSpan({ cls: "sfsc-selection-icon" }), icon);
+			btn.addEventListener("click", (evt) => onClick(evt));
+		};
+		const base = this.viewSettings();
+		const keys = () => [...this.selected];
+		action("Pin", "pin", () => void this.plugin.setPinnedMany(this.filePath, keys(), true, base));
+		action("Unpin", "pin-off", () => void this.plugin.setPinnedMany(this.filePath, keys(), false, base));
+		action("Color…", "palette", (evt) => this.openColorMenuMany(evt, keys()));
+		if (this.selectedSections().some((s) => this.cardsByHeading.get(s.headingRaw) && this.cardEntries.find((e) => e.holder.section === s)?.backEl)) {
+			action("Flip", FLIP_ICON, () => this.flipSelected(true));
+			action("Unflip", FLIP_ICON, () => this.flipSelected(false));
+		}
+		action("Delete…", "trash-2", () => this.deleteSelected());
+		action("Clear", "x", () => this.clearSelection(true));
+	}
+
+	/** The title-bar menu's selection block: act on every selected card, or move the run here. */
+	private addSelectionMenuItems(menu: Menu, here: Section): void {
+		const n = this.selected.size;
+		if (!n) return;
+		const base = this.viewSettings();
+		const keys = () => [...this.selected];
+		menu.addSeparator();
+		SectionCardsView.addMenuHeading(menu, `${n} selected`);
+		menu.addItem((item) => item.setTitle("Pin selected").setIcon("pin").onClick(() => void this.plugin.setPinnedMany(this.filePath, keys(), true, base)));
+		menu.addItem((item) => item.setTitle("Unpin selected").setIcon("pin-off").onClick(() => void this.plugin.setPinnedMany(this.filePath, keys(), false, base)));
+		menu.addItem((item) => item.setTitle("Color selected…").setIcon("palette").onClick((evt) => this.openColorMenuMany(evt as MouseEvent, keys())));
+		menu.addItem((item) => item.setTitle("Flip selected over").setIcon(FLIP_ICON).onClick(() => this.flipSelected(true)));
+		menu.addItem((item) => item.setTitle("Flip selected back").setIcon(FLIP_ICON).onClick(() => this.flipSelected(false)));
+		if (!this.selected.has(here.headingRaw) && !here.unfiled) {
+			menu.addItem((item) => item.setTitle("Move selected before this card").setIcon("arrow-up-to-line").onClick(() => this.moveSelected(here, true)));
+			menu.addItem((item) => item.setTitle("Move selected after this card").setIcon("arrow-down-to-line").onClick(() => this.moveSelected(here, false)));
+		}
+		menu.addItem((item) => item.setTitle("Delete selected…").setIcon("trash-2").onClick(() => this.deleteSelected()));
+		menu.addItem((item) => item.setTitle("Clear selection").setIcon("x").onClick(() => this.clearSelection(true)));
+	}
+
+	private openColorMenuMany(evt: MouseEvent, keys: string[]): void {
+		const base = this.viewSettings();
+		const palette = this.plugin.palette();
+		const menu = new Menu();
+		CARD_COLORS.forEach(([name], i) => {
+			menu.addItem((item) => {
+				const title = createFragment();
+				title.createSpan({ cls: `sfsc-swatch sfsc-swatch-${name}` });
+				title.appendText(palette[i].label);
+				item.setTitle(title).onClick(() => void this.plugin.setCardColorMany(this.filePath, keys, name, base));
+			});
+		});
+		menu.addSeparator();
+		menu.addItem((item) => item.setTitle("No color").onClick(() => void this.plugin.setCardColorMany(this.filePath, keys, null, base)));
+		if (evt instanceof MouseEvent && evt.clientX) menu.showAtMouseEvent(evt);
+		else menu.showAtPosition({ x: window.innerWidth / 2, y: window.innerHeight - 80 });
+	}
+
+	private flipSelected(toBack: boolean): void {
+		for (const entry of this.cardEntries) {
+			if (entry.backEl && this.selected.has(entry.holder.section.headingRaw)) void this.flipCard(entry.el, toBack);
+		}
+	}
+
+	private deleteSelected(): void {
+		const file = this.getFile();
+		const targets = this.selectedSections().filter((s) => !s.unfiled);
+		if (!file || !targets.length) return;
+		new ConfirmDeleteModal(this.app, `${targets.length} selected cards`, async () => {
+			const removed = await deleteSectionsInFile(this.app, file, this.headingLevel, targets);
+			new Notice(`Deleted ${removed} of ${targets.length} cards from ${file.basename}.`);
+			this.clearSelection(true);
+			await this.refresh();
+		}).open();
+	}
+
+	private moveSelected(target: Section, before: boolean): void {
+		const file = this.getFile();
+		const moved = this.selectedSections().filter((s) => !s.unfiled && s.headingRaw !== target.headingRaw);
+		if (!file || !moved.length) return;
+		if (this.sortOrder !== "doc") {
+			new SwitchToDocumentOrderModal(this.app, SORT_LABELS[this.sortOrder], async () => {
+				this.sortOrder = "doc";
+				this.rememberView();
+				await this.syncView();
+				this.app.workspace.requestSaveLayout();
+			}).open();
+			return;
+		}
+		void this.completeDragMany(file, moved, target, before);
+	}
+
+	private async completeDragMany(file: TFile, moved: Section[], target: Section, before: boolean): Promise<void> {
+		const ok = await moveSectionsInFile(this.app, file, this.headingLevel, moved, target, before);
+		if (!ok) new Notice("Single File Section Cards: couldn't reorder — the file changed on disk.");
+		await this.refresh();
 	}
 
 	/** Turn every two-faced card to its back (true) or front (false). */
@@ -4759,15 +5393,8 @@ export class SectionCardsView extends ItemView {
 		menuBtn.setAttr("aria-label", "Cards view menu");
 		menuBtn.addEventListener("click", (evt) => this.openMainMenu(evt));
 
-		const fileBtn = bar.createEl("button", { cls: "section-cards-file-btn" });
-		fileBtn.setAttr("aria-label", "Pick a different note (O)");
-		fileBtn.createSpan({ text: this.filePath || "(no file)" });
-		fileBtn.addEventListener("click", () => {
-			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path), true).open();
-		});
-
-		// The Deck toggle: a wall of note thumbnails instead of the cards. While it's
-		// showing, the rest of the toolbar (all note-specific) stands down.
+		// The Deck toggle: a wall of note thumbnails instead of the cards. It sits before
+		// the note button: pick a note from thumbnails, or from the list.
 		const deckBtn = bar.createEl("button", { cls: "section-cards-icon-btn section-cards-deck-btn" });
 		setIcon(deckBtn, DECK_ICON);
 		deckBtn.toggleClass("is-active", this.deckMode);
@@ -4776,6 +5403,14 @@ export class SectionCardsView extends ItemView {
 			this.deckMode ? "Back to this note's cards (D)" : "Deck: pick a note from thumbnails (D)",
 		);
 		deckBtn.addEventListener("click", () => void this.toggleDeck());
+
+		const fileBtn = bar.createEl("button", { cls: "section-cards-file-btn" });
+		fileBtn.setAttr("aria-label", "Pick a different note (O)");
+		fileBtn.createSpan({ text: this.filePath || "(no file)" });
+		fileBtn.addEventListener("click", () => {
+			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path), true).open();
+		});
+
 		if (this.deckMode) {
 			// The Deck's own sort — the rest of the toolbar is note-specific and
 			// stands down, but ordering the thumbnails belongs here.
@@ -4930,6 +5565,18 @@ export class SectionCardsView extends ItemView {
 		jumpInput.addEventListener("change", () => {
 			if (jumpInput.value) this.jumpToDate(jumpInput.value);
 		});
+		// Beside the calendar: hide dated cards after today / before today (also in the
+		// menu). They share the calendar button's visibility — only where dates exist.
+		const hide = this.plugin.getDateHide(this.filePath);
+		const hideBtn = (icon: string, label: string, key: "future" | "past", on: boolean) => {
+			const btn = jumpWrap.createEl("button", { cls: "section-cards-icon-btn section-cards-datehide-btn" });
+			setIcon(btn, icon);
+			btn.setAttr("aria-label", `${label}${on ? " (on)" : ""}`);
+			btn.toggleClass("is-active", on);
+			btn.addEventListener("click", () => void this.plugin.setDateHide(this.filePath, { [key]: !on }, this.viewSettings()));
+		};
+		hideBtn("calendar-arrow-down", "Hide future dates", "future", hide.future);
+		hideBtn("calendar-arrow-up", "Hide past dates", "past", hide.past);
 
 		// Per-note: do this note's headings name dates? Governs the today highlight, the
 		// jump-to-today scroll, and the calendar button. Until first clicked it mirrors
@@ -5065,8 +5712,33 @@ export class SectionCardsView extends ItemView {
 		sortSelect.addEventListener("change", () => {
 			this.sortOrder = sortSelect.value as SortOrder;
 			this.rememberView();
-			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+			void this.refresh().then(() => {
+				this.revealSelection(); // a selected card follows the re-sort into view
+				this.app.workspace.requestSaveLayout();
+			});
 		});
+
+		// Group-by: divider bars over buckets, per note like the sort. Not on the layouts
+		// that place everything themselves (no bars there).
+		if (!this.layoutOwnsPlacement()) {
+			const groupWrap = bar.createDiv({ cls: "section-cards-control section-cards-group-control" });
+			groupWrap.setAttr("aria-label", "Group the cards under divider bars");
+			groupWrap.createSpan({ text: "Group", cls: "section-cards-label" });
+			const groupSelect = groupWrap.createEl("select", { cls: "dropdown" });
+			groupSelect.setAttr("aria-label", "Group the cards under divider bars");
+			for (const [value, label] of GROUP_BY_LABELS) groupSelect.createEl("option", { text: label, value });
+			groupSelect.value = this.groupBy;
+			groupSelect.addEventListener("change", () => {
+				this.groupBy = groupSelect.value as GroupBy;
+				this.rememberView();
+				this.applyLayoutClass();
+				this.buildToolbar();
+				void this.refresh().then(() => {
+					this.revealSelection(); // the buckets move cards; keep the selected one on screen
+					this.app.workspace.requestSaveLayout();
+				});
+			});
+		}
 
 		// Tasks layout: the complete/incomplete filter, beside the sort it refines.
 		if (this.layout === "tasks") {
@@ -5417,6 +6089,25 @@ export class SectionCardsView extends ItemView {
 					.setTitle("Jump to a date's card…")
 					.setIcon("calendar-days")
 					.onClick(() => this.openJumpPicker?.()),
+			);
+		}
+		if (this.containsDates) {
+			// Relative to today; today's own card always shows, undated cards too. Not on
+			// the Calendar/Heatmap, whose grids place every day.
+			const hide = this.plugin.getDateHide(this.filePath);
+			menu.addItem((item) =>
+				item
+					.setTitle("Hide future dates")
+					.setIcon("calendar-arrow-down")
+					.setChecked(hide.future)
+					.onClick(() => void this.plugin.setDateHide(this.filePath, { future: !hide.future }, base)),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Hide past dates")
+					.setIcon("calendar-arrow-up")
+					.setChecked(hide.past)
+					.onClick(() => void this.plugin.setDateHide(this.filePath, { past: !hide.past }, base)),
 			);
 		}
 		if (this.anyFlippable()) {
@@ -6122,10 +6813,16 @@ export class SectionCardsView extends ItemView {
 				this.collapsedFile = file.path;
 				this.collapsedSections.clear();
 			}
-			const grouped = groupByAncestor(
-				ordered.slice(pinnedCount),
-				parseAncestorHeadings(lines, this.headingLevel),
-			);
+			// Group-by buckets take the bars over from the ancestor headings.
+			const grouped =
+				this.groupBy !== "none"
+					? groupCards(ordered.slice(pinnedCount), this.groupBy, {
+							emoji: starEmoji,
+							format: cardFormat,
+							detect,
+							todayIso: mo().format("YYYY-MM-DD"),
+						})
+					: groupByAncestor(ordered.slice(pinnedCount), parseAncestorHeadings(lines, this.headingLevel));
 			ordered = [...ordered.slice(0, pinnedCount), ...grouped.flatMap((g) => g.sections)];
 			this.sectionGroups = grouped.map((g) => ({
 				key: g.key,
@@ -6180,6 +6877,7 @@ export class SectionCardsView extends ItemView {
 		);
 
 		const today = this.todayKeys();
+		const collapsedKeys = new Set(this.plugin.getCollapsed(file.path));
 		const renders: Promise<void>[] = [];
 		const immediate: CardEntry[] = [];
 		const deferred: CardEntry[] = [];
@@ -6208,6 +6906,8 @@ export class SectionCardsView extends ItemView {
 				entry = reusable[prevIndex];
 				entry.holder.section = section;
 				entry.el.toggleClass("is-today", !!today && isTodayTitle(section.title, today.iso, today.formatted));
+				this.applyDueMarks(entry.el, section, today);
+				this.syncCollapseButton(entry.el, collapsedKeys.has(section.headingRaw));
 				this.applyBodyHeight(entry.bodyEl);
 				this.applyBodyHeight(entry.backEl);
 			} else {
@@ -6227,6 +6927,7 @@ export class SectionCardsView extends ItemView {
 		}
 		for (const entry of discards) this.discardCard(entry);
 		this.cardEntries = nextEntries;
+		this.applySelectionClasses();
 
 		// Put the DOM in section order; an unchanged run of cards doesn't move at all.
 		// With the sticky setting on, pinned cards parent into the band above the grid —
@@ -6290,7 +6991,8 @@ export class SectionCardsView extends ItemView {
 		// Re-apply an active filter to the fresh entries before anything is measured —
 		// starred-only counts, and so does clearing its leftover class after it turned
 		// itself off above.
-		if (this.filterQuery.trim() || this.starredOnly || this.contentEl.hasClass("is-starred-only")) {
+		const dateHide = this.plugin.getDateHide(file.path);
+		if (this.filterQuery.trim() || this.starredOnly || this.contentEl.hasClass("is-starred-only") || dateHide.future || dateHide.past) {
 			this.applyFilter();
 		}
 		this.applyTaskFilter(); // marks task-empty cards before the pack measures
@@ -6400,11 +7102,13 @@ export class SectionCardsView extends ItemView {
 
 		const header = card.createDiv({ cls: "section-card-header" });
 		const titleClick = this.plugin.settings.titleBarClick;
-		header.addClass(titleClick === "maximize" ? "is-click-big" : "is-click-edit");
+		header.addClass(titleClick === "maximize" ? "is-click-big" : titleClick === "edit" ? "is-click-edit" : "is-click-select");
 		header.createDiv({ cls: "section-card-title", text: section.title || "(untitled)" });
 		// Tasks layout only (CSS hides it elsewhere): how many tasks the card is
 		// showing under the current filter — applyTaskFilter keeps it current.
 		header.createDiv({ cls: "sfsc-task-count" });
+		header.createDiv({ cls: "sfsc-due-badge" });
+		this.applyDueMarks(card, section, today);
 
 		// The delete confirmation, shared by the hover strip's trash button and the
 		// title bar's right-click menu.
@@ -6440,6 +7144,22 @@ export class SectionCardsView extends ItemView {
 					}),
 			);
 			menu.addItem((item) => item.setTitle("Delete card").setIcon("trash-2").onClick(confirmDeleteCard));
+			// The Rolodex card already fills the pane, so "big" has nothing to do there.
+			if (this.layout !== "rolodex") {
+				const big = card.hasClass("is-maximized");
+				menu.addItem((item) =>
+					item
+						.setTitle(big ? "Put card back" : "Make card big")
+						.setIcon(big ? "zoom-out" : "zoom-in")
+						.onClick(() => this.toggleMaximized(card)),
+				);
+			}
+			menu.addItem((item) =>
+				item
+					.setTitle(card.hasClass("is-collapsed") ? "Expand card" : "Collapse card")
+					.setIcon(card.hasClass("is-collapsed") ? "chevron-down" : "chevron-up")
+					.onClick(() => this.setCollapsed(card, holder.section.headingRaw, !card.hasClass("is-collapsed"))),
+			);
 			const flipBtn = card.querySelector<HTMLElement>(".section-card-flip");
 			if (flipBtn) {
 				menu.addItem((item) =>
@@ -6449,6 +7169,7 @@ export class SectionCardsView extends ItemView {
 						.onClick(() => flipBtn.click()),
 				);
 			}
+			this.addSelectionMenuItems(menu, holder.section);
 			this.addCommonMenuItems(menu);
 			menu.showAtMouseEvent(evt);
 		});
@@ -6456,6 +7177,14 @@ export class SectionCardsView extends ItemView {
 		// The pin sits in the title bar's right corner, always visible as a bare glyph:
 		// dim when unpinned, full-strength accent when pinned. (applyPinState below sets
 		// the icon and label; the other actions stay in the hover strip.)
+		// The collapse chevron sits beside the pin as a bare glyph: folding a card is a
+		// state you glance at, like pinning, not a one-off action for the hover strip.
+		const collapseBtn = header.createEl("button", { cls: "section-card-collapse" });
+		collapseBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.setCollapsed(card, holder.section.headingRaw, !card.hasClass("is-collapsed"));
+		});
+		this.syncCollapseButton(card, this.plugin.getCollapsed(file.path).includes(section.headingRaw));
 		const pinBtn = header.createEl("button", { cls: "section-card-pin" });
 		pinBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -6479,16 +7208,35 @@ export class SectionCardsView extends ItemView {
 			);
 		});
 
-		// The title bar's own action. "edit" falls through to the card handler below.
-		if (titleClick === "maximize") {
-			header.addEventListener("click", (evt) => {
-				if ((evt.target as HTMLElement | null)?.closest("button")) return;
-				// The Rolodex card already fills the pane (its big button is hidden too).
-				if (this.layout === "rolodex") return;
-				evt.stopPropagation();
-				this.toggleMaximized(card);
-			});
-		}
+		// The title bar: Ctrl/⌘-click makes the card big, Shift-click toggles it in the
+		// selection, and a plain click does what the setting says — select it (default),
+		// make it big, or edit it. (The Rolodex card already fills the pane, so "big" is
+		// a no-op there, matching its hidden big button.)
+		header.addEventListener("click", (evt) => {
+			if ((evt.target as HTMLElement | null)?.closest("button")) return;
+			evt.stopPropagation();
+			const key = holder.section.headingRaw;
+			if (evt.ctrlKey || evt.metaKey) {
+				if (this.layout !== "rolodex") this.toggleMaximized(card);
+				return;
+			}
+			if (evt.shiftKey) {
+				this.selectRange(key);
+				return;
+			}
+			if (titleClick === "maximize") {
+				if (this.layout !== "rolodex") this.toggleMaximized(card);
+				return;
+			}
+			if (titleClick === "edit") {
+				if (card.hasClass("is-editing")) return;
+				const open = this.activeEditor;
+				if (open && open.card !== card) void open.finish(true).then(() => this.startEditing(card, file, holder.section));
+				else this.startEditing(card, file, holder.section);
+				return;
+			}
+			this.selectOnly(key);
+		});
 
 		const untrayBtn = header.createEl("button", { cls: "section-card-untray" });
 		setIcon(untrayBtn, "x");
@@ -6662,6 +7410,21 @@ export class SectionCardsView extends ItemView {
 			if (target.closest("a")) return;
 			if (target.closest("input[type=checkbox]")) return;
 			if (card.hasClass("is-editing")) return;
+			// Anywhere on the card: Ctrl/⌘-click makes it big, Shift-click toggles it in
+			// the selection (and moves the keyboard focus here).
+			if (!target.closest("button") && (evt.ctrlKey || evt.metaKey)) {
+				evt.preventDefault();
+				evt.stopPropagation();
+				if (this.layout !== "rolodex") this.toggleMaximized(card);
+				return;
+			}
+			if (!target.closest("button") && evt.shiftKey) {
+				evt.preventDefault();
+				evt.stopPropagation();
+				this.selectRange(holder.section.headingRaw);
+				return;
+			}
+			if (this.selected.size) this.clearSelection(false);
 			// A calendar cell is too small to edit in place: any click makes the day
 			// big first; the maximized card then edits on click as usual. Another
 			// card's open editor still commits, exactly like the click-away below.
@@ -6849,6 +7612,15 @@ export class SectionCardsView extends ItemView {
 			}
 			this.dragging = holder;
 			card.addClass("is-dragging");
+			// Dragging one of several selected cards moves them all, in document order.
+			if (this.selected.has(holder.section.headingRaw) && this.selected.size > 1) {
+				this.draggingMany = this.cardEntries
+					.filter((e) => this.selected.has(e.holder.section.headingRaw))
+					.map((e) => e.holder.section);
+				for (const e of this.cardEntries) {
+					if (this.selected.has(e.holder.section.headingRaw)) e.el.addClass("is-dragging");
+				}
+			}
 			if (evt.dataTransfer) {
 				evt.dataTransfer.effectAllowed = "move";
 				evt.dataTransfer.setData("text/plain", holder.section.headingRaw);
@@ -6856,6 +7628,10 @@ export class SectionCardsView extends ItemView {
 		});
 		card.addEventListener("dragend", () => {
 			card.removeClass("is-dragging");
+			if (this.draggingMany) {
+				for (const e of this.cardEntries) e.el.removeClass("is-dragging");
+				this.draggingMany = null;
+			}
 			this.setDropMarker(null, false);
 			this.setCalDrop(null);
 			this.dragging = null;
@@ -6878,6 +7654,7 @@ export class SectionCardsView extends ItemView {
 			// Dropping beside the unfiled card would land a section above the preamble,
 			// where its text stops being a section — drop before the first real card instead.
 			if (!this.dragging || this.dragging === holder || holder.section.unfiled) return;
+			if (this.draggingMany?.some((m) => m.headingRaw === holder.section.headingRaw)) return;
 			evt.preventDefault();
 			if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
 			// Calendar: the whole day is the target (a merge), not a before/after slot.
@@ -6918,6 +7695,14 @@ export class SectionCardsView extends ItemView {
 					}
 					await this.refresh();
 				}).open();
+				return;
+			}
+			const many = this.draggingMany;
+			this.draggingMany = null;
+			if (many && many.length > 1) {
+				// Dropping onto one of the dragged cards has nowhere sensible to land.
+				if (many.some((m) => m.headingRaw === holder.section.headingRaw)) return;
+				void this.completeDragMany(file, many, holder.section, this.isDropBefore(evt, card));
 				return;
 			}
 			void this.completeDrag(file, moved, holder.section, this.isDropBefore(evt, card));
@@ -8863,6 +9648,20 @@ export class SectionCardsView extends ItemView {
 		anchorIndex: number | "start" | null,
 		anchorSide: "before" | "after" = "before",
 	): Promise<void> {
+		// "End of the card" on a two-faced card means the end of its front, not after
+		// the back: anchor after the front's last movable block instead.
+		if (anchorIndex === null) {
+			const faces = this.cardFaces(target.body);
+			if (faces.back !== null) {
+				const frontBlocks = movableBlocks(faces.front.split("\n"));
+				if (frontBlocks.length) {
+					anchorIndex = frontBlocks.length - 1;
+					anchorSide = "after";
+				} else {
+					anchorIndex = "start";
+				}
+			}
+		}
 		const ok = await moveBlockInFile(
 			this.app,
 			file,
@@ -8981,6 +9780,24 @@ export class SectionCardsView extends ItemView {
 		window.setTimeout(() => card.removeClass("is-toggling"), 400);
 	}
 
+	/** Ctrl/⌘+T in a card editor: the Tasks plugin's create dialog; its line lands at the cursor. */
+	private async insertTaskLine(insert: (line: string) => void, refocus: () => void): Promise<void> {
+		const api = this.plugin.tasksApi();
+		if (!api) {
+			new Notice("Ctrl/⌘+T needs the Tasks plugin, which isn't enabled.");
+			return;
+		}
+		let line = "";
+		try {
+			line = (await api.createTaskLineModal())?.trim() ?? "";
+		} catch {
+			new Notice("The Tasks plugin couldn't open its create dialog.");
+			return;
+		}
+		if (line) insert(line);
+		refocus();
+	}
+
 	private startEditing(card: HTMLElement, file: TFile, section: Section) {
 		card.addClass("is-editing");
 		// A draggable ancestor turns textarea text-selection into drags; disable while editing.
@@ -9046,6 +9863,24 @@ export class SectionCardsView extends ItemView {
 			}).open();
 		};
 		let refocus: () => void = () => {};
+		// Ctrl/⌘+T: in the live-preview editor, Tasks' own "Create or edit task" command —
+		// it reads the cursor line of the active editor (ours, while focused), so it edits
+		// the task under the cursor in place, or creates one on a blank line. The plain
+		// textarea has no editor for it to act on, so there the create dialog's line is
+		// dropped in at the cursor instead.
+		const editorApi: { insertLine?: (line: string) => void } = {};
+		const insertTask = () => {
+			if (embedded) {
+				refocus();
+				try {
+					const commands = (this.app as unknown as { commands: { executeCommandById: (id: string) => boolean } }).commands;
+					if (commands.executeCommandById("obsidian-tasks-plugin:edit-task")) return;
+				} catch {
+					// fall through to the dialog-and-insert path
+				}
+			}
+			void this.insertTaskLine((line) => editorApi.insertLine?.(line), () => refocus());
+		};
 
 		if (this.plugin.settings.editorMode !== "plain") {
 			const host = bodyEl.createDiv({ cls: "section-card-editor-embed" });
@@ -9058,10 +9893,12 @@ export class SectionCardsView extends ItemView {
 				onSave: () => void finish(true),
 				onCancel: cancel,
 				onChange: () => remeasure(),
+				onTask: insertTask,
 			});
 			if (embedded) {
 				readValue = () => (embedded as EmbeddedEditor).value;
 				refocus = () => (embedded as EmbeddedEditor).focus();
+				editorApi.insertLine = (line) => (embedded as EmbeddedEditor).insertLine(line);
 				// Clicks inside the editor stay there — same contract as the textarea.
 				host.addEventListener("click", (e) => e.stopPropagation());
 			} else {
@@ -9070,7 +9907,7 @@ export class SectionCardsView extends ItemView {
 		}
 
 		if (!embedded) {
-			const textarea = this.buildPlainEditor(bodyEl, initial, finish, cancel);
+			const textarea = this.buildPlainEditor(bodyEl, initial, finish, cancel, insertTask, editorApi);
 			readValue = () => textarea.value;
 			refocus = () => textarea.focus();
 		}
@@ -9095,7 +9932,10 @@ export class SectionCardsView extends ItemView {
 		}
 
 		const footer = bodyEl.createDiv({ cls: "section-card-footer" });
-		footer.createSpan({ cls: "section-card-hint", text: "Ctrl/⌘+Enter to save · Esc to cancel" });
+		footer.createSpan({
+			cls: "section-card-hint",
+			text: this.plugin.tasksApi() ? "Ctrl/⌘+Enter to save · Esc to cancel · Ctrl/⌘+T task" : "Ctrl/⌘+Enter to save · Esc to cancel",
+		});
 		const cancelBtn = footer.createEl("button", { text: "Cancel" });
 		const saveBtn = footer.createEl("button", { cls: "mod-cta", text: "Save" });
 		saveBtn.addEventListener("click", (e) => {
@@ -9107,7 +9947,7 @@ export class SectionCardsView extends ItemView {
 			void finish(false);
 		});
 
-		this.activeEditor = { card, finish, autosave };
+		this.activeEditor = { card, finish, autosave, insertTask };
 		if (embedded) {
 			embedded.focusEnd();
 		} else {
@@ -9124,6 +9964,8 @@ export class SectionCardsView extends ItemView {
 		initial: string,
 		finish: (save: boolean) => Promise<void>,
 		cancel: () => void,
+		onTask?: () => void,
+		api?: { insertLine?: (line: string) => void },
 	): HTMLTextAreaElement {
 		const textarea = bodyEl.createEl("textarea", { cls: "section-card-editor" });
 		textarea.value = initial;
@@ -9164,8 +10006,25 @@ export class SectionCardsView extends ItemView {
 			} else if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "y") {
 				e.preventDefault();
 				restore(history.redo());
+			} else if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "t" && onTask) {
+				e.preventDefault();
+				onTask();
 			}
 		});
+		// A line dropped in at the cursor (Ctrl/⌘+T's task): onto a blank line, else below
+		// the current one. Recorded so it's undoable like typing.
+		if (api) {
+			api.insertLine = (text: string) => {
+				const v = textarea.value;
+				const pos = textarea.selectionEnd;
+				const lineStart = v.lastIndexOf("\n", pos - 1) + 1;
+				let lineEnd = v.indexOf("\n", pos);
+				if (lineEnd < 0) lineEnd = v.length;
+				if (v.slice(lineStart, lineEnd).trim() === "") textarea.setRangeText(text, lineStart, lineEnd, "end");
+				else textarea.setRangeText("\n" + text, lineEnd, lineEnd, "end");
+				history.record(snapshot());
+			};
+		}
 
 		// Menu- and gesture-driven undo (mobile, Edit menu) arrives as beforeinput.
 		textarea.addEventListener("beforeinput", (e) => {
@@ -10318,6 +11177,11 @@ class ShortcutsModal extends Modal {
 			["D", "Show or hide the Deck of notes"],
 			[", / .", "Previous / next heading in the Hierarchy and Dividers view modes, or card in the Rolodex"],
 			["S", "Show only starred lines / show everything"],
+			["↑ ↓ ← →", "Move the keyboard focus between cards (Shift extends the selection)"],
+			["Enter / Space", "Edit the focused card / select or deselect it"],
+			["Click a title bar", "Select that card; Shift+click selects the run from it; click empty space to clear"],
+			[`${MOD_LABEL}+click`, "Make the card big"],
+			[`${MOD_LABEL}+A`, "Select every visible card"],
 			["F", "Flip the card under the pointer over / back"],
 			["Shift+F", "Flip every card back to the front"],
 			["N", "New card"],
@@ -10325,6 +11189,7 @@ class ShortcutsModal extends Modal {
 			[`${MOD_LABEL}+F`, "Jump to the filter box"],
 			["Esc", "Clear the filter, or close a maximized card"],
 			[`${MOD_LABEL}+Enter`, "Save the card being edited"],
+			[`${MOD_LABEL}+T`, "In a card editor: edit the task on the cursor line, or create one there (Tasks plugin)"],
 		];
 		const grid = contentEl.createDiv({ cls: "sfsc-shortcuts" });
 		for (const [key, desc] of rows) {
@@ -10765,6 +11630,11 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				control: { type: "toggle", key: "autoOpenCards" },
 			},
 			{
+				name: "Cards button on notes",
+				desc: "A deck icon in the top-right of every note. Clicking it opens that note as cards in the same tab.",
+				control: { type: "toggle", key: "noteCardsButton" },
+			},
+			{
 				type: "group",
 				heading: "What becomes a card",
 				items: [
@@ -10936,7 +11806,7 @@ class SectionCardsSettingTab extends PluginSettingTab {
 						control: {
 							type: "dropdown",
 							key: "titleBarClick",
-							options: { maximize: "Makes the card big", edit: "Edits the card" },
+							options: { select: "Selects the card", maximize: "Makes the card big", edit: "Edits the card" },
 						},
 					},
 					{
@@ -10975,6 +11845,11 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				type: "group",
 				heading: "Tasks",
 				items: [
+					{
+						name: "Mark cards with due tasks",
+						desc: "A card holding an open task due today gets an amber badge and edge; one with an overdue task, red. Reads Tasks-style 📅 dates and Dataview [due:: ] fields.",
+						control: { type: "toggle", key: "dueTaskMarks" },
+					},
 					{
 						name: "Toggle tasks with the Tasks plugin",
 						desc: "When the Tasks community plugin is enabled, ticking a checkbox uses its toggle, so recurring tasks spawn their next occurrence and done dates follow its settings. When off (or Tasks is absent), this plugin's own toggle and the settings below apply.",
@@ -11097,6 +11972,7 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			return;
 		}
 		await super.setControlValue(key, value);
+		if (key === "noteCardsButton") this.plugin.syncNoteActions();
 		if (key === "strikeNestedUnderDone") this.plugin.applyBodyClasses();
 		if (key === "toolbarStyle") this.plugin.applyToolbarStyle();
 		if (key === "fontScale" || key === "dividerFontScale") this.plugin.applyFontScale();
@@ -11108,6 +11984,7 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			key === "dynamicLevelOptions" ||
 			key === "starEmoji" ||
 			key === "weekStart" ||
+			key === "dueTaskMarks" ||
 			key === "dateDetectFormat"
 		) {
 			this.plugin.refreshAllViews();
@@ -11281,11 +12158,41 @@ export default class SectionCardsPlugin extends Plugin {
 			}),
 		);
 
+		// The "Open as cards" button on notes: added to every markdown view now and as
+		// tabs come and go; removed again when the setting turns off.
+		this.app.workspace.onLayoutReady(() => this.syncNoteActions());
+		this.registerEvent(this.app.workspace.on("layout-change", () => this.syncNoteActions()));
+
 		this.addSettingTab(new SectionCardsSettingTab(this.app, this));
 		this.applyBodyClasses();
 		this.applyPaletteCss();
 		this.applyFontScale();
 		this.armMidnightRefresh();
+	}
+
+	/** The note-header buttons this plugin added, per markdown view, so they can be removed. */
+	private noteActions = new WeakMap<MarkdownView, HTMLElement>();
+
+	/** Add the "Open as cards" action to every open note (setting on), or take it away (off). */
+	syncNoteActions(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView)) continue;
+			const existing = this.noteActions.get(view);
+			if (!this.settings.noteCardsButton) {
+				existing?.remove();
+				this.noteActions.delete(view);
+				continue;
+			}
+			if (existing?.isConnected) continue;
+			const el = view.addAction(DECK_ICON, "Open as cards", () => {
+				const file = view.file;
+				if (!file) return;
+				// Same tab: the note's leaf becomes the cards view of that note.
+				void view.leaf.setViewState({ type: VIEW_TYPE_SECTION_CARDS, active: true, state: { filePath: file.path } });
+			});
+			this.noteActions.set(view, el);
+		}
 	}
 
 	/** Pending midnight-rollover timeout, cleared on unload. */
@@ -11317,6 +12224,9 @@ export default class SectionCardsPlugin extends Plugin {
 	}
 
 	onunload(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			if (leaf.view instanceof MarkdownView) this.noteActions.get(leaf.view)?.remove();
+		}
 		if (this.midnightTimer !== null) {
 			window.clearTimeout(this.midnightTimer);
 			this.midnightTimer = null;
@@ -11492,6 +12402,36 @@ export default class SectionCardsPlugin extends Plugin {
 		this.refreshAllViews();
 	}
 
+	/** Pin or unpin several cards at once (one save, one refresh). */
+	async setPinnedMany(path: string, keys: string[], pinned: boolean, base: ViewSettings): Promise<void> {
+		if (!path || !keys.length) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		const list = current.pinned ?? [];
+		const next = pinned ? [...list, ...keys.filter((k) => !list.includes(k))] : list.filter((k) => !keys.includes(k));
+		current.pinned = next;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+		this.refreshAllViews();
+	}
+
+	/** Color (or clear, null) several cards at once. */
+	async setCardColorMany(path: string, keys: string[], color: string | null, base: ViewSettings): Promise<void> {
+		if (!path || !keys.length) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		const colors = current.colors ?? {};
+		for (const key of keys) {
+			if (color) colors[key] = color;
+			else delete colors[key];
+		}
+		if (Object.keys(colors).length) current.colors = colors;
+		else delete current.colors;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+		this.refreshAllViews();
+	}
+
 	/**
 	 * A card's heading line was rewritten (Calendar day move): pins, colors, and Custom
 	 * Grid placements are keyed by the heading line, so carry them to the new key.
@@ -11513,6 +12453,11 @@ export default class SectionCardsPlugin extends Plugin {
 		const flippedAt = entry.flipped?.indexOf(oldRaw) ?? -1;
 		if (entry.flipped && flippedAt >= 0) {
 			entry.flipped[flippedAt] = newRaw;
+			changed = true;
+		}
+		const collapsedAt = entry.collapsed?.indexOf(oldRaw) ?? -1;
+		if (entry.collapsed && collapsedAt >= 0) {
+			entry.collapsed[collapsedAt] = newRaw;
 			changed = true;
 		}
 		if (entry.customGrid?.[oldRaw]) {
@@ -11638,6 +12583,52 @@ export default class SectionCardsPlugin extends Plugin {
 		const next = flipped ? [...list, headingRaw] : list.filter((h) => h !== headingRaw);
 		if (next.length) current.flipped = next;
 		else delete current.flipped;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
+	/** Which dated cards a note hides relative to today. */
+	getDateHide(path: string): { future: boolean; past: boolean } {
+		const entry = this.settings.perFile?.[path];
+		return { future: !!entry?.hideFutureDates, past: !!entry?.hidePastDates };
+	}
+
+	async setDateHide(path: string, patch: { future?: boolean; past?: boolean }, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (patch.future !== undefined) {
+			if (patch.future) current.hideFutureDates = true;
+			else delete current.hideFutureDates;
+		}
+		if (patch.past !== undefined) {
+			if (patch.past) current.hidePastDates = true;
+			else delete current.hidePastDates;
+		}
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+		this.refreshAllViews();
+		// The toolbar's two toggle buttons show the state; refresh alone doesn't rebuild them.
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
+			if (leaf.view instanceof SectionCardsView) leaf.view.rebuildToolbar();
+		}
+	}
+
+	/** The cards of a note collapsed to their title bars, by heading line. */
+	getCollapsed(path: string): string[] {
+		return this.settings.perFile?.[path]?.collapsed ?? [];
+	}
+
+	/** Remember (or forget) that a card is collapsed. The view has already folded it. */
+	async setCardCollapsed(path: string, headingRaw: string, collapsed: boolean, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		const list = this.getCollapsed(path);
+		if (collapsed === list.includes(headingRaw)) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		const next = collapsed ? [...list, headingRaw] : list.filter((h) => h !== headingRaw);
+		if (next.length) current.collapsed = next;
+		else delete current.collapsed;
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
 	}

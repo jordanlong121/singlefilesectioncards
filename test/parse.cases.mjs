@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -298,44 +298,44 @@ t("sample vault: checkbox N maps to task line N for every card", () => {
 const DEFAULTS = { layout: "grid", headingLevel: 3, sortOrder: "asc" };
 
 t("a note with no saved view falls back to the defaults (grid)", () => {
-  assert.deepEqual(resolveViewSettings(undefined, {}, DEFAULTS), { ...DEFAULTS, hierarchy: false, sections: false, starredOnly: false, taskFilter: "all" });
+  assert.deepEqual(resolveViewSettings(undefined, {}, DEFAULTS), { ...DEFAULTS, hierarchy: false, sections: false, starredOnly: false, taskFilter: "all", groupBy: "none" });
 });
 
 t("a note's saved view wins over restored tab state and defaults", () => {
   const saved = { layout: "vertical", headingLevel: 2, sortOrder: "desc", hierarchy: true, sections: false, starredOnly: true };
   const state = { layout: "tight", headingLevel: 4, sortOrder: "asc", hierarchy: false, sections: true, starredOnly: false };
-  assert.deepEqual(resolveViewSettings(saved, state, DEFAULTS), { ...saved, taskFilter: "all" });
+  assert.deepEqual(resolveViewSettings(saved, state, DEFAULTS), { ...saved, taskFilter: "all", groupBy: "none" });
 });
 
 t("restored tab state is used when the note has no saved view", () => {
   const state = { layout: "aligned", headingLevel: 2, sortOrder: "desc", hierarchy: false, sections: true, starredOnly: true };
-  assert.deepEqual(resolveViewSettings(undefined, state, DEFAULTS), { ...state, taskFilter: "all" });
+  assert.deepEqual(resolveViewSettings(undefined, state, DEFAULTS), { ...state, taskFilter: "all", groupBy: "none" });
 });
 
 t("partial saved views fall through field by field", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "horizontal" }, { sortOrder: "desc" }, DEFAULTS),
-    { layout: "horizontal", headingLevel: 3, sortOrder: "desc", hierarchy: false, sections: false, starredOnly: false, taskFilter: "all" },
+    { layout: "horizontal", headingLevel: 3, sortOrder: "desc", hierarchy: false, sections: false, starredOnly: false, taskFilter: "all", groupBy: "none" },
   );
 });
 
 t("a stale 'hierarchy' layout becomes grid with the columns toggled on", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "hierarchy" }, {}, DEFAULTS),
-    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false, taskFilter: "all" },
+    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false, taskFilter: "all", groupBy: "none" },
   );
 });
 
 t("a stale 'sections' layout becomes grid with the dividers toggled on", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "sections" }, {}, DEFAULTS),
-    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: false, sections: true, starredOnly: false, taskFilter: "all" },
+    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: false, sections: true, starredOnly: false, taskFilter: "all", groupBy: "none" },
   );
 });
 
 t("hierarchy and section dividers are never both on — the columns win", () => {
   const both = resolveViewSettings({ layout: "grid", hierarchy: true, sections: true }, {}, DEFAULTS);
-  assert.deepEqual(both, { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false, taskFilter: "all" });
+  assert.deepEqual(both, { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false, taskFilter: "all", groupBy: "none" });
 });
 
 // ---------- wheel panning ----------
@@ -822,6 +822,66 @@ t("bodyForRender: a plain line under a list item becomes its own paragraph", () 
   assert.equal(bodyForRender("- [ ] task\n\nplain"), "- [ ] task\n\nplain");
   assert.equal(bodyForRender("- a\n#### sub"), "- a\n#### sub");
   assert.equal(bodyForRender("```\n- a\ntext\n```"), "```\n- a\ntext\n```"); // fences stay byte-exact
+});
+
+t("sectionBlocks: a list item indented less than the previous item's content is a sibling, not a child", () => {
+  // The renderer shows " - [ ] change tires" as the sixth item, so the blocks must agree.
+  const b = ["- [ ] pickup twins", "- [ ] pickup logan", " - [ ] change tires"];
+  assert.deepEqual(movableBlocks(b).map((x) => b.slice(x.start, x.end).join("|")), ["- [ ] pickup twins", "- [ ] pickup logan", " - [ ] change tires"]);
+  // Two spaces (or a tab) reach the content column of "- ", so those ARE children.
+  const c = ["- a", "  - a1", "\t- a2", "- b", " - b1?"];
+  assert.deepEqual(movableBlocks(c).map((x) => b && c.slice(x.start, x.end).join("|")), ["- a|  - a1|\t- a2", "- b", " - b1?"]);
+  // An item at one space indent under an item at one space indent: content column 3, so "   - x" nests.
+  const d = [" - a", "   - a1", " - b"];
+  assert.deepEqual(movableBlocks(d).map((x) => d.slice(x.start, x.end).join("|")), [" - a|   - a1", " - b"]);
+  // Plain indented text under an item is still its continuation.
+  const e = ["- a", " note", "- b"];
+  assert.deepEqual(movableBlocks(e).map((x) => e.slice(x.start, x.end).join("|")), ["- a| note", "- b"]);
+});
+
+t("sectionBlocks: a comment-only line is its own block and ends the paragraph above it", () => {
+  const b = ["- a", "", "last para", "%% flip %%", "back text", "<!-- note -->", "more"];
+  assert.deepEqual(sectionBlocks(b), [
+    { kind: "item", start: 0, end: 1 },
+    { kind: "paragraph", start: 2, end: 3 },
+    { kind: "other", start: 3, end: 4 },
+    { kind: "paragraph", start: 4, end: 5 },
+    { kind: "other", start: 5, end: 6 },
+    { kind: "paragraph", start: 6, end: 7 },
+  ]);
+  assert.deepEqual(movableBlocks(b).map((x) => b.slice(x.start, x.end).join("|")), ["- a", "last para", "back text", "more"]);
+  // The last front paragraph can now move: it no longer carries the marker with it.
+  const doc = L("### T\n- a\nlast para\n%% flip %%\nback\n\n### U\nx");
+  assert.deepEqual(moveBlock(doc, 3, 0, 1, 0, 0, "before").slice(0, 5), ["### T", "", "last para", "", "- a"]);
+});
+
+t("groupCards: buckets by tag, date, open tasks, stars, and length in fixed orders", () => {
+  const doc = L([
+    "### 2026-09-10, Thursday", "- [ ] a #work", "- [ ] b", "- [ ] c", "",
+    "### 2026-09-09, Wednesday", "⭐ starred line", "",
+    "### Notes", "some text #home", "seen 2026-08-01", "",
+    "### Long one", ...Array.from({ length: 22 }, (_, i) => `line ${i}`), "",
+    "### 2026-12-01, Tuesday", "future", "",
+  ].join("\n"));
+  const secs = parseSections(doc, 3);
+  const opts = { emoji: "⭐", format: "YYYY-MM-DD, dddd", detect: "", todayIso: "2026-09-10" };
+  const titles = (by) => groupCards(secs, by, opts).map((g) => [g.title, g.sections.map((s) => s.title.slice(0, 10))]);
+  assert.deepEqual(titles("tag"), [["#home", ["Notes"]], ["#work", ["2026-09-10"]], ["No tag", ["2026-09-09", "Long one", "2026-12-01"]]]);
+  assert.deepEqual(titles("date"), [["Upcoming", ["2026-12-01"]], ["Today", ["2026-09-10"]], ["Yesterday", ["2026-09-09"]], ["Older", ["Notes"]], ["No date", ["Long one"]]]);
+  assert.deepEqual(titles("tasks"), [["3–5 open tasks", ["2026-09-10"]], ["No open tasks", ["2026-09-09", "Notes", "Long one", "2026-12-01"]]]);
+  assert.deepEqual(titles("stars"), [["Starred", ["2026-09-09"]], ["Not starred", ["2026-09-10", "Notes", "Long one", "2026-12-01"]]]);
+  assert.deepEqual(titles("length"), [["Long (20+ lines)", ["Long one"]], ["Short (≤5 lines)", ["2026-09-10", "2026-09-09", "Notes", "2026-12-01"]]]);
+  // Group keys are namespaced so collapsed-state memory can't collide with ancestor headings.
+  assert.equal(groupCards(secs, "stars", opts)[0].key, "group:stars:Starred");
+});
+
+t("dueTaskSummary: open tasks due before/on today, in Tasks or Dataview notation", () => {
+  const body = ["- [ ] pay rent 📅 2026-09-01", "- [ ] call mum 📅 2026-09-10", "- [x] done one 📅 2026-08-01",
+    "- [ ] dv style [due:: 2026-09-09]", "- [ ] later 📅 2026-12-25", "plain line 📅 2026-01-01", "- [ ] no date"].join("\n");
+  assert.deepEqual(dueTaskSummary(body, "2026-09-10"), { overdue: 2, dueToday: 1 });
+  assert.deepEqual(dueTaskSummary("- [ ] nothing here", "2026-09-10"), { overdue: 0, dueToday: 0 });
+  // Nested tasks count too; a done task never does.
+  assert.deepEqual(dueTaskSummary("- [ ] a\n\t- [ ] b 📅 2020-01-01\n\t- [X] c 📅 2020-01-01", "2026-09-10"), { overdue: 1, dueToday: 0 });
 });
 
 t("pickNearViewport: cards near the visible area render first, hidden ones wait", () => {

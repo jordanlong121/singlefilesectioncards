@@ -486,6 +486,21 @@ body.sfsc-flat-cards .section-cards-view {
 	visibility: hidden;
 }
 
+/* The hide-future / hide-past toggles beside the calendar button. Off: a muted glyph,
+   like the calendar's. On: filled with the accent (kept through hover), like the star
+   button — so the two states read at a glance. */
+.section-cards-datehide-btn {
+	margin-left: 2px;
+	color: var(--text-muted);
+}
+
+.section-cards-icon-btn.section-cards-datehide-btn.is-active,
+.section-cards-icon-btn.section-cards-datehide-btn.is-active:hover {
+	color: var(--text-on-accent, #fff);
+	background-color: var(--interactive-accent);
+	box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
 /* The extra selector weight out-ranks theme input[type=…] rules: the input must
    never take flow space, or it opens a phantom gap beside the button. */
 .section-cards-jump-date input.section-cards-jump-input {
@@ -821,7 +836,8 @@ body.is-mobile .is-layout-tight .section-card-body {
 
 /* The pin's default button height was what kept the header tall — and pinning
    means nothing on a calendar (date order is fixed, the band is off), so it goes. */
-.is-layout-calendar .section-card .section-card-pin {
+.is-layout-calendar .section-card .section-card-pin,
+.is-layout-calendar .section-card .section-card-collapse {
 	display: none;
 }
 
@@ -3156,6 +3172,10 @@ body.is-mobile .sfsc-library-btn {
 	cursor: text;
 }
 
+.section-card-header.is-click-select {
+	cursor: pointer;
+}
+
 /* --sfsc-font-scale (settings → "Card text size") multiplies every card text size;
    the plugin sets it on the body, 1 before it loads. */
 .section-card-title {
@@ -3283,7 +3303,8 @@ body.theme-dark .section-card[data-sfsc-color] .section-card-actions {
    no button chrome in either state. Dim when unpinned, full-strength accent when
    pinned; on colored headers the fg flip recolors it and the opacity still tells
    the states apart. */
-.section-card-pin {
+.section-card-pin,
+.section-card-collapse {
 	flex: 0 0 auto;
 	display: flex;
 	align-items: center;
@@ -3296,7 +3317,8 @@ body.theme-dark .section-card[data-sfsc-color] .section-card-actions {
 	cursor: pointer;
 }
 
-.section-card-pin:hover {
+.section-card-pin:hover,
+.section-card-collapse:hover {
 	background: transparent;
 	box-shadow: none;
 	opacity: 0.8;
@@ -3306,11 +3328,13 @@ body.theme-dark .section-card[data-sfsc-color] .section-card-actions {
    direct hover brightens it. (The is-pinned rule below out-cascades the card-hover
    dimness, so a pinned card's pin stays at full strength.) */
 @media (hover: hover) {
-	.section-card:hover .section-card-pin {
+	.section-card:hover .section-card-pin,
+	.section-card:hover .section-card-collapse {
 		opacity: 0.35;
 	}
 
-	.section-card:hover .section-card-pin:hover {
+	.section-card:hover .section-card-pin:hover,
+	.section-card:hover .section-card-collapse:hover {
 		opacity: 0.8;
 	}
 }
@@ -3320,7 +3344,13 @@ body.theme-dark .section-card[data-sfsc-color] .section-card-actions {
 	opacity: 1;
 }
 
-.section-card-pin svg {
+/* A folded card's chevron stays visible, so the fold reads as a state like the pin. */
+.section-card.is-collapsed .section-card-collapse {
+	opacity: 0.7;
+}
+
+.section-card-pin svg,
+.section-card-collapse svg {
 	display: block;
 	width: 14px;
 	height: 14px;
@@ -3332,7 +3362,12 @@ body.theme-dark .section-card[data-sfsc-color] .section-card-actions {
 .section-card-header button.section-card-pin:hover,
 .section-card-header button.section-card-pin:active,
 .section-card-header button.section-card-pin:focus,
-.section-card-header button.section-card-pin:focus-visible {
+.section-card-header button.section-card-pin:focus-visible,
+.section-card-header button.section-card-collapse,
+.section-card-header button.section-card-collapse:hover,
+.section-card-header button.section-card-collapse:active,
+.section-card-header button.section-card-collapse:focus,
+.section-card-header button.section-card-collapse:focus-visible {
 	background: none;
 	background-color: transparent;
 	box-shadow: none;
@@ -3379,6 +3414,121 @@ body.is-mobile .section-card-actions button {
 .section-card-quickadd svg {
 	width: 13px;
 	height: 13px;
+}
+
+/* Multi-select: a solid accent ring on selected cards, a dashed one on the keyboard
+   focus. Both sit outside the border so the card's own colors stay legible. */
+.section-card.is-selected {
+	box-shadow: 0 0 0 2px var(--interactive-accent), var(--sc-shadow);
+}
+
+.section-card.is-focused {
+	outline: 2px dashed var(--interactive-accent);
+	outline-offset: 3px;
+}
+
+.section-card.is-selected .section-card-header {
+	background: linear-gradient(rgba(var(--interactive-accent-rgb, 124, 92, 255), 0.18), rgba(var(--interactive-accent-rgb, 124, 92, 255), 0.18)),
+		linear-gradient(var(--sc-header), var(--sc-header)),
+		linear-gradient(var(--sc-surface), var(--sc-surface)), var(--background-primary);
+}
+
+/* The selection bar: a floating strip along the bottom of the pane while cards are selected. */
+.sfsc-selection-bar {
+	position: sticky;
+	bottom: 10px;
+	z-index: 5;
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	width: max-content;
+	max-width: calc(100% - 2 * var(--sc-pad));
+	margin: 0 auto 10px;
+	padding: 6px 10px;
+	border: 1px solid var(--sc-line);
+	border-radius: 999px;
+	background: var(--background-primary);
+	box-shadow: var(--sc-shadow-hover);
+}
+
+.sfsc-selection-bar.is-hidden {
+	display: none;
+}
+
+.sfsc-selection-count {
+	padding: 0 6px;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.sfsc-selection-bar button {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: auto;
+	padding: 4px 10px;
+	font-size: var(--font-ui-smaller);
+	border-radius: 999px;
+	box-shadow: none;
+}
+
+.sfsc-selection-icon svg {
+	width: 13px;
+	height: 13px;
+}
+
+/* The Rolodex and canvases lay the pane out themselves; the bar floats over the pane's bottom. */
+.is-layout-rolodex .sfsc-selection-bar,
+.is-layout-vertical .sfsc-selection-bar {
+	position: absolute;
+	left: 50%;
+	transform: translateX(-50%);
+}
+
+/* Collapsed cards: the title bar alone, its bottom rule gone since nothing follows. */
+.section-card.is-collapsed:not(.is-editing) > .section-card-body {
+	display: none;
+}
+
+.section-card.is-collapsed:not(.is-editing) > .section-card-header {
+	border-bottom: none;
+}
+
+/* Due-task marks (settings → Tasks): a pill in the title bar and a tinted edge. */
+.sfsc-due-badge {
+	flex: 0 0 auto;
+	margin-left: auto;
+	padding: 1px 7px;
+	border-radius: 999px;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	line-height: 1.4;
+	white-space: nowrap;
+	color: var(--text-on-accent, #fff);
+	background: rgb(var(--color-orange-rgb, 233, 151, 63));
+}
+
+.sfsc-due-badge.is-hidden {
+	display: none;
+}
+
+.section-card.has-overdue .sfsc-due-badge {
+	background: rgb(var(--color-red-rgb, 233, 80, 80));
+}
+
+.section-card.has-due {
+	border-color: rgba(var(--color-orange-rgb, 233, 151, 63), 0.8);
+}
+
+.section-card.has-overdue {
+	border-color: rgba(var(--color-red-rgb, 233, 80, 80), 0.8);
+}
+
+/* The tasks-layout count and the due pill both sit at the right; keep them apart. */
+.is-layout-tasks .section-card .sfsc-task-count + .sfsc-due-badge {
+	margin-left: 6px;
 }
 
 /* A flipped card's button reads as "on", like the pin. */
@@ -3753,7 +3903,8 @@ body.is-mobile .section-card-quickadd {
 
 /* No hover on touch: the unpinned pin stays dimly visible so it can be tapped,
    and the tap target grows like the other buttons. */
-body.is-mobile .section-card-pin {
+body.is-mobile .section-card-pin,
+body.is-mobile .section-card-collapse {
 	padding: 6px 9px;
 	opacity: 0.45;
 }
@@ -3766,6 +3917,7 @@ body.is-mobile .section-card-delete svg,
 body.is-mobile .section-card-big svg,
 body.is-mobile .section-card-open svg,
 body.is-mobile .section-card-pin svg,
+body.is-mobile .section-card-collapse svg,
 body.is-mobile .section-card-color svg,
 body.is-mobile .section-card-quickadd svg {
 	width: 16px;

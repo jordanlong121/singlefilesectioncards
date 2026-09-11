@@ -20,6 +20,8 @@ export interface EmbeddedEditorOptions {
 	onSave: () => void;
 	/** Escape inside the editor — the caller decides whether that discards or asks first. */
 	onCancel: () => void;
+	/** Mod+T inside the editor (the caller opens the Tasks plugin's create dialog). */
+	onTask?: () => void;
 	/** The document changed — the caller re-measures card layout. */
 	onChange: () => void;
 }
@@ -29,6 +31,9 @@ export interface EmbeddedEditor {
 	readonly value: string;
 	/** Return focus to the editor, leaving the cursor where it was. */
 	focus(): void;
+	/** Put `text` on its own line at the cursor: onto the current line if it's blank,
+	 * else on a new line below it; the cursor lands at the end of the insert. */
+	insertLine(text: string): void;
 	focusEnd(): void;
 	destroy(): void;
 }
@@ -132,6 +137,15 @@ export function createEmbeddedEditor(
 								},
 								preventDefault: true,
 							},
+							{
+								key: "Mod-t",
+								run: () => {
+									if (!options.onTask) return false;
+									options.onTask();
+									return true;
+								},
+								preventDefault: true,
+							},
 						]),
 					),
 				);
@@ -175,6 +189,19 @@ export function createEmbeddedEditor(
 			},
 			focus(): void {
 				editor.editor.cm.focus();
+			},
+			insertLine(text: string): void {
+				const cm = editor.editor.cm;
+				const line = cm.state.doc.lineAt(cm.state.selection.main.head);
+				const blank = line.text.trim() === "";
+				const from = blank ? line.from : line.to;
+				const insert = blank ? text : "\n" + text;
+				cm.dispatch({
+					changes: { from, to: blank ? line.to : line.to, insert },
+					selection: EditorSelection.cursor(from + insert.length),
+					scrollIntoView: true,
+				});
+				cm.focus();
 			},
 			focusEnd(): void {
 				const cm = editor.editor.cm;
