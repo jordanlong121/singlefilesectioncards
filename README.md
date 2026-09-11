@@ -382,7 +382,8 @@ clicked, it decides from the note itself; click it once and your choice is remem
 With **Dates** on, two toggle buttons beside the toolbar's calendar button (and the same items in
 the toolbar menu) offer **Hide future dates** and **Hide past dates**: dated
 cards after today, or before it, drop out of the wall (today's card and undated cards always
-show). Remembered per note. The Calendar and Heatmap ignore them, since their grids place
+show). A status bar along the pane's bottom says which are hidden, with a button to show them
+again; jumping to a hidden date turns the hide off. Remembered per note. The Calendar and Heatmap ignore them, since their grids place
 every day.
 
 ## Jump to a date

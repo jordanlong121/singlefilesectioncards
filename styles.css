@@ -3487,6 +3487,66 @@ body.is-mobile .section-card-actions button {
 	transform: translateX(-50%);
 }
 
+/* Hide past / future dates: a status bar across the pane's bottom. It sits on the leaf
+   container (outside the scrolling pane), so cards scroll underneath; the pane pads its
+   bottom by the bar's height so the last row can still scroll fully into view. */
+.workspace-leaf-content[data-type="section-cards-view"] {
+	position: relative;
+}
+
+.sfsc-datebar {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 6;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 14px;
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+	background: var(--background-secondary);
+	border-top: 1px solid var(--background-modifier-border);
+	box-shadow: 0 -2px 8px rgba(var(--mono-rgb-0), 0.18);
+}
+
+.sfsc-datebar.is-hidden {
+	display: none;
+}
+
+.sfsc-datebar-icon svg {
+	display: block;
+	width: 14px;
+	height: 14px;
+	color: var(--text-muted);
+}
+
+.sfsc-datebar-text {
+	font-weight: 600;
+}
+
+.sfsc-datebar button {
+	height: auto;
+	padding: 2px 10px;
+	font-size: var(--font-ui-smaller);
+	border-radius: 999px;
+	box-shadow: none;
+}
+
+.sfsc-datebar button:first-of-type {
+	margin-left: auto;
+}
+
+.section-cards-view.has-datebar .section-cards-grid {
+	padding-bottom: calc(var(--sc-pad) + 36px);
+}
+
+/* The selection bar rides above the status bar when both show. */
+.section-cards-view.has-datebar .sfsc-selection-bar {
+	bottom: 46px;
+}
+
 /* Collapsed cards: the title bar alone, its bottom rule gone since nothing follows. */
 .section-card.is-collapsed:not(.is-editing) > .section-card-body {
 	display: none;

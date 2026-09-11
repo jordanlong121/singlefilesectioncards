@@ -2965,6 +2965,8 @@ export class SectionCardsView extends ItemView {
 	private focusedKey: string | null = null;
 	/** The selection action bar (bottom of the view); built once, shown while anything is selected. */
 	private selectionBar: HTMLElement | null = null;
+	/** The status bar along the pane's bottom while Hide past / future dates is on. */
+	private dateBarEl: HTMLElement | null = null;
 	/** A card drag that carries the whole selection along (document order only). */
 	private draggingMany: Section[] | null = null;
 	/** Rolodex: the title-tab strip above the one showing card, and the wrapper that
@@ -3485,6 +3487,9 @@ export class SectionCardsView extends ItemView {
 		}
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
 		this.selectionBar = this.contentEl.createDiv({ cls: "sfsc-selection-bar is-hidden" });
+		// The hide-dates status bar lives on the leaf container, not in the scrolling
+		// pane, so the cards scroll underneath it.
+		this.dateBarEl = this.containerEl.createDiv({ cls: "sfsc-datebar is-hidden" });
 		// Right-click on the wall itself — not a card or a control, which have their
 		// own menus — offers the background options where the background actually is.
 		// Registered on the hierarchy columns pane too: it covers the wall's left side
@@ -3996,6 +4001,33 @@ export class SectionCardsView extends ItemView {
 		const text = overdue > 0 ? `${overdue} overdue` : dueToday > 0 ? `${dueToday} due today` : "";
 		if (badge.textContent !== text) badge.setText(text);
 		badge.toggleClass("is-hidden", !text);
+	}
+
+	/** The bottom status bar: which dated cards are hidden (Hide past / future dates), with
+	 * a button to show each again. Only where the hide applies — dated notes, not the
+	 * Calendar/Heatmap, not the Deck. The pane pads its bottom so the last row can scroll
+	 * clear of the bar. */
+	private syncDateBar(): void {
+		const bar = this.dateBarEl;
+		if (!bar) return;
+		const hide = this.plugin.getDateHide(this.filePath);
+		const show = (hide.future || hide.past) && this.containsDates && !this.isDateLayout() && !this.deckMode;
+		bar.toggleClass("is-hidden", !show);
+		this.contentEl.toggleClass("has-datebar", show);
+		if (!show) return;
+		bar.empty();
+		setIcon(bar.createSpan({ cls: "sfsc-datebar-icon" }), "eye-off");
+		const what = hide.past && hide.future ? "past and future" : hide.past ? "past" : "future";
+		bar.createSpan({ cls: "sfsc-datebar-text", text: `Hiding ${what} dates` });
+		const base = this.viewSettings();
+		if (hide.past) {
+			const btn = bar.createEl("button", { text: "Show past" });
+			btn.addEventListener("click", () => void this.plugin.setDateHide(this.filePath, { past: false }, base));
+		}
+		if (hide.future) {
+			const btn = bar.createEl("button", { text: "Show future" });
+			btn.addEventListener("click", () => void this.plugin.setDateHide(this.filePath, { future: false }, base));
+		}
 	}
 
 	/** Today's date keys, computed once per render instead of once per card. */
@@ -5563,7 +5595,7 @@ export class SectionCardsView extends ItemView {
 		this.openJumpPicker = openJumpPicker;
 		jumpBtn.addEventListener("click", openJumpPicker);
 		jumpInput.addEventListener("change", () => {
-			if (jumpInput.value) this.jumpToDate(jumpInput.value);
+			if (jumpInput.value) void this.jumpToDate(jumpInput.value);
 		});
 		// Beside the calendar: hide dated cards after today / before today (also in the
 		// menu). They share the calendar button's visibility — only where dates exist.
@@ -5966,19 +5998,38 @@ export class SectionCardsView extends ItemView {
 	}
 
 	/** Scroll the card whose heading is the picked ISO date into view, like the today jump. */
-	private jumpToDate(iso: string): void {
+	private async jumpToDate(iso: string): Promise<void> {
 		const formatted = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
 		const detect = this.plugin.settings.dateDetectFormat;
 		// The quick textual match first; the detect pattern finds the rest — a card the
 		// calendar places must be findable here too, or this would offer a duplicate.
-		const entry =
+		const find = () =>
 			this.cardEntries.find((e) => isTodayTitle(e.holder.section.title, iso, formatted)) ??
 			(detect
 				? this.cardEntries.find((e) => titleToIso(e.holder.section.title, this.cardFormat(), detect) === iso)
 				: undefined);
+		let entry = find();
 		if (!entry) {
 			this.promptCreateDateCard(iso);
 			return;
+		}
+		// Hidden by Hide future / past dates: asking for that day means the hide is in
+		// the way — turn the relevant one off, show the cards again, then jump.
+		const hide = this.plugin.getDateHide(this.filePath);
+		const today = mo().format("YYYY-MM-DD");
+		const unhideFuture = hide.future && iso > today;
+		const unhidePast = hide.past && iso < today;
+		if (unhideFuture || unhidePast) {
+			await this.plugin.setDateHide(
+				this.filePath,
+				{ future: unhideFuture ? false : undefined, past: unhidePast ? false : undefined },
+				this.viewSettings(),
+				false,
+			);
+			await this.refresh();
+			entry = find();
+			if (!entry) return;
+			new Notice(`Showing ${unhideFuture ? "future" : "past"} dates again.`);
 		}
 		const title = entry.holder.section.title || "(untitled)";
 		if (this.layout === "custom" && !this.customPlacements[entry.holder.section.headingRaw]) {
@@ -6025,7 +6076,7 @@ export class SectionCardsView extends ItemView {
 		const body = await this.plugin.loadTemplateBody(file.path, title);
 		await insertSection(this.app, file, headingRaw, this.plugin.settings.newCardPlacement, body ?? undefined);
 		await this.refresh();
-		this.jumpToDate(iso);
+		void this.jumpToDate(iso);
 	}
 
 	/** The new-card options menu: this note's template, and its own heading-name format. */
@@ -6643,6 +6694,7 @@ export class SectionCardsView extends ItemView {
 		// note must not block it, so this branch outranks the not-found message.
 		if (this.deckMode) {
 			this.renderDeck();
+			this.syncDateBar();
 			return;
 		}
 
@@ -6737,6 +6789,7 @@ export class SectionCardsView extends ItemView {
 		this.jumpDateWrap?.toggleClass("is-hidden", !this.hasDateHeadings);
 		if (this.datesToggle) this.datesToggle.checked = this.containsDates;
 		this.syncDatesLabel();
+		this.syncDateBar();
 
 		// The starred-only toggle is only offered while the note has a starred line.
 		// When the last star goes, the mode turns itself off so nothing stays hidden
@@ -12593,7 +12646,12 @@ export default class SectionCardsPlugin extends Plugin {
 		return { future: !!entry?.hideFutureDates, past: !!entry?.hidePastDates };
 	}
 
-	async setDateHide(path: string, patch: { future?: boolean; past?: boolean }, base: ViewSettings): Promise<void> {
+	async setDateHide(
+		path: string,
+		patch: { future?: boolean; past?: boolean },
+		base: ViewSettings,
+		refresh = true,
+	): Promise<void> {
 		if (!path) return;
 		this.settings.perFile = this.settings.perFile ?? {};
 		const current = this.settings.perFile[path] ?? { ...base };
@@ -12607,7 +12665,7 @@ export default class SectionCardsPlugin extends Plugin {
 		}
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
-		this.refreshAllViews();
+		if (refresh) this.refreshAllViews();
 		// The toolbar's two toggle buttons show the state; refresh alone doesn't rebuild them.
 		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
 			if (leaf.view instanceof SectionCardsView) leaf.view.rebuildToolbar();
