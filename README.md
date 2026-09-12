@@ -54,7 +54,7 @@ If this plugin is useful to you, you can support its development:
   that searches the vault as you type. Type a title that isn't a note yet and the last row
   offers to create it (`Shift+Enter`, or the footer's "Create new note…" button), in Obsidian's default new-note folder —
   or include a `folder/` to place it.
-- **Keyboard shortcuts.** `1`–`6` heading level, `L` layouts, `V` view modes, `D` deck,
+- **Keyboard shortcuts.** `1`–`6` heading level, `L`/`Shift+L` layouts, `V` view modes, `D` deck,
   `,`/`.` previous/next heading, `N` new card, `O` pick a note, `S` starred lines only,
   `F` flip the card under the pointer, `Shift+F` all cards face up, arrows move the card focus
   (Enter edits, Space selects), `Ctrl/⌘+A` select all, `Ctrl/⌘+F` filter, `Ctrl/⌘+T` a new task
@@ -180,8 +180,7 @@ bucket; click a bar to collapse its bucket. The choice is remembered per note, l
 
 Selection works like a file manager: click a card's title bar to select it, Shift-click another
 card to select the run between them, `Ctrl/⌘+A` for every visible card, and click empty space (or
-press Esc) to clear. Ctrl/⌘-click makes a card big
-instead; the *Clicking a card's title bar* setting can make a plain title click do that, or edit.
+press Esc) to clear. Ctrl/⌘-click makes a card big instead.
 Changing the sort or grouping keeps the selected card in view. A bar along the bottom then offers **Pin**, **Unpin**,
 **Color…**, **Flip** / **Unflip** (two-faced cards), and **Delete…**; a title bar's right-click menu
 has the same, plus **Move selected before / after this card**. Dragging one selected card drags
@@ -423,7 +422,6 @@ prompt offers to create it (template applied, default placement).
 | Show open-task counts in Hierarchy columns | Square badge per column row counting the unfinished tasks beneath it (on by default) |
 | Default heading name | Date format used to pre-fill "New card" (any note can set its own from the toolbar's new-card options menu) |
 | Default placement | Where a new card is inserted |
-| Clicking a card's title bar | Selects the card (default), makes it big, or edits the raw markdown; Shift-click always selects, Ctrl/⌘-click always makes it big |
 | Autosave open card editors | Write an open editor's content to the note every few minutes, and when the view closes, so an edit left open isn't lost (on by default) |
 | Autosave interval | Minutes between autosaves while a card editor is open (default 5) |
 | Toggle tasks with the Tasks plugin | Route checkbox ticks through the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin when it's installed (recurrence, its done dates) |

@@ -55,6 +55,7 @@ export const requestUrl = async () => {
 	throw new Error("network is stubbed out in tests");
 };
 export const setIcon = () => {};
+export const apiVersion = "0.0.0";
 export class SuggestModal { setPlaceholder() {} }
 export class Scope { register() {} }
 export const Platform = { isMobile: false, isPhone: false, isTablet: false };

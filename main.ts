@@ -14,6 +14,7 @@ import {
 	Platform,
 	Plugin,
 	PluginSettingTab,
+	apiVersion,
 	Scope,
 	Setting,
 	type SettingDefinition,
@@ -32,6 +33,7 @@ import {
 import { createEmbeddedEditor, type EmbeddedEditor } from "./editor-embed";
 
 export const VIEW_TYPE_SECTION_CARDS = "section-cards-view";
+const GITHUB_REPO_URL = "https://github.com/jordanlong121/singlefilesectioncards";
 
 /** Bodies rendered synchronously on open — roughly two screenfuls. The rest render in
  * idle-time batches so a year-long note paints its first cards immediately. A phone
@@ -130,9 +132,6 @@ const DECK_SORT_LABELS: [DeckSort, string][] = [
 	["created", "Created"],
 ];
 
-/** What clicking a card's title bar does. */
-export type TitleBarClick = "select" | "maximize" | "edit";
-
 /** "live" renders markdown while editing, "source" shows it highlighted — both via
  * Obsidian's editor, falling back to "plain" (a bare textarea) if it's unavailable. */
 export type EditorMode = "live" | "source" | "plain";
@@ -187,7 +186,6 @@ interface SectionCardsSettings {
 	/** Emoji written at the start of a line by right-click → "Add star"; the starred-only
 	 * toggle and the block tagging match against it. Stored in the note as literal text. */
 	starEmoji: string;
-	titleBarClick: TitleBarClick;
 	/** Full toolbar with text labels, or the compact one-line version for narrow panes. */
 	toolbarStyle: "full" | "compact";
 	/** First day of the Calendar layout's weeks; "locale" follows the language default. */
@@ -476,7 +474,6 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	tasksToggle: true,
 	strikeNestedUnderDone: true,
 	starEmoji: "⭐",
-	titleBarClick: "select",
 	toolbarStyle: "compact",
 	weekStart: "locale",
 	dateDetectFormat: "",
@@ -2256,6 +2253,15 @@ interface NoteImage {
 	kind: "image" | "video";
 }
 
+/** What "hide past / future dates" is comparing against while it's on. */
+interface DateGate {
+	past: boolean;
+	future: boolean;
+	today: string;
+	format: string;
+	detect: string;
+}
+
 /** Round a rect onto the snap grid, clamped to the canvas and the minimum card size. */
 export function snapRect(rect: CardRect, step: number, minW: number, minH: number): CardRect {
 	const snap = (value: number) => Math.round(value / step) * step;
@@ -3619,18 +3625,21 @@ export class SectionCardsView extends ItemView {
 				return false;
 			});
 		}
-		// L: cycle through the layouts, in the dropdown's order.
-		this.scope.register([], "L", (evt) => {
+		// L: cycle through the layouts, in the dropdown's order; Shift+L goes backwards.
+		const cycleLayout = (evt: KeyboardEvent, delta: 1 | -1): boolean => {
 			if (!this.plainShortcutOk(evt)) return true;
 			const values = LAYOUT_OPTIONS.map(([value]) => value);
-			let next = values[(values.indexOf(this.layout) + 1) % values.length];
+			const step = (from: Layout) => values[(values.indexOf(from) + delta + values.length) % values.length];
+			let next = step(this.layout);
 			// The cycle skips the greyed-out date layouts, like the dropdown refuses them.
 			while ((next === "calendar" || next === "heatmap") && !this.calendarSelectable()) {
-				next = values[(values.indexOf(next) + 1) % values.length];
+				next = step(next);
 			}
 			this.setLayout(next);
 			return false;
-		});
+		};
+		this.scope.register([], "L", (evt) => cycleLayout(evt, 1));
+		this.scope.register(["Shift"], "L", (evt) => cycleLayout(evt, -1));
 		// V: cycle the View mode — one flat wall, hierarchy columns, divider bars —
 		// mirroring the toolbar's three-way toggle. Not on the layouts that place
 		// everything themselves, where the modes don't apply.
@@ -4050,17 +4059,11 @@ export class SectionCardsView extends ItemView {
 		const emoji = this.plugin.starEmoji();
 		// Hide future / past dates (menu): a gate on the heading's date, relative to today.
 		const hide = this.plugin.getDateHide(this.filePath);
-		const dateGate =
-			(hide.future || hide.past) && this.containsDates && !this.isDateLayout()
-				? { today: mo().format("YYYY-MM-DD"), format: this.cardFormat(), detect: this.plugin.settings.dateDetectFormat }
-				: null;
+		const dateGate = this.dateGate(hide);
+		const revealed: string[] = [];
 		for (const entry of this.cardEntries) {
 			const section = entry.holder.section;
-			let dateOk = true;
-			if (dateGate) {
-				const iso = titleToIso(section.title, dateGate.format, dateGate.detect);
-				if (iso && ((hide.future && iso > dateGate.today) || (hide.past && iso < dateGate.today))) dateOk = false;
-			}
+			const dateOk = !this.dateHiddenAs(section, dateGate);
 			// Title + raw, lowercased once per section (the title is display-only on
 			// the unfiled card, so raw alone wouldn't cover it).
 			let text = this.searchTextCache.get(section);
@@ -4077,8 +4080,11 @@ export class SectionCardsView extends ItemView {
 			} else {
 				entry.el.removeClass("sc-starred-more");
 			}
-			entry.el.toggleClass("is-filtered-out", !((!q || text.includes(q)) && starOk && dateOk));
+			const hidden = !((!q || text.includes(q)) && starOk && dateOk);
+			if (!hidden && entry.el.hasClass("is-filtered-out")) revealed.push(section.headingRaw);
+			entry.el.toggleClass("is-filtered-out", hidden);
 		}
+		this.resolveRevealedOverlaps(revealed);
 		// The sticky pinned band collapses when the filter hides everything in it.
 		// (Stamped here rather than with a CSS :has(), which lints as a perf hazard.)
 		if (this.pinnedEl) {
@@ -4090,6 +4096,29 @@ export class SectionCardsView extends ItemView {
 		}
 		if (this.layout === "rolodex") this.layoutRolodex(); // a hidden active card hands over
 		this.repack(); // masonry and row rules re-pack around the hidden cards
+	}
+
+	/** The hide-future / hide-past gate, or null when nothing is hidden by date here. */
+	private dateGate(hide = this.plugin.getDateHide(this.filePath)): DateGate | null {
+		return (hide.future || hide.past) && this.containsDates && !this.isDateLayout()
+			? {
+					past: hide.past,
+					future: hide.future,
+					today: mo().format("YYYY-MM-DD"),
+					format: this.cardFormat(),
+					detect: this.plugin.settings.dateDetectFormat,
+				}
+			: null;
+	}
+
+	/** Whether the gate hides this section, and as which kind of date. */
+	private dateHiddenAs(section: Section, gate: DateGate | null): "past" | "future" | null {
+		if (!gate) return null;
+		const iso = titleToIso(section.title, gate.format, gate.detect);
+		if (!iso) return null;
+		if (gate.future && iso > gate.today) return "future";
+		if (gate.past && iso < gate.today) return "past";
+		return null;
 	}
 
 	/** A body's front and back, per the flip setting (one face, no back, when it's off). */
@@ -4396,7 +4425,7 @@ export class SectionCardsView extends ItemView {
 		});
 		menu.addSeparator();
 		menu.addItem((item) => item.setTitle("No color").onClick(() => void this.plugin.setCardColorMany(this.filePath, keys, null, base)));
-		if (evt instanceof MouseEvent && evt.clientX) menu.showAtMouseEvent(evt);
+		if (evt.instanceOf(MouseEvent) && evt.clientX) menu.showAtMouseEvent(evt);
 		else menu.showAtPosition({ x: window.innerWidth / 2, y: window.innerHeight - 80 });
 	}
 
@@ -7154,8 +7183,6 @@ export class SectionCardsView extends ItemView {
 		}
 
 		const header = card.createDiv({ cls: "section-card-header" });
-		const titleClick = this.plugin.settings.titleBarClick;
-		header.addClass(titleClick === "maximize" ? "is-click-big" : titleClick === "edit" ? "is-click-edit" : "is-click-select");
 		header.createDiv({ cls: "section-card-title", text: section.title || "(untitled)" });
 		// Tasks layout only (CSS hides it elsewhere): how many tasks the card is
 		// showing under the current filter — applyTaskFilter keeps it current.
@@ -7261,10 +7288,9 @@ export class SectionCardsView extends ItemView {
 			);
 		});
 
-		// The title bar: Ctrl/⌘-click makes the card big, Shift-click toggles it in the
-		// selection, and a plain click does what the setting says — select it (default),
-		// make it big, or edit it. (The Rolodex card already fills the pane, so "big" is
-		// a no-op there, matching its hidden big button.)
+		// The title bar: a plain click selects the card, Shift-click extends the selection
+		// to it, and Ctrl/⌘-click makes the card big. (The Rolodex card already fills the
+		// pane, so "big" is a no-op there, matching its hidden big button.)
 		header.addEventListener("click", (evt) => {
 			if ((evt.target as HTMLElement | null)?.closest("button")) return;
 			evt.stopPropagation();
@@ -7275,17 +7301,6 @@ export class SectionCardsView extends ItemView {
 			}
 			if (evt.shiftKey) {
 				this.selectRange(key);
-				return;
-			}
-			if (titleClick === "maximize") {
-				if (this.layout !== "rolodex") this.toggleMaximized(card);
-				return;
-			}
-			if (titleClick === "edit") {
-				if (card.hasClass("is-editing")) return;
-				const open = this.activeEditor;
-				if (open && open.card !== card) void open.finish(true).then(() => this.startEditing(card, file, holder.section));
-				else this.startEditing(card, file, holder.section);
 				return;
 			}
 			this.selectOnly(key);
@@ -7931,7 +7946,9 @@ export class SectionCardsView extends ItemView {
 		this.snapPreviewEl = null;
 	}
 
-	/** Visible placed rects except the one being moved (hidden-level keys don't collide).
+	/** Visible placed rects except the one being moved. Hidden-level keys don't collide,
+	 * and neither do cards the canvas isn't showing (filter, hidden dates, hierarchy):
+	 * they're display:none, so blocking a drop there would look like a dead zone.
 	 * On the Images canvas "visible" means the image is still linked by the note. */
 	private otherPlacements(except: string): CardRect[] {
 		const present =
@@ -7939,10 +7956,44 @@ export class SectionCardsView extends ItemView {
 				? (key: string) => this.imagesByKey.size === 0 || this.imagesByKey.has(key)
 				: this.layout === "links"
 					? (key: string) => this.linksByKey.size === 0 || this.linksByKey.has(key)
-					: (key: string) => this.cardsByHeading.size === 0 || this.cardsByHeading.has(key);
+					: (key: string) => this.cardsByHeading.size === 0 || this.canvasCardVisible(key);
 		return Object.entries(this.activePlacements())
 			.filter(([key]) => key !== except && present(key))
 			.map(([, rect]) => rect);
+	}
+
+	/** Whether the canvas is showing this section's card (it exists and isn't hidden
+	 * by the filter, the date gate, or the hierarchy columns). */
+	private canvasCardVisible(key: string): boolean {
+		const el = this.cardsByHeading.get(key)?.el;
+		return !!el && !el.hasClass("is-filtered-out") && !el.hasClass("is-hier-hidden") && !el.hasClass("is-section-hidden");
+	}
+
+	/** A hidden card doesn't block drops, so another card may now sit on its spot.
+	 * When it comes back, walk it down to the nearest free spot, as a drop would. */
+	private resolveRevealedOverlaps(revealed: string[]): void {
+		if (this.layout !== "custom" || !revealed.length) return;
+		let moved = false;
+		for (const key of revealed) {
+			const rect = this.customPlacements[key];
+			if (!rect || !this.canvasCardVisible(key)) continue;
+			const others = this.otherPlacements(key);
+			if (!others.some((other) => rectsCollide(rect, other, CUSTOM_GAP))) continue;
+			this.customPlacements[key] = findFreeSpot(rect, others, CUSTOM_GAP, CUSTOM_SNAP);
+			moved = true;
+		}
+		if (!moved) return;
+		this.persistCanvas();
+		this.applyCanvasLayout();
+	}
+
+	/** For a section tile being dragged from the tray: "past" / "future" when the date
+	 * gate would hide it as soon as it landed, else null. Placed cards and the image
+	 * and link canvases never refuse. */
+	private dateHiddenDragReason(drag: { kind: "tile" | "card"; key: string }): "past" | "future" | null {
+		if (drag.kind !== "tile" || this.layout !== "custom") return null;
+		const section = this.cardsByHeading.get(drag.key)?.section;
+		return section ? this.dateHiddenAs(section, this.dateGate()) : null;
 	}
 
 	/** Begin a pointer-driven drag of a tray tile or a placed card. */
@@ -8011,10 +8062,13 @@ export class SectionCardsView extends ItemView {
 		const canvas = this.gridEl.getBoundingClientRect();
 		const overCanvas =
 			evt.clientX >= canvas.left && evt.clientX <= canvas.right && evt.clientY >= canvas.top && evt.clientY <= canvas.bottom;
-		this.gridEl.toggleClass("is-drop-target", overCanvas);
+		// A section the date gate hides can't land: it would vanish the moment it was
+		// placed. No target highlight and no preview, so the refusal isn't a surprise.
+		const refused = overCanvas && !!this.dateHiddenDragReason(drag);
+		this.gridEl.toggleClass("is-drop-target", overCanvas && !refused);
 
 		// Show exactly where the card will land — the same math the drop uses.
-		if (overCanvas) {
+		if (overCanvas && !refused) {
 			const px = (evt.clientX - canvas.left + this.gridEl.scrollLeft) / this.canvasZoom();
 			const py = (evt.clientY - canvas.top + this.gridEl.scrollTop) / this.canvasZoom();
 			const mins = this.canvasMins();
@@ -8051,6 +8105,13 @@ export class SectionCardsView extends ItemView {
 			evt.clientX >= canvas.left && evt.clientX <= canvas.right && evt.clientY >= canvas.top && evt.clientY <= canvas.bottom;
 
 		if (overCanvas) {
+			const hiddenAs = this.dateHiddenDragReason(drag);
+			if (hiddenAs) {
+				new Notice(
+					`“${drag.label}” is a ${hiddenAs} date and ${hiddenAs} dates are hidden — it wouldn't show on the canvas. Use Show on the dates bar first.`,
+				);
+				return;
+			}
 			const px = (evt.clientX - canvas.left + this.gridEl.scrollLeft) / this.canvasZoom();
 			const py = (evt.clientY - canvas.top + this.gridEl.scrollTop) / this.canvasZoom();
 			const mins = this.canvasMins();
@@ -11225,7 +11286,7 @@ class ShortcutsModal extends Modal {
 		contentEl.createEl("h3", { text: "Keyboard shortcuts" });
 		const rows: [string, string][] = [
 			["1–6", "Show that heading level as cards"],
-			["L", "Cycle the layouts"],
+			["L / Shift+L", "Cycle the layouts forwards / backwards"],
 			["V", "Cycle the view modes: default / hierarchy / dividers"],
 			["D", "Show or hide the Deck of notes"],
 			[", / .", "Previous / next heading in the Hierarchy and Dividers view modes, or card in the Rolodex"],
@@ -11855,14 +11916,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 				heading: "Editing",
 				items: [
 					{
-						name: "Clicking a card's title bar",
-						control: {
-							type: "dropdown",
-							key: "titleBarClick",
-							options: { select: "Selects the card", maximize: "Makes the card big", edit: "Edits the card" },
-						},
-					},
-					{
 						name: "Card editor",
 						control: {
 							type: "dropdown",
@@ -11954,7 +12007,85 @@ class SectionCardsSettingTab extends PluginSettingTab {
 					},
 				],
 			},
+			{
+				type: "group",
+				heading: "Feedback",
+				items: [
+					{
+						name: "Report a bug or suggest a feature",
+						desc: "Opens a new GitHub issue in your browser with the plugin version, Obsidian version, platform, and theme already filled in. Nothing is sent until you submit the issue.",
+						render: (setting: Setting) => this.renderFeedbackRow(setting),
+					},
+				],
+			},
 		];
+	}
+
+	/** Two links to GitHub's new-issue page, prefilled with the environment block a bug
+	 * report needs anyway, plus a copy button for people who'd rather write the issue by
+	 * hand. Opening the browser is the only network action; nothing is sent from here. */
+	private renderFeedbackRow(setting: Setting): void {
+		setting.settingEl.addClass("sfsc-feedback-row");
+		setting.addButton((button) =>
+			button
+				.setButtonText("Report a bug")
+				.setCta()
+				.onClick(() => window.open(this.issueUrl("bug"))),
+		);
+		setting.addButton((button) =>
+			button.setButtonText("Suggest a feature").onClick(() => window.open(this.issueUrl("enhancement"))),
+		);
+		setting.addExtraButton((button) =>
+			button
+				.setIcon("copy")
+				.setTooltip("Copy environment details")
+				.onClick(async () => {
+					await navigator.clipboard.writeText(this.environmentBlock());
+					new Notice("Environment details copied.");
+				}),
+		);
+	}
+
+	private issueUrl(label: "bug" | "enhancement"): string {
+		const bug = label === "bug";
+		const body = bug
+			? [
+					"### What happened",
+					"",
+					"",
+					"### Steps to reproduce",
+					"",
+					"1. ",
+					"",
+					"### Expected",
+					"",
+					"",
+					this.environmentBlock(),
+				]
+			: ["### What are you trying to do", "", "", "### What would help", "", "", this.environmentBlock()];
+		const params = new URLSearchParams({
+			title: bug ? "Bug: " : "Feature: ",
+			labels: label,
+			body: body.join("\n"),
+		});
+		return `${GITHUB_REPO_URL}/issues/new?${params.toString()}`;
+	}
+
+	/** The facts every report needs and nobody remembers to include. No vault paths,
+	 * note names, or settings that could identify content. */
+	private environmentBlock(): string {
+		const os = Platform.isMacOS ? "macOS" : Platform.isWin ? "Windows" : Platform.isLinux ? "Linux" : Platform.isIosApp ? "iOS" : Platform.isAndroidApp ? "Android" : "unknown";
+		const form = Platform.isPhone ? "phone" : Platform.isTablet ? "tablet" : "desktop";
+		const theme = (this.app as App & { customCss?: { theme?: string } }).customCss?.theme || "default";
+		const mode = document.body.hasClass("theme-dark") ? "dark" : "light";
+		return [
+			"### Environment",
+			"",
+			`- Plugin: ${this.plugin.manifest.version}`,
+			`- Obsidian: ${apiVersion}`,
+			`- Platform: ${os} (${form})`,
+			`- Theme: ${theme} (${mode})`,
+		].join("\n");
 	}
 
 	/** The preset dropdown is an action, not a stored value: picking one rewrites the
@@ -12030,7 +12161,6 @@ class SectionCardsSettingTab extends PluginSettingTab {
 		if (key === "toolbarStyle") this.plugin.applyToolbarStyle();
 		if (key === "fontScale" || key === "dividerFontScale") this.plugin.applyFontScale();
 		if (
-			key === "titleBarClick" ||
 			key === "stickyPinned" ||
 			key === "unfiledEnabled" ||
 			key === "hierTaskCounts" ||
@@ -12338,12 +12468,14 @@ export default class SectionCardsPlugin extends Plugin {
 			const hex = hexToTriplet(palette[i].hex) ? palette[i].hex : fallbackHex;
 			const triplet = hexToTriplet(hex);
 			if (!triplet) return;
-			document.body.style.setProperty(`--sfsc-color-${name}`, triplet);
 			// Solid-color title bars flip their text black or white to stay readable —
 			// computed per theme (dark themes bias to white, light themes to dark); the
 			// CSS picks whichever matches the active theme.
-			document.body.style.setProperty(`--sfsc-color-${name}-fg`, contrastForeground(hex));
-			document.body.style.setProperty(`--sfsc-color-${name}-fg-light`, contrastForegroundLight(hex));
+			document.body.setCssProps({
+				[`--sfsc-color-${name}`]: triplet,
+				[`--sfsc-color-${name}-fg`]: contrastForeground(hex),
+				[`--sfsc-color-${name}-fg-light`]: contrastForegroundLight(hex),
+			});
 		});
 	}
 
@@ -12351,11 +12483,10 @@ export default class SectionCardsPlugin extends Plugin {
 	 * sliders resize every open view — cards, editors, divider bars — without a refresh. */
 	applyFontScale(): void {
 		const toScale = (percent: number) => (Number.isFinite(percent) && percent > 0 ? percent / 100 : 1);
-		document.body.style.setProperty("--sfsc-font-scale", String(toScale(this.settings.fontScale)));
-		document.body.style.setProperty(
-			"--sfsc-divider-font-scale",
-			String(toScale(this.settings.dividerFontScale)),
-		);
+		document.body.setCssProps({
+			"--sfsc-font-scale": String(toScale(this.settings.fontScale)),
+			"--sfsc-divider-font-scale": String(toScale(this.settings.dividerFontScale)),
+		});
 	}
 
 	/**
