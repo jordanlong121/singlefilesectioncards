@@ -5233,8 +5233,19 @@ export class SectionCardsView extends ItemView {
 			else this.promptCreateDateCard(target);
 			return;
 		}
-		const next = Math.max(0, Math.min(visible.length - 1, (at < 0 ? 0 : at) + delta));
-		if (next !== at) this.setPlannerActive(visible[next]);
+		// Undated cards step through the note in document order — the next section down,
+		// or the one above — not the wall's sort (alphabetical would shuffle month names).
+		const order = this.plannerDocOrder(visible);
+		const from = at < 0 ? -1 : order.indexOf(visible[at]);
+		const next = Math.max(0, Math.min(order.length - 1, (from < 0 ? 0 : from) + delta));
+		if (next !== from && order[next]) this.setPlannerActive(order[next]);
+	}
+
+	/** The planner's cards in document order, the properties card left out. */
+	private plannerDocOrder(visible: CardEntry[]): CardEntry[] {
+		return visible
+			.filter((e) => !e.holder.section.properties)
+			.sort((a, b) => a.holder.section.headingLine - b.holder.section.headingLine);
 	}
 
 	/**
@@ -5322,7 +5333,6 @@ export class SectionCardsView extends ItemView {
 		const section = active.holder.section;
 		this.roloActive.set(this.filePath, section.headingRaw);
 		this.plannerHeading = section.headingRaw;
-		const at = visible.indexOf(active);
 		// In a dated note the arrows step by day — ← is yesterday and → tomorrow whatever
 		// the sort: the neighbouring day's card, or an offer to create it. Otherwise by
 		// card, as the wall is sorted.
@@ -5333,8 +5343,11 @@ export class SectionCardsView extends ItemView {
 				const entry = this.plannerDayEntry(day);
 				return { entry, createIso: entry ? null : day };
 			}
-			const index = dir === "prev" ? at - 1 : at + 1;
-			return { entry: visible[index] ?? null, createIso: null };
+			// Undated: the neighbouring section in the note itself, not the sort.
+			const order = this.plannerDocOrder(visible);
+			const from = order.indexOf(active);
+			const index = dir === "prev" ? from - 1 : from + 1;
+			return { entry: (from >= 0 ? order[index] : null) ?? null, createIso: null };
 		};
 
 		// Head: an arrow to each neighbour with the title between.
