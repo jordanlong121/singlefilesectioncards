@@ -1505,6 +1505,7 @@ body.is-mobile .section-cards-hier-col {
 
 .section-card[data-sfsc-color="red"],
 .section-cards-tray-tile[data-sfsc-color="red"],
+.sfsc-planner-head[data-sfsc-color="red"],
 .sfsc-swatch-red {
 	--sfsc-c: var(--sfsc-color-red, 224, 82, 82);
 	--sfsc-fg-dark: var(--sfsc-color-red-fg, #fff);
@@ -1513,6 +1514,7 @@ body.is-mobile .section-cards-hier-col {
 
 .section-card[data-sfsc-color="orange"],
 .section-cards-tray-tile[data-sfsc-color="orange"],
+.sfsc-planner-head[data-sfsc-color="orange"],
 .sfsc-swatch-orange {
 	--sfsc-c: var(--sfsc-color-orange, 235, 140, 52);
 	--sfsc-fg-dark: var(--sfsc-color-orange-fg, #fff);
@@ -1521,6 +1523,7 @@ body.is-mobile .section-cards-hier-col {
 
 .section-card[data-sfsc-color="yellow"],
 .section-cards-tray-tile[data-sfsc-color="yellow"],
+.sfsc-planner-head[data-sfsc-color="yellow"],
 .sfsc-swatch-yellow {
 	--sfsc-c: var(--sfsc-color-yellow, 212, 170, 20);
 	--sfsc-fg-dark: var(--sfsc-color-yellow-fg, #fff);
@@ -1529,6 +1532,7 @@ body.is-mobile .section-cards-hier-col {
 
 .section-card[data-sfsc-color="green"],
 .section-cards-tray-tile[data-sfsc-color="green"],
+.sfsc-planner-head[data-sfsc-color="green"],
 .sfsc-swatch-green {
 	--sfsc-c: var(--sfsc-color-green, 76, 168, 90);
 	--sfsc-fg-dark: var(--sfsc-color-green-fg, #fff);
@@ -1537,6 +1541,7 @@ body.is-mobile .section-cards-hier-col {
 
 .section-card[data-sfsc-color="cyan"],
 .section-cards-tray-tile[data-sfsc-color="cyan"],
+.sfsc-planner-head[data-sfsc-color="cyan"],
 .sfsc-swatch-cyan {
 	--sfsc-c: var(--sfsc-color-cyan, 44, 160, 198);
 	--sfsc-fg-dark: var(--sfsc-color-cyan-fg, #fff);
@@ -1545,6 +1550,7 @@ body.is-mobile .section-cards-hier-col {
 
 .section-card[data-sfsc-color="blue"],
 .section-cards-tray-tile[data-sfsc-color="blue"],
+.sfsc-planner-head[data-sfsc-color="blue"],
 .sfsc-swatch-blue {
 	--sfsc-c: var(--sfsc-color-blue, 76, 130, 235);
 	--sfsc-fg-dark: var(--sfsc-color-blue-fg, #fff);
@@ -1553,6 +1559,7 @@ body.is-mobile .section-cards-hier-col {
 
 .section-card[data-sfsc-color="purple"],
 .section-cards-tray-tile[data-sfsc-color="purple"],
+.sfsc-planner-head[data-sfsc-color="purple"],
 .sfsc-swatch-purple {
 	--sfsc-c: var(--sfsc-color-purple, 155, 110, 230);
 	--sfsc-fg-dark: var(--sfsc-color-purple-fg, #fff);
@@ -1561,6 +1568,7 @@ body.is-mobile .section-cards-hier-col {
 
 .section-card[data-sfsc-color="pink"],
 .section-cards-tray-tile[data-sfsc-color="pink"],
+.sfsc-planner-head[data-sfsc-color="pink"],
 .sfsc-swatch-pink {
 	--sfsc-c: var(--sfsc-color-pink, 226, 110, 170);
 	--sfsc-fg-dark: var(--sfsc-color-pink-fg, #fff);
@@ -1569,6 +1577,7 @@ body.is-mobile .section-cards-hier-col {
 
 .section-card[data-sfsc-color="gray"],
 .section-cards-tray-tile[data-sfsc-color="gray"],
+.sfsc-planner-head[data-sfsc-color="gray"],
 .sfsc-swatch-gray {
 	--sfsc-c: var(--sfsc-color-gray, 132, 140, 148);
 	--sfsc-fg-dark: var(--sfsc-color-gray-fg, #fff);
@@ -1580,12 +1589,14 @@ body.is-mobile .section-cards-hier-col {
    mode, like the theme's own bars, unless the color itself is genuinely dark. */
 .section-card[data-sfsc-color],
 .section-cards-tray-tile[data-sfsc-color],
+.sfsc-planner-head[data-sfsc-color],
 .sfsc-swatch {
 	--sfsc-fg: var(--sfsc-fg-dark);
 }
 
 body.theme-light .section-card[data-sfsc-color],
 body.theme-light .section-cards-tray-tile[data-sfsc-color],
+body.theme-light .sfsc-planner-head[data-sfsc-color],
 body.theme-light .sfsc-swatch {
 	--sfsc-fg: var(--sfsc-fg-light);
 }
@@ -2107,9 +2118,37 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 	display: block;
 }
 
-/* A colored card colors its planner title. */
-.sfsc-planner-head[data-sfsc-color] .sfsc-planner-title {
-	color: var(--sfsc-c);
+/* A colored card colors the planner's title bar — the row with the arrows — the way
+   its title bar is colored on the wall: the palette color at full strength, text and
+   buttons flipped to black or white for contrast. */
+.sfsc-planner-head {
+	padding: 6px 8px;
+	border-radius: var(--radius-m, 8px);
+}
+
+.sfsc-planner-head[data-sfsc-color] {
+	background: rgb(var(--sfsc-c));
+}
+
+.sfsc-planner-head[data-sfsc-color] .sfsc-planner-title,
+.sfsc-planner-head[data-sfsc-color] .sfsc-planner-title.is-today,
+.sfsc-planner-head[data-sfsc-color] .sfsc-planner-subtitle,
+.sfsc-planner-head[data-sfsc-color] .sfsc-planner-arrow,
+.sfsc-planner-head[data-sfsc-color] .sfsc-planner-actions button {
+	color: var(--sfsc-fg);
+}
+
+.sfsc-planner-head[data-sfsc-color] .sfsc-planner-arrow,
+.sfsc-planner-head[data-sfsc-color] .sfsc-planner-actions button {
+	background-color: transparent;
+	border-color: rgba(var(--sfsc-c), 0);
+	box-shadow: none;
+}
+
+.sfsc-planner-head[data-sfsc-color] .sfsc-planner-arrow:hover:not([disabled]),
+.sfsc-planner-head[data-sfsc-color] .sfsc-planner-actions button:hover {
+	background-color: rgba(255, 255, 255, 0.18);
+	color: var(--sfsc-fg);
 }
 
 .sfsc-planner-title {
