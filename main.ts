@@ -5230,7 +5230,7 @@ export class SectionCardsView extends ItemView {
 			const target = this.plannerDayShift(iso, delta);
 			const entry = this.plannerDayEntry(target);
 			if (entry) this.setPlannerActive(entry);
-			else this.promptCreateDateCard(target);
+			else this.promptPlannerMissingDay(target, delta > 0 ? 1 : -1);
 			return;
 		}
 		// Undated cards step through the note in document order — the next section down,
@@ -5272,6 +5272,29 @@ export class SectionCardsView extends ItemView {
 		const dt = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) + days);
 		const pad = (n: number) => String(n).padStart(2, "0");
 		return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+	}
+
+	/**
+	 * The arrow landed on a day with no card: offer to create it, or to skip on to the
+	 * nearest day that does have one in that direction (when there is one).
+	 */
+	private promptPlannerMissingDay(iso: string, direction: 1 | -1): void {
+		const formatted = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
+		// The dated cards in that direction, nearest first.
+		const dated = this.roloVisible()
+			.map((entry) => ({ entry, iso: this.plannerDayIso(entry.holder.section) }))
+			.filter((d): d is { entry: CardEntry; iso: string } => !!d.iso && (direction > 0 ? d.iso > iso : d.iso < iso))
+			.sort((a, b) => (direction > 0 ? a.iso.localeCompare(b.iso) : b.iso.localeCompare(a.iso)));
+		const skipTo = dated[0]?.entry ?? null;
+		new PlannerMissingDayModal(
+			this.app,
+			formatted,
+			skipTo ? skipTo.holder.section.title || "(untitled)" : null,
+			() => this.createDateCard(iso),
+			() => {
+				if (skipTo) this.setPlannerActive(skipTo);
+			},
+		).open();
 	}
 
 	/** The card whose heading names this day, if the note has one (hidden or not — a
@@ -5362,7 +5385,7 @@ export class SectionCardsView extends ItemView {
 				const formatted = mo(createIso, "YYYY-MM-DD").format(this.cardFormat());
 				btn.setAttr("aria-label", `${word} day: ${formatted} — no card yet, click to create it (${key})`);
 				btn.addClass("is-create");
-				btn.addEventListener("click", () => this.promptCreateDateCard(createIso));
+				btn.addEventListener("click", () => this.promptPlannerMissingDay(createIso, dir === "next" ? 1 : -1));
 				return;
 			}
 			const title = neighbour?.holder.section.title || "(untitled)";
@@ -12586,6 +12609,54 @@ class CreateDateCardModal extends Modal {
 				// Enter creates the card, Esc cancels.
 				b.buttonEl.focus();
 			});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/** Day Planner: the arrow reached a day with no card — create it, or skip to the
+ * nearest day that has one. */
+class PlannerMissingDayModal extends Modal {
+	private readonly title: string;
+	private readonly skipTitle: string | null;
+	private readonly onCreate: () => void | Promise<void>;
+	private readonly onSkip: () => void;
+
+	constructor(app: App, title: string, skipTitle: string | null, onCreate: () => void | Promise<void>, onSkip: () => void) {
+		super(app);
+		this.title = title;
+		this.skipTitle = skipTitle;
+		this.onCreate = onCreate;
+		this.onSkip = onSkip;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "No card for that day" });
+		contentEl.createEl("p", { text: `This note has no “${this.title}” card.` });
+		const row = new Setting(contentEl);
+		row.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
+		if (this.skipTitle) {
+			const skip = this.skipTitle.length > 32 ? `${this.skipTitle.slice(0, 31)}…` : this.skipTitle;
+			row.addButton((b) =>
+				b.setButtonText(`Skip to ${skip}`).onClick(() => {
+					this.close();
+					this.onSkip();
+				}),
+			);
+		}
+		row.addButton((b) => {
+			b.setButtonText("Create it")
+				.setCta()
+				.onClick(() => {
+					this.close();
+					void this.onCreate();
+				});
+			// Enter creates the card, Esc cancels.
+			b.buttonEl.focus();
+		});
 	}
 
 	onClose(): void {
