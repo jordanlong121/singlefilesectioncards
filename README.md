@@ -397,6 +397,12 @@ prompt offers to create it (template applied, default placement).
   (settings → *Cards button on notes* turns the icon off).
 - Right-click any note in the file explorer (or its tab header) and choose **Open as cards**.
 - Click the deck-of-cards icon in the ribbon, or run one of the commands:
+  - `Single File Section Cards: Open today's section` — the default note as cards with today's
+    card brought into view, created first if the note doesn't have one yet (also the calendar-check
+    icon in the ribbon, "Open default card"). A note that doesn't use date headings (the toolbar's
+    Dates toggle is off, or its cards carry no dates) opens the card named by the *Default card for
+    undated notes* setting instead, creating it if needed — or, with that setting empty, just opens. The single-file stand-in for the core Daily notes plugin's "Open today's
+    daily note"; give it that command's hotkey under Settings → Hotkeys.
   - `Single File Section Cards: Open section cards (default note)`
   - `Single File Section Cards: Open section cards for the active note`
   - `Single File Section Cards: Create new card`
@@ -412,6 +418,8 @@ prompt offers to create it (template applied, default placement).
 | Cards button on notes | A deck icon in every note's top-right that opens the note as cards in the same tab (on by default) |
 | Reopen remembered notes as cards | A note you've viewed as cards before opens in the cards view instead of the editor; a card's ↗ button still reaches the editor (off by default) |
 | Heading level | Which heading rank becomes a card (H1–H6) |
+| Show unfiled text as a card / Unfiled card title | Text above the first heading (below any properties) becomes its own card, with a display-only title (off by default) |
+| Show properties as a card / Properties card title | The note's properties (frontmatter) become the first card, as a table of names and values; editing the card edits the raw properties text. Display-only title (off by default) |
 | Jump to today's card | Scroll to today's card when a note opens in the view (on by default; needs the note's Dates checkbox) |
 | Keep pinned cards on screen | Pinned cards stay on screen while the rest scroll — below the toolbar, or left of the row in Vertical (on by default; not in Custom Grid) |
 | Mark cards with due tasks | Amber badge and edge for cards with an open task due today, red for overdue (Tasks 📅 or Dataview due fields) |
@@ -422,6 +430,7 @@ prompt offers to create it (template applied, default placement).
 | Show open-task counts in Hierarchy columns | Square badge per column row counting the unfinished tasks beneath it (on by default) |
 | Default heading name | Date format used to pre-fill "New card" (any note can set its own from the toolbar's new-card options menu) |
 | Default placement | Where a new card is inserted |
+| Default card for undated notes | Card that "Open default card" / "Open today's section" opens (creating it if needed) when the default note doesn't use date headings; empty just opens the note |
 | Autosave open card editors | Write an open editor's content to the note every few minutes, and when the view closes, so an edit left open isn't lost (on by default) |
 | Autosave interval | Minutes between autosaves while a card editor is open (default 5) |
 | Toggle tasks with the Tasks plugin | Route checkbox ticks through the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin when it's installed (recurrence, its done dates) |

@@ -162,8 +162,15 @@ interface SectionCardsSettings {
 	dividerFontScale: number;
 	newCardFormat: string;
 	newCardPlacement: Placement;
+	/** "Open today's section" in a note that doesn't use dates opens (creating if
+	 * needed) the card with this title instead. Empty: just open the note. */
+	undatedSection: string;
 	/** Show text above the file's first heading as its own card. */
 	unfiledEnabled: boolean;
+	/** Show the note's properties (frontmatter) as a card of their own, first on the wall. */
+	propertiesEnabled: boolean;
+	/** That card's display-only title. */
+	propertiesTitle: string;
 	/** Display-only title for that card; never written into the note. */
 	unfiledTitle: string;
 	/** Scroll today's card into view when a note first renders in the view. */
@@ -463,7 +470,10 @@ const DEFAULT_SETTINGS: SectionCardsSettings = {
 	dividerFontScale: 100,
 	newCardFormat: "YYYY-MM-DD, dddd",
 	newCardPlacement: "logical",
+	undatedSection: "",
 	unfiledEnabled: false,
+	propertiesEnabled: false,
+	propertiesTitle: "Properties",
 	unfiledTitle: "_Unfiled_",
 	jumpToToday: true,
 	stickyPinned: true,
@@ -512,6 +522,10 @@ interface Section {
 	 * title is display-only, its raw has no heading line, and writes re-locate it by
 	 * position (the preamble is unique) rather than by content. */
 	unfiled?: boolean;
+	/** True for the synthetic card showing the note's properties (frontmatter). It is
+	 * also `unfiled` — no heading line, found by position — but renders as a table and
+	 * takes no block drags, quick adds, or deletes. */
+	properties?: boolean;
 }
 
 /** obsidian's `moment` re-export is typed as a namespace; this is the callable form. */
@@ -632,10 +646,10 @@ export function sortSections(sections: Section[], order: SortOrder): Section[] {
 		const dir = order === "count-asc" ? 1 : -1;
 		sorted.sort((a, b) => dir * ((counts.get(a) ?? 0) - (counts.get(b) ?? 0)));
 	}
-	// The unfiled card is the top of the file, not an alphabetical peer — keep it first.
-	const pre = sorted.findIndex((s) => s.unfiled);
-	if (pre > 0) sorted.unshift(...sorted.splice(pre, 1));
-	return sorted;
+	// The properties and unfiled cards are the top of the file, not alphabetical peers —
+	// keep them first, in file order.
+	const front = sorted.filter((s) => s.properties).concat(sorted.filter((s) => s.unfiled && !s.properties));
+	return front.length ? front.concat(sorted.filter((s) => !s.unfiled)) : sorted;
 }
 
 /**
@@ -710,11 +724,219 @@ export function unfiledSection(lines: string[], title: string): Section | null {
 	};
 }
 
-/** Every card the view shows: parsed sections plus, when enabled, the unfiled card. */
-export function parseCards(lines: string[], level: number, unfiledTitle: string | null): Section[] {
+/** The properties card's key in per-note state (pins, placements, colors). */
+export const PROPERTIES_KEY = "::properties::";
+
+/**
+ * The synthetic section for the note's properties: the lines between the frontmatter
+ * fences (stray blank lines above the opening `---` tolerated, as everywhere else).
+ * Null when the note has no properties block or it is empty. Body-only, like the
+ * unfiled card: the title is display-only and the fences are never card content.
+ */
+export function propertiesSection(lines: string[], title: string): Section | null {
+	let open = 0;
+	while (open < lines.length && lines[open].trim() === "") open++;
+	if (lines[open]?.trim() !== "---") return null;
+	let close = -1;
+	for (let i = open + 1; i < lines.length; i++) {
+		if (lines[i].trim() === "---") {
+			close = i;
+			break;
+		}
+	}
+	if (close === -1) return null;
+	const bodyLines = lines.slice(open + 1, close);
+	if (!bodyLines.some((line) => line.trim() !== "")) return null;
+	const body = bodyLines.join("\n");
+	return {
+		index: -1,
+		title,
+		headingRaw: PROPERTIES_KEY,
+		headingLine: open + 1,
+		body,
+		raw: body,
+		startLine: open + 1,
+		endLine: close,
+		unfiled: true,
+		properties: true,
+	};
+}
+
+/** A YAML scalar as card text: quotes shed, so `"[[Note]]"` renders as a link. */
+function yamlScalarText(value: string): string {
+	const v = value.trim();
+	if (v.length >= 2 && ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))) {
+		return v.slice(1, -1);
+	}
+	return v;
+}
+
+/** The quote a YAML scalar was written with, if any. */
+function yamlQuoteOf(value: string): '"' | "'" | "" {
+	const v = value.trim();
+	if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) return '"';
+	if (v.length >= 2 && v.startsWith("'") && v.endsWith("'")) return "'";
+	return "";
+}
+
+/**
+ * A plain value as a YAML scalar. Kept bare when YAML reads it back unchanged; quoted
+ * when it starts with an indicator, holds `: ` or ` #`, or would otherwise turn into
+ * a list or a comment. A value that was quoted in the file stays quoted, so `"[[Note]]"`
+ * round-trips the way Obsidian writes it.
+ */
+export function yamlScalar(text: string, quote: '"' | "'" | "" = "", inList = false): string {
+	if (text === "") return quote ? `${quote}${quote}` : "";
+	const risky =
+		/^[[\]{}&*!|>'"%@`#,]|^-(?:\s|$)|^[?:](?:\s|$)|:\s|:$|\s#|^\s|\s$/.test(text) || (inList && /[,[\]]/.test(text));
+	if (!quote && !risky) return text;
+	if (quote === "'" && !text.includes("'")) return `'${text}'`;
+	return `"${text.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/** One top-level property as it sits in the frontmatter text. */
+export interface YamlProperty {
+	key: string;
+	/** Scalar text (quotes shed), or the items of a list. */
+	text: string;
+	items: string[] | null;
+	/** How the file spells it, so an edit writes it back the same way. */
+	shape: "scalar" | "inline" | "block" | "folded";
+	quote: '"' | "'" | "";
+	/** [start, end) line offsets into the frontmatter body. */
+	start: number;
+	end: number;
+	/** Indent of a block list's items (default two spaces). */
+	indent: string;
+}
+
+/**
+ * The frontmatter's top-level properties, best effort over the raw text — no YAML
+ * library, so odd blocks still yield something rather than nothing. Nested maps read
+ * as folded text; anything that isn't `key: …` is skipped and left untouched by edits.
+ */
+export function parseYamlProperties(yaml: string): YamlProperty[] {
+	const props: YamlProperty[] = [];
+	const lines = yaml.split("\n");
+	let i = 0;
+	while (i < lines.length) {
+		const m = /^([^\s:#][^:]*?):(?:\s+(.*))?$/.exec(lines[i]);
+		if (!m) {
+			i++;
+			continue;
+		}
+		const key = m[1].trim();
+		const rawValue = (m[2] ?? "").trim();
+		const start = i;
+		i++;
+		let prop: YamlProperty;
+		if (rawValue === "" || /^[|>][-+]?$/.test(rawValue)) {
+			// Block list or block scalar: the indented lines that follow.
+			const items: string[] = [];
+			const folded: string[] = [];
+			let indent = "  ";
+			let end = i;
+			while (i < lines.length && (/^\s+\S/.test(lines[i]) || lines[i].trim() === "")) {
+				const item = /^(\s*)-\s*(.*)$/.exec(lines[i]);
+				if (item) {
+					if (!items.length) indent = item[1];
+					items.push(yamlScalarText(item[2]));
+				} else if (lines[i].trim()) folded.push(lines[i].trim());
+				i++;
+				if (lines[i - 1].trim() !== "") end = i; // trailing blanks stay outside
+			}
+			i = end;
+			prop = items.length
+				? { key, text: "", items, shape: "block", quote: "", start, end, indent }
+				: {
+						key,
+						text: folded.join(rawValue.startsWith(">") ? " " : "\n"),
+						items: null,
+						shape: rawValue === "" ? "scalar" : "folded",
+						quote: "",
+						start,
+						end,
+						indent,
+					};
+		} else if (rawValue.startsWith("[") && rawValue.endsWith("]")) {
+			const items: string[] = [];
+			for (const part of rawValue.slice(1, -1).split(",")) {
+				const text = yamlScalarText(part);
+				if (text) items.push(text);
+			}
+			prop = { key, text: "", items, shape: "inline", quote: "", start, end: i, indent: "  " };
+		} else {
+			prop = { key, text: yamlScalarText(rawValue), items: null, shape: "scalar", quote: yamlQuoteOf(rawValue), start, end: i, indent: "  " };
+		}
+		props.push(prop);
+	}
+	return props;
+}
+
+/** A property's value as card text: lists join with commas, `tags` entries become tags. */
+export function propertyDisplay(prop: YamlProperty): string {
+	if (!prop.items) return prop.text;
+	const isTags = /^tags?$/i.test(prop.key);
+	return prop.items.map((item) => (isTags && !item.startsWith("#") ? `#${item}` : item)).join(", ");
+}
+
+/** A property's value as the text offered for editing: list items comma-separated. */
+export function propertyEditText(prop: YamlProperty): string {
+	return prop.items ? prop.items.join(", ") : prop.text;
+}
+
+/**
+ * The frontmatter with one property's value replaced, spelled the way the file had it:
+ * a scalar stays a scalar (quotes kept), an inline list stays `[a, b]`, a block list
+ * stays `- item` lines, a block scalar stays `|`. Every other line is untouched.
+ */
+export function setYamlProperty(yaml: string, key: string, edited: string): string {
+	const prop = parseYamlProperties(yaml).find((p) => p.key === key);
+	if (!prop) return yaml;
+	const lines = yaml.split("\n");
+	let replacement: string[];
+	if (prop.shape === "inline" || prop.shape === "block") {
+		const items = edited
+			.split(",")
+			.map((item) => item.trim())
+			.map((item) => (/^tags?$/i.test(key) ? item.replace(/^#/, "") : item))
+			.filter(Boolean);
+		if (prop.shape === "inline") replacement = [`${key}: [${items.map((item) => yamlScalar(item, "", true)).join(", ")}]`];
+		else replacement = [`${key}:`, ...items.map((item) => `${prop.indent}- ${yamlScalar(item)}`)];
+	} else if (prop.shape === "folded" || edited.includes("\n")) {
+		const body = edited.split("\n");
+		replacement = body.some((line) => line.trim()) ? [`${key}: |`, ...body.map((line) => `  ${line}`)] : [`${key}:`];
+	} else {
+		const scalar = yamlScalar(edited, prop.quote);
+		replacement = [scalar ? `${key}: ${scalar}` : `${key}:`];
+	}
+	lines.splice(prop.start, prop.end - prop.start, ...replacement);
+	return lines.join("\n");
+}
+
+/** The properties card's body as a markdown table (the static fallback rendering). */
+export function propertiesMarkdown(yaml: string): string {
+	const props = parseYamlProperties(yaml);
+	if (!props.length) return "```yaml\n" + yaml + "\n```";
+	const cell = (text: string) => text.replace(/\|/g, "\\|").replace(/\n/g, " ").trim();
+	return ["| Property | Value |", "| --- | --- |", ...props.map((p) => `| ${cell(p.key)} | ${cell(propertyDisplay(p))} |`)].join("\n");
+}
+
+/** Every card the view shows: parsed sections plus, when enabled, the properties card
+ * and the unfiled card, in that (file) order. */
+export function parseCards(
+	lines: string[],
+	level: number,
+	unfiledTitle: string | null,
+	propertiesTitle: string | null = null,
+): Section[] {
 	const sections = parseSections(lines, level);
+	const front: Section[] = [];
+	const props = propertiesTitle ? propertiesSection(lines, propertiesTitle) : null;
+	if (props) front.push(props);
 	const pre = unfiledTitle ? unfiledSection(lines, unfiledTitle) : null;
-	return pre ? [pre, ...sections] : sections;
+	if (pre) front.push(pre);
+	return front.length ? [...front, ...sections] : sections;
 }
 
 /** A heading shallower than the card level — the Hierarchy layout's drill-down data. */
@@ -1333,6 +1555,7 @@ function locateSection(sections: Section[], original: Section): Section | undefi
  * Everything else goes through locateSection's content matching as before.
  */
 function locateCard(lines: string[], level: number, original: Section): Section | undefined {
+	if (original.properties) return propertiesSection(lines, original.title) ?? undefined;
 	if (original.unfiled) return unfiledSection(lines, original.title) ?? undefined;
 	return locateSection(parseSections(lines, level), original);
 }
@@ -4780,6 +5003,8 @@ export class SectionCardsView extends ItemView {
 	 */
 	private prepareBodies(entries: CardEntry[]): void {
 		for (const entry of entries) {
+			// The properties table's rows aren't body blocks: nothing to drag or star.
+			if (entry.holder.section.properties) continue;
 			const bodyEl = entry.bodyEl;
 			// Rendered task checkboxes come back disabled, and disabled inputs never fire clicks.
 			for (const box of Array.from(bodyEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]"))) {
@@ -6807,7 +7032,7 @@ export class SectionCardsView extends ItemView {
 		this.clearPreviewTiles("images");
 		this.clearPreviewTiles("links");
 
-		const sections = parseCards(lines, this.headingLevel, this.plugin.unfiledTitle());
+		const sections = parseCards(lines, this.headingLevel, this.plugin.unfiledTitle(), this.plugin.propertiesTitle());
 
 		// Does this note deal in dates? The checkbox rules when the user has set it;
 		// until then the note decides for itself (the tally above already looked at
@@ -7177,6 +7402,9 @@ export class SectionCardsView extends ItemView {
 		// Built detached; refresh's ordering pass inserts it at the right position.
 		const card = createDiv();
 		card.className = "section-card";
+		// The properties card: a table of the note's frontmatter. CSS drops the quick-add
+		// and delete buttons, since neither makes sense on YAML.
+		if (section.properties) card.addClass("is-properties");
 
 		if (today && isTodayTitle(section.title, today.iso, today.formatted)) {
 			card.addClass("is-today");
@@ -7390,7 +7618,9 @@ export class SectionCardsView extends ItemView {
 		// here, the back into its own face, shown when the card is flipped over.
 		const faces = this.cardFaces(section.body);
 		let renderBody: (() => Promise<void>) | null = null;
-		if (faces.front.trim()) {
+		if (section.properties) {
+			renderBody = () => this.renderProperties(bodyEl, card, holder, file, scope);
+		} else if (faces.front.trim()) {
 			renderBody = () =>
 				MarkdownRenderer.render(this.app, bodyForRender(this.cardFaces(holder.section.body).front), bodyEl, file.path, scope);
 		} else if (faces.back !== null) {
@@ -7543,7 +7773,7 @@ export class SectionCardsView extends ItemView {
 
 		// Right-click a task or paragraph: send it to a neighbouring card without dragging.
 		bodyEl.addEventListener("contextmenu", (evt) => {
-			if (card.hasClass("is-editing")) return;
+			if (card.hasClass("is-editing") || holder.section.properties) return;
 			const target = evt.target as HTMLElement | null;
 			if (target?.closest("a")) return; // links keep their native menu
 			const el = target?.closest<HTMLElement>(".sc-block");
@@ -7960,6 +8190,105 @@ export class SectionCardsView extends ItemView {
 		return Object.entries(this.activePlacements())
 			.filter(([key]) => key !== except && present(key))
 			.map(([, rect]) => rect);
+	}
+
+	/**
+	 * The properties card's body: a table with one row per frontmatter property. Values
+	 * render as markdown (links and tags stay live) and edit in place — click a value,
+	 * type, Enter or click away saves, Esc cancels. The edit rewrites just that
+	 * property's lines in the frontmatter, in the shape the file already used.
+	 */
+	private async renderProperties(
+		bodyEl: HTMLElement,
+		card: HTMLElement,
+		holder: { section: Section },
+		file: TFile,
+		scope: Component,
+	): Promise<void> {
+		const props = parseYamlProperties(holder.section.body);
+		if (!props.length) {
+			await MarkdownRenderer.render(this.app, propertiesMarkdown(holder.section.body), bodyEl, file.path, scope);
+			return;
+		}
+		const table = bodyEl.createEl("table", { cls: "sfsc-props" });
+		const renders: Promise<void>[] = [];
+		for (const prop of props) {
+			const row = table.createEl("tr");
+			row.createEl("td", { cls: "sfsc-prop-key", text: prop.key });
+			const cell = row.createEl("td", { cls: "sfsc-prop-value" });
+			cell.setAttr("aria-label", `Edit ${prop.key}`);
+			const display = propertyDisplay(prop);
+			if (display) renders.push(MarkdownRenderer.render(this.app, display, cell, file.path, scope));
+			else cell.createSpan({ cls: "sfsc-prop-empty", text: "—" });
+			cell.addEventListener("click", (evt) => {
+				const target = evt.target as HTMLElement | null;
+				if (target?.closest("a, input, textarea") || card.hasClass("is-editing")) return;
+				evt.preventDefault();
+				evt.stopPropagation();
+				// Click-away commits another card's open editor, as any card click does.
+				const open = this.activeEditor;
+				if (open && open.card !== card) void open.finish(true);
+				this.editPropertyValue(cell, prop, holder, file);
+			});
+		}
+		await Promise.all(renders);
+	}
+
+	/** Swap a property's cell for a text field; commit rewrites the frontmatter. */
+	private editPropertyValue(cell: HTMLElement, prop: YamlProperty, holder: { section: Section }, file: TFile): void {
+		if (cell.querySelector("input, textarea")) return;
+		const before = propertyEditText(prop);
+		const multiline = prop.shape === "folded" || before.includes("\n");
+		const shown = Array.from(cell.childNodes);
+		for (const node of shown) node.remove();
+		const field = multiline
+			? cell.createEl("textarea", { cls: "sfsc-prop-input" })
+			: cell.createEl("input", { cls: "sfsc-prop-input", attr: { type: "text" } });
+		field.value = before;
+		if (multiline) (field as HTMLTextAreaElement).rows = Math.min(8, before.split("\n").length + 1);
+		cell.addClass("is-editing");
+		let done = false;
+		const restore = () => {
+			field.remove();
+			cell.removeClass("is-editing");
+			for (const node of shown) cell.appendChild(node);
+		};
+		const finish = (save: boolean) => {
+			if (done) return;
+			done = true;
+			const value = field.value.replace(/\s+$/, "");
+			if (!save || value === before) {
+				restore();
+				return;
+			}
+			const next = setYamlProperty(holder.section.body, prop.key, value);
+			if (next === holder.section.body) {
+				restore();
+				return;
+			}
+			void writeSection(this.app, file, this.headingLevel, holder.section, next).then((ok) => {
+				if (ok) void this.refresh();
+				else restore();
+			});
+		};
+		field.addEventListener("keydown", (evt: Event) => {
+			const key = evt as KeyboardEvent;
+			if (key.key === "Escape") {
+				evt.preventDefault();
+				evt.stopPropagation();
+				finish(false);
+			} else if (key.key === "Enter" && (!multiline || key.ctrlKey || key.metaKey)) {
+				evt.preventDefault();
+				evt.stopPropagation();
+				finish(true);
+			}
+		});
+		field.addEventListener("blur", () => finish(true));
+		// The card's own click-to-edit must not fire for clicks inside the field.
+		field.addEventListener("click", (evt) => evt.stopPropagation());
+		field.addEventListener("dblclick", (evt) => evt.stopPropagation());
+		field.focus();
+		if (!multiline) (field as HTMLInputElement).select();
 	}
 
 	/** Whether the canvas is showing this section's card (it exists and isn't hidden
@@ -11774,6 +12103,16 @@ class SectionCardsSettingTab extends PluginSettingTab {
 						desc: "Title shown on that card. Display-only: it is never written into the note.",
 						control: { type: "text", key: "unfiledTitle", placeholder: "_Unfiled_" },
 					},
+					{
+						name: "Show properties as a card",
+						desc: "The note's properties (the frontmatter block) become the first card, shown as a table of names and values. Editing the card edits the raw properties text.",
+						control: { type: "toggle", key: "propertiesEnabled" },
+					},
+					{
+						name: "Properties card title",
+						desc: "Title shown on that card. Display-only: it is never written into the note.",
+						control: { type: "text", key: "propertiesTitle", placeholder: "Properties" },
+					},
 				],
 			},
 			{
@@ -12005,6 +12344,11 @@ class SectionCardsSettingTab extends PluginSettingTab {
 							options: { top: "Append to top", logical: "Add to logical order", bottom: "Add to bottom" },
 						},
 					},
+					{
+						name: "Default card for undated notes",
+						desc: "When the default note doesn't use date headings, the ribbon's Open default card and the Open today's section command open the card with this title instead, creating it if the note doesn't have one. Leave empty to only open the note.",
+						control: { type: "text", key: "undatedSection", placeholder: "Inbox" },
+					},
 				],
 			},
 			{
@@ -12138,9 +12482,9 @@ class SectionCardsSettingTab extends PluginSettingTab {
 			await super.setControlValue(key, text || DEFAULT_SETTINGS.newCardFormat);
 			return;
 		}
-		if (key === "unfiledTitle") {
+		if (key === "unfiledTitle" || key === "propertiesTitle") {
 			const text = typeof value === "string" ? value.trim() : "";
-			await super.setControlValue(key, text || DEFAULT_SETTINGS.unfiledTitle);
+			await super.setControlValue(key, text || DEFAULT_SETTINGS[key]);
 			this.plugin.refreshAllViews();
 			return;
 		}
@@ -12163,6 +12507,7 @@ class SectionCardsSettingTab extends PluginSettingTab {
 		if (
 			key === "stickyPinned" ||
 			key === "unfiledEnabled" ||
+			key === "propertiesEnabled" ||
 			key === "hierTaskCounts" ||
 			key === "dynamicLevelOptions" ||
 			key === "starEmoji" ||
@@ -12191,10 +12536,18 @@ export default class SectionCardsPlugin extends Plugin {
 			void this.openCardsView(undefined, undefined, "new");
 		});
 
+		this.addRibbonIcon("calendar-check", "Open default card", () => void this.openTodaySection());
+
 		this.addCommand({
 			id: "open-section-cards",
 			name: "Open section cards (default note)",
 			callback: () => this.openCardsView(),
+		});
+
+		this.addCommand({
+			id: "open-today-section",
+			name: "Open today's section",
+			callback: () => this.openTodaySection(),
 		});
 
 		this.addCommand({
@@ -12528,6 +12881,65 @@ export default class SectionCardsPlugin extends Plugin {
 		if (revealHeading) (leaf.view as SectionCardsView).revealCard(revealHeading);
 	}
 
+	/**
+	 * The single-file counterpart of the core Daily notes plugin's "Open today's daily
+	 * note": the default note as cards, with today's card created first if the note
+	 * doesn't have one — heading in the note's new-card format at the default placement,
+	 * body from the template — and then brought into view.
+	 */
+	async openTodaySection(): Promise<void> {
+		const path = normalizePath(this.settings.filePath ?? "");
+		const file = path ? this.app.vault.getAbstractFileByPath(path) : null;
+		if (!(file instanceof TFile)) {
+			new Notice(`Single File Section Cards: can't find "${path || "(no default note)"}" — set the default note in settings.`);
+			return;
+		}
+		const level = this.getStoredView(file.path)?.headingLevel ?? this.settings.headingLevel;
+		const now = moment();
+		const title = now.format(this.getNewCardFormat(file.path));
+		const headingRaw = `${"#".repeat(level)} ${title}`;
+
+		// "Exists" the way the view decides which card is today's, so a heading written
+		// in another spelling of today's date isn't shadowed by a second one.
+		const content = await this.app.vault.cachedRead(file);
+		const lines = content.split(/\r?\n/);
+		const iso = now.format("YYYY-MM-DD");
+		const sections = parseSections(lines, level);
+		const today = sections.find((section) => isTodayTitle(section.title, iso, title));
+		if (!today) {
+			// Only a note that deals in dates gets a dated card added: the toolbar's Dates
+			// toggle rules when the user has set it, else the note's own headings decide.
+			// A note with no cards at this level yet is a fresh daily note — create.
+			const format = this.getNewCardFormat(file.path);
+			const dated =
+				this.getContainsDates(file.path) ??
+				(sections.length === 0 || dateHeadingCounts(lines, format, this.settings.dateDetectFormat)[level] > 0);
+			if (!dated) {
+				// An undated note gets its named default card instead, when one is set.
+				const fallback = this.settings.undatedSection.trim();
+				if (!fallback) {
+					new Notice(
+						`${file.basename} has no dated sections — set "Default card for undated notes" in settings to open a card here, or turn on Dates in the toolbar.`,
+					);
+					await this.openCardsView(file.path);
+					return;
+				}
+				const wanted = fallback.toLowerCase();
+				const existing = sections.find((section) => section.title.trim().toLowerCase() === wanted);
+				const fallbackHeading = `${"#".repeat(level)} ${fallback}`;
+				if (!existing) {
+					const body = await this.loadTemplateBody(file.path, fallback);
+					await insertSection(this.app, file, fallbackHeading, this.settings.newCardPlacement, body ?? undefined);
+				}
+				await this.openCardsView(file.path, existing?.headingRaw ?? fallbackHeading);
+				return;
+			}
+			const body = await this.loadTemplateBody(file.path, title);
+			await insertSection(this.app, file, headingRaw, this.settings.newCardPlacement, body ?? undefined);
+		}
+		await this.openCardsView(file.path, today?.headingRaw ?? headingRaw);
+	}
+
 	/** The Tasks community plugin's public API, when that plugin is installed and enabled. */
 	tasksApi(): TasksApiV1 | null {
 		const withPlugins = this.app as unknown as {
@@ -12539,6 +12951,11 @@ export default class SectionCardsPlugin extends Plugin {
 	/** The unfiled card's title, or null when the feature is off. */
 	unfiledTitle(): string | null {
 		return this.settings.unfiledEnabled ? this.settings.unfiledTitle || DEFAULT_SETTINGS.unfiledTitle : null;
+	}
+
+	/** The properties card's title, or null when the feature is off. */
+	propertiesTitle(): string | null {
+		return this.settings.propertiesEnabled ? this.settings.propertiesTitle || DEFAULT_SETTINGS.propertiesTitle : null;
 	}
 
 	getStoredView(path: string): ViewSettings | undefined {
