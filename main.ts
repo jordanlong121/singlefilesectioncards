@@ -2347,6 +2347,7 @@ export interface PlannerSlot {
 export function plannerBlockKey(blockText: string): string {
 	const first = blockText.split("\n")[0] ?? "";
 	return first
+		.replace(/^\s*#{1,6}\s+/, "")
 		.replace(BLOCK_PREFIX_RE, "")
 		.replace(/\s*(?:✅|❌|📅|⏳|🛫|➕)\s*\d{4}-\d{2}-\d{2}/gu, "")
 		.replace(/\s*(?:🔺|⏫|🔼|🔽|⏬)/gu, "")
@@ -2355,6 +2356,48 @@ export function plannerBlockKey(blockText: string): string {
 		.replace(/\s+/g, " ")
 		.trim()
 		.toLowerCase();
+}
+
+/** One card on the Day Planner, as a body-relative line range: a line (one movable
+ * block) above the card's first sub-heading, or a subcard — a sub-heading with
+ * everything beneath it. */
+export interface PlannerCard {
+	kind: "line" | "sub";
+	start: number;
+	end: number;
+	/** Lines: the index among the section's movable blocks, which the block writers key on. */
+	blockIndex?: number;
+	/** Subcards: the heading's text without its #'s. */
+	title?: string;
+}
+
+/**
+ * Split a card's body for the Day Planner. Sub-headings at the shallowest level the
+ * body has (H4 under an H3 card — or H5 when there's no H4) each start a subcard that
+ * runs to the next one; deeper headings are content. Lines above the first sub-heading
+ * are cards of their own, one per movable block. Fenced code is never a heading.
+ */
+export function plannerCards(body: string[]): PlannerCard[] {
+	const blocks = sectionBlocks(body);
+	const headings: { line: number; level: number; title: string }[] = [];
+	for (const b of blocks) {
+		if (b.kind !== "other" || b.end - b.start !== 1) continue;
+		const m = HEADING_RE.exec(body[b.start]);
+		if (m) headings.push({ line: b.start, level: m[1].length, title: m[2].trim() });
+	}
+	const subLevel = headings.length ? Math.min(...headings.map((h) => h.level)) : 0;
+	const subs = headings.filter((h) => h.level === subLevel);
+	const firstSub = subs.length ? subs[0].line : body.length;
+	const cards: PlannerCard[] = [];
+	blocks
+		.filter((b) => b.kind !== "other")
+		.forEach((b, blockIndex) => {
+			if (b.end <= firstSub) cards.push({ kind: "line", start: b.start, end: b.end, blockIndex });
+		});
+	subs.forEach((h, i) => {
+		cards.push({ kind: "sub", start: h.line, end: i + 1 < subs.length ? subs[i + 1].line : body.length, title: h.title });
+	});
+	return cards;
 }
 
 /** A card's placement on the Custom Grid canvas, in px. */
@@ -2989,6 +3032,125 @@ async function replaceBlockInFile(
 	return ok;
 }
 
+/**
+ * Day Planner: move a run of a section's body lines — a sub-heading with what's under
+ * it, or a lone line — to `insertAt` (a body line of `to`, which may be the same
+ * section), verifying the run's text first. A drop back inside its own range is a
+ * no-op. Blank lines are added at the seams where the join would otherwise merge
+ * prose into a neighbour or butt a heading against the line above.
+ */
+async function moveRangeInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	from: Section,
+	start: number,
+	end: number,
+	expectedText: string,
+	to: Section,
+	insertAt: number,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const fromT = locateCard(lines, level, from);
+		const toT = from.startLine === to.startLine ? fromT : locateCard(lines, level, to);
+		if (!fromT || !toT) {
+			ok = false;
+			return data;
+		}
+		const fromStart = bodyStartLine(fromT);
+		if (lines.slice(fromStart + start, fromStart + end).join("\n") !== expectedText) {
+			ok = false; // the run moved or changed since the drag started — refuse
+			return data;
+		}
+		const absStart = fromStart + start;
+		const absEnd = fromStart + end;
+		const toStart = bodyStartLine(toT);
+		const absAt = toStart + Math.max(0, Math.min(insertAt, toT.endLine - toStart));
+		if (fromT === toT && absAt >= absStart && absAt <= absEnd) return data;
+
+		const run = lines.slice(absStart, absEnd);
+		const out = lines.slice(0, absStart).concat(lines.slice(absEnd));
+		const at = absAt > absStart ? absAt - run.length : absAt;
+		const prose = (line: string | undefined) =>
+			line !== undefined && line.trim() !== "" && !TOP_ITEM_RE.test(line) && !HEADING_RE.test(line);
+		const first = run[0];
+		const last = run[run.length - 1];
+		if (at > 0 && out[at - 1].trim() !== "" && (prose(first) || HEADING_RE.test(first) || prose(out[at - 1]))) run.unshift("");
+		if (last !== undefined && last.trim() !== "" && at < out.length && out[at].trim() !== "") run.push("");
+		out.splice(at, 0, ...run);
+		return out.join(eol);
+	});
+
+	return ok;
+}
+
+/** Day Planner: rewrite a run of a section's body lines (a subcard's text), verifying
+ * the run first the way the block writers do. */
+async function replaceRangeInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	from: Section,
+	start: number,
+	end: number,
+	expectedText: string,
+	newText: string,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, from);
+		if (!target) {
+			ok = false;
+			return data;
+		}
+		const bodyStart = bodyStartLine(target);
+		if (lines.slice(bodyStart + start, bodyStart + end).join("\n") !== expectedText) {
+			ok = false;
+			return data;
+		}
+		lines.splice(bodyStart + start, end - start, ...newText.replace(/\s+$/, "").split(/\r?\n/));
+		return lines.join(eol);
+	});
+
+	return ok;
+}
+
+/** Day Planner: put a line above the card's first sub-heading (at `at`, a body line),
+ * so it shows as a line card rather than vanishing into the last subcard. */
+async function insertAtBodyLineInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	original: Section,
+	at: number,
+	text: string,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, original);
+		if (!target) {
+			ok = false;
+			return data;
+		}
+		const bodyStart = bodyStartLine(target);
+		const abs = bodyStart + Math.max(0, Math.min(at, target.endLine - bodyStart));
+		lines.splice(abs, 0, ...text.replace(/\s+$/, "").split(/\r?\n/));
+		return lines.join(eol);
+	});
+
+	return ok;
+}
+
 /** Insert text right after a given movable block, verifying the block's text first. */
 async function insertAfterBlockInFile(
 	app: App,
@@ -3172,6 +3334,22 @@ interface CardEntry {
 	renderBody: (() => Promise<void>) | null;
 }
 
+/** A card as built on the Day Planner: its element, source range, and remembered slot. */
+interface PlannerItem {
+	el: HTMLElement;
+	card: PlannerCard;
+	/** The card's full source lines (a subcard's include its trailing blanks), for verification. */
+	text: string;
+	/** What the edit window shows: a subcard's text without trailing blank lines. */
+	editText: string;
+	/** The body line the editable text ends at. */
+	editEnd: number;
+	key: string;
+	col: 0 | 1;
+	/** Task lines of the section above this card, so its nth checkbox maps to a task line. */
+	tasksBefore: number;
+}
+
 interface CardsViewState {
 	filePath?: string;
 	headingLevel?: number;
@@ -3255,9 +3433,10 @@ export class SectionCardsView extends ItemView {
 	private plannerScope: Component | null = null;
 	/** Watches the planner's line cards for the native vertical resize. */
 	private plannerObserver: ResizeObserver | null = null;
-	/** The line card being dragged between or within the planner's columns. */
-	private plannerDrag: { el: HTMLElement; blockIndex: number; blockText: string; key: string; col: 0 | 1 } | null =
-		null;
+	/** The card being dragged between or within the planner's columns. */
+	private plannerDrag: PlannerItem | null = null;
+	/** The planner's cards as built, in document order; items carry their index. */
+	private plannerItems: PlannerItem[] = [];
 	/** The element wearing the planner's drop mark (a line card or a column). */
 	private plannerDropEl: HTMLElement | null = null;
 	/** The heading the planner is showing, for the height observer's bookkeeping. */
@@ -5063,11 +5242,12 @@ export class SectionCardsView extends ItemView {
 
 	/**
 	 * Day Planner: the showing card's title in large type between arrows to its
-	 * neighbours, and each of its lines (task or paragraph) as a card in one of two
-	 * columns — left unless it was dragged right — in document order. A line card is
-	 * resizable vertically (the browser's grip) and its column and height are kept per
-	 * note, keyed by the line's text. Rebuilt whole on every refresh, filter pass, and
-	 * turn; the DOM is small, so nothing is reused.
+	 * neighbours, and its contents as cards in two columns — left unless dragged right —
+	 * in document order. Above the card's first sub-heading every task or paragraph is a
+	 * line card; each sub-heading (H4 under an H3 card, say) with what's beneath it is a
+	 * subcard, titled by the heading. Cards resize vertically (the browser's grip); the
+	 * column and height are kept per note, keyed by the card's text. Rebuilt whole on
+	 * every refresh, filter pass, and turn; the DOM is small, so nothing is reused.
 	 */
 	private layoutPlanner(): void {
 		const root = this.plannerEl;
@@ -5106,7 +5286,7 @@ export class SectionCardsView extends ItemView {
 			btn.toggleAttribute("disabled", !neighbour);
 			if (!neighbour) return;
 			btn.addEventListener("click", () => this.setPlannerActive(neighbour));
-			// A line dragged onto an arrow lands at that neighbour's end: the planner's
+			// A card dragged onto an arrow lands at that neighbour's end: the planner's
 			// way of pushing something to tomorrow (or back to yesterday).
 			btn.addEventListener("dragover", (evt) => {
 				if (!this.plannerDrag) return;
@@ -5122,11 +5302,7 @@ export class SectionCardsView extends ItemView {
 				evt.preventDefault();
 				evt.stopPropagation();
 				this.plannerDrag = null;
-				const target = neighbour.holder.section;
-				// The line keeps its column on the card it moves to.
-				void this.updatePlannerSlot(target.headingRaw, drag.key, (slot) => ({ ...slot, col: drag.col }), false).then(() =>
-					this.completeBlockDrag(file, { section, blockIndex: drag.blockIndex, blockText: drag.blockText }, target, null),
-				);
+				void this.sendPlannerCard(file, section, drag, neighbour.holder.section);
 			});
 		};
 		arrow(prev, "prev");
@@ -5134,9 +5310,9 @@ export class SectionCardsView extends ItemView {
 		titleEl.toggleClass("is-today", active.el.hasClass("is-today"));
 		arrow(next, "next");
 
-		// Lines: each movable block is its own card, in its remembered column.
+		// Cards: lines above the first sub-heading, then one subcard per sub-heading.
 		const front = this.cardFaces(section.body).front.split("\n");
-		const blocks = movableBlocks(front);
+		const cards = plannerCards(front);
 		const taskLines = taskLineIndexes(front);
 		const slots = this.plugin.getPlanner(this.filePath)[section.headingRaw] ?? {};
 		const scope = new Component();
@@ -5148,32 +5324,48 @@ export class SectionCardsView extends ItemView {
 			this.wirePlannerColumn(el, col, file, section);
 			return el;
 		});
-		const items: HTMLElement[] = [];
-		blocks.forEach((block, blockIndex) => {
-			const blockText = front.slice(block.start, block.end).join("\n");
-			const key = plannerBlockKey(blockText);
+		this.plannerItems = cards.map((card, index) => {
+			// A subcard's editable text stops at its last non-blank line; the blank lines
+			// that separate it from the next heading stay put when it's rewritten.
+			let editEnd = card.end;
+			while (editEnd > card.start + 1 && front[editEnd - 1].trim() === "") editEnd--;
+			const text = front.slice(card.start, card.end).join("\n");
+			const key = plannerBlockKey(text);
 			const slot = slots[key];
 			const col: 0 | 1 = slot?.col === 1 ? 1 : 0;
-			const item = cols[col].createDiv({ cls: "sfsc-planner-item markdown-rendered" });
-			item.dataset.blockIndex = String(blockIndex);
+			const item = cols[col].createDiv({ cls: `sfsc-planner-item markdown-rendered is-${card.kind}` });
+			item.dataset.index = String(index);
 			item.dataset.key = key;
 			if (slot?.h) item.setCssStyles({ height: `${slot.h}px` });
-			items.push(item);
+			const ctx: PlannerItem = {
+				el: item,
+				card,
+				text,
+				editText: card.kind === "sub" ? front.slice(card.start, editEnd).join("\n") : text,
+				editEnd,
+				key,
+				col,
+				// Checkbox n of this card is task line (tasks before it + n) of the section.
+				tasksBefore: taskLines.filter((line) => line < card.start).length,
+			};
+			if (card.kind === "sub") item.createDiv({ cls: "sfsc-planner-item-title", text: card.title || "(untitled)" });
 			const body = item.createDiv({ cls: "sfsc-planner-item-body" });
-			// Checkbox n of this card is task line (tasks before this block + n) of the section.
-			const tasksBefore = taskLines.filter((line) => line < block.start).length;
-			void MarkdownRenderer.render(this.app, blockText, body, file.path, scope).then(() => {
-				// Rendered task checkboxes come back disabled, and disabled inputs never fire clicks.
-				for (const box of Array.from(body.querySelectorAll<HTMLInputElement>("input[type=checkbox]"))) {
-					box.removeAttribute("disabled");
-					box.removeAttribute("readonly");
-				}
-			});
-			this.wirePlannerItem(item, body, { file, section, blockIndex, blockText, key, col, tasksBefore });
+			const markdown = card.kind === "sub" ? front.slice(card.start + 1, editEnd).join("\n") : text;
+			if (markdown.trim()) {
+				void MarkdownRenderer.render(this.app, bodyForRender(markdown), body, file.path, scope).then(() => {
+					// Rendered task checkboxes come back disabled, and disabled inputs never fire clicks.
+					for (const box of Array.from(body.querySelectorAll<HTMLInputElement>("input[type=checkbox]"))) {
+						box.removeAttribute("disabled");
+						box.removeAttribute("readonly");
+					}
+				});
+			}
+			this.wirePlannerItem(item, body, file, section, ctx);
+			return ctx;
 		});
 
-		// An add box at the foot of each column: Enter appends the line to the card (as
-		// a task unless it's already a list item) and remembers the column it was typed in.
+		// An add box at the foot of each column: Enter adds a task line to the card (above
+		// its first sub-heading, so it shows as a line card) in the column it was typed in.
 		cols.forEach((colEl, col) => {
 			const add = colEl.createEl("input", {
 				cls: "sfsc-planner-add",
@@ -5190,7 +5382,7 @@ export class SectionCardsView extends ItemView {
 				if (!text) return;
 				evt.preventDefault();
 				add.value = "";
-				void this.plannerQuickAdd(file, section, text, col as 0 | 1);
+				void this.plannerQuickAdd(file, section, text, col as 0 | 1, cards);
 			});
 			if (this.plannerFocusCol === col) add.focus();
 		});
@@ -5199,18 +5391,14 @@ export class SectionCardsView extends ItemView {
 		// The browser's resize grip writes an inline height; the observer saves it.
 		if (typeof ResizeObserver !== "undefined") {
 			const observer = new ResizeObserver(() => this.plannerHeightsChanged());
-			for (const item of items) observer.observe(item);
+			for (const { el } of this.plannerItems) observer.observe(el);
 			this.plannerObserver = observer;
 		}
 	}
 
-	/** Drag, checkbox, double-click edit, and right-click menu for one planner line card. */
-	private wirePlannerItem(
-		item: HTMLElement,
-		body: HTMLElement,
-		ctx: { file: TFile; section: Section; blockIndex: number; blockText: string; key: string; col: 0 | 1; tasksBefore: number },
-	): void {
-		const { file, section, blockIndex, blockText, key, col } = ctx;
+	/** Drag, checkbox, double-click edit, and right-click menu for one planner card. */
+	private wirePlannerItem(item: HTMLElement, body: HTMLElement, file: TFile, section: Section, ctx: PlannerItem): void {
+		const { card, text, key, col } = ctx;
 		item.draggable = true;
 		item.addEventListener("dragstart", (evt) => {
 			const target = evt.target as HTMLElement | null;
@@ -5222,11 +5410,11 @@ export class SectionCardsView extends ItemView {
 				return;
 			}
 			evt.stopPropagation();
-			this.plannerDrag = { el: item, blockIndex, blockText, key, col };
+			this.plannerDrag = ctx;
 			item.addClass("is-dragging-block");
 			if (evt.dataTransfer) {
 				evt.dataTransfer.effectAllowed = "move";
-				evt.dataTransfer.setData("text/plain", blockText);
+				evt.dataTransfer.setData("text/plain", text);
 			}
 		});
 		item.addEventListener("dragend", () => {
@@ -5246,43 +5434,74 @@ export class SectionCardsView extends ItemView {
 			evt.stopPropagation();
 			toggle(box);
 		});
+		const edit = () => {
+			if (card.kind === "line") {
+				this.openEditBlockModal(file, section, card.blockIndex ?? 0, text);
+				return;
+			}
+			new EditBlockModal(this.plugin, ctx.editText, async (newText) => {
+				const ok = await replaceRangeInFile(this.app, file, this.headingLevel, section, card.start, ctx.editEnd, ctx.editText, newText);
+				if (!ok) new Notice("Single File Section Cards: couldn't find that text — the file changed on disk.");
+				await this.refresh();
+			}).open();
+		};
 		item.addEventListener("dblclick", (evt) => {
 			if ((evt.target as HTMLElement).closest("a, input")) return;
 			evt.preventDefault();
 			evt.stopPropagation();
-			this.openEditBlockModal(file, section, blockIndex, blockText);
+			edit();
 		});
+		// The menu leads with the planner's own items — column and height — then the
+		// line menu for a line, or edit/copy for a subcard.
+		const prepend = (menu: Menu) => {
+			menu.addItem((mi) =>
+				mi
+					.setTitle(col === 0 ? "Move to right column" : "Move to left column")
+					.setIcon(col === 0 ? "arrow-right" : "arrow-left")
+					.onClick(() => void this.updatePlannerSlot(section.headingRaw, key, (slot) => ({ ...slot, col: col === 0 ? 1 : 0 }))),
+			);
+			if (item.style.height) {
+				menu.addItem((mi) =>
+					mi
+						.setTitle("Reset height")
+						.setIcon("unfold-vertical")
+						.onClick(() => void this.updatePlannerSlot(section.headingRaw, key, ({ col: c }) => ({ col: c }))),
+				);
+			}
+			menu.addSeparator();
+		};
 		item.addEventListener("contextmenu", (evt) => {
 			if ((evt.target as HTMLElement).closest("a")) return;
 			evt.preventDefault();
 			evt.stopPropagation();
-			this.openBlockMenu(evt, file, section, blockIndex, blockText, item, {
-				prepend: (menu) => {
-					menu.addItem((mi) =>
-						mi
-							.setTitle(col === 0 ? "Move to right column" : "Move to left column")
-							.setIcon(col === 0 ? "arrow-right" : "arrow-left")
-							.onClick(() => void this.updatePlannerSlot(section.headingRaw, key, (slot) => ({ ...slot, col: col === 0 ? 1 : 0 }))),
-					);
-					if (item.style.height) {
-						menu.addItem((mi) =>
-							mi
-								.setTitle("Reset height")
-								.setIcon("unfold-vertical")
-								.onClick(() => void this.updatePlannerSlot(section.headingRaw, key, ({ col: c }) => ({ col: c }))),
-						);
-					}
-					menu.addSeparator();
-				},
-				toggle,
-			});
+			if (card.kind === "line") {
+				this.openBlockMenu(evt, file, section, card.blockIndex ?? 0, text, item, { prepend, toggle });
+				return;
+			}
+			const menu = new Menu();
+			prepend(menu);
+			menu.addItem((mi) => mi.setTitle("Edit text…").setIcon("pencil-line").onClick(edit));
+			menu.addItem((mi) =>
+				mi
+					.setTitle("Copy text")
+					.setIcon("copy")
+					.onClick(async () => {
+						try {
+							await navigator.clipboard.writeText(ctx.editText);
+							new Notice("Text copied.");
+						} catch {
+							new Notice("Couldn't access the clipboard.");
+						}
+					}),
+			);
+			menu.showAtMouseEvent(evt);
 		});
 	}
 
-	/** A planner column takes line drops: beside the hovered line card, or — in the open
-	 * space below them — after the column's last line. */
+	/** A planner column takes card drops: beside the hovered card, or — in the open space
+	 * below them — after the column's last card of the same kind. */
 	private wirePlannerColumn(colEl: HTMLElement, col: 0 | 1, file: TFile, section: Section): void {
-		const cardsIn = () => Array.from(colEl.querySelectorAll<HTMLElement>(":scope > .sfsc-planner-item"));
+		const itemAt = (el: HTMLElement | null) => (el ? this.plannerItems[Number(el.dataset.index)] ?? null : null);
 		const aim = (evt: DragEvent): { anchor: HTMLElement | null; before: boolean } => {
 			const hovered = (evt.target as HTMLElement | null)?.closest<HTMLElement>(".sfsc-planner-item");
 			if (hovered && colEl.contains(hovered) && hovered !== this.plannerDrag?.el) {
@@ -5298,7 +5517,9 @@ export class SectionCardsView extends ItemView {
 			const { anchor, before } = aim(evt);
 			this.clearPlannerDropMarks();
 			if (anchor) {
-				anchor.addClass(before ? "sc-blockdrop-before" : "sc-blockdrop-after");
+				// A line over a subcard files under it: mark the whole subcard, not an edge.
+				const intoSub = this.plannerDrag.card.kind === "line" && itemAt(anchor)?.card.kind === "sub" && !before;
+				anchor.addClass(intoSub ? "is-drop-target" : before ? "sc-blockdrop-before" : "sc-blockdrop-after");
 				this.plannerDropEl = anchor;
 			} else {
 				colEl.addClass("is-drop-target");
@@ -5317,14 +5538,16 @@ export class SectionCardsView extends ItemView {
 			this.plannerDrag = null;
 			drag.el.removeClass("is-dragging-block");
 			const { anchor, before } = aim(evt);
-			let anchorEl = anchor;
+			let target = itemAt(anchor);
 			let side: "before" | "after" = before ? "before" : "after";
-			if (!anchorEl) {
-				anchorEl = cardsIn().filter((el) => el !== drag.el).pop() ?? null;
+			if (!target) {
+				const inColumn = Array.from(colEl.querySelectorAll<HTMLElement>(":scope > .sfsc-planner-item"))
+					.map(itemAt)
+					.filter((it): it is PlannerItem => !!it && it !== drag && it.card.kind === drag.card.kind);
+				target = inColumn.pop() ?? null;
 				side = "after";
 			}
-			const anchorIndex = anchorEl ? Number(anchorEl.dataset.blockIndex) : null;
-			void this.finishPlannerDrop(file, section, drag, col, anchorIndex, side);
+			void this.finishPlannerDrop(file, section, drag, col, target, side);
 		});
 	}
 
@@ -5335,34 +5558,106 @@ export class SectionCardsView extends ItemView {
 		this.plannerDropEl = null;
 	}
 
-	/** A line dropped in a planner column: remember its column, and move it in the note
-	 * to sit beside the anchor — unless it already does, when only the column changes. */
+	/**
+	 * A card dropped in a planner column: remember its column, then move it in the note
+	 * to match what the columns now show. Lines reorder among the lines above the first
+	 * sub-heading (or file under a subcard they're dropped on); subcards reorder among
+	 * subcards. A subcard can't sit among the loose lines — it would swallow them — so
+	 * dropped there only its column changes. Already beside the anchor: column only.
+	 */
 	private async finishPlannerDrop(
 		file: TFile,
 		section: Section,
-		drag: { blockIndex: number; blockText: string; key: string; col: 0 | 1 },
+		drag: PlannerItem,
 		col: 0 | 1,
-		anchorIndex: number | null,
+		anchor: PlannerItem | null,
 		side: "before" | "after",
 	): Promise<void> {
 		if (drag.col !== col) await this.updatePlannerSlot(section.headingRaw, drag.key, (slot) => ({ ...slot, col }), false);
-		const adjacent =
-			anchorIndex === null ||
-			anchorIndex === drag.blockIndex ||
-			(side === "after" && anchorIndex === drag.blockIndex - 1) ||
-			(side === "before" && anchorIndex === drag.blockIndex + 1);
-		if (adjacent) {
-			this.layoutPlanner();
+		const d = drag.card;
+		const a = anchor?.card ?? null;
+		const stay = () => this.layoutPlanner();
+		if (!a || a === d) return stay();
+
+		if (d.kind === "line" && a.kind === "line") {
+			const from = d.blockIndex ?? 0;
+			const to = a.blockIndex ?? 0;
+			const adjacent = (side === "after" && to === from - 1) || (side === "before" && to === from + 1);
+			if (adjacent) return stay();
+			await this.completeBlockDrag(file, { section, blockIndex: from, blockText: drag.text }, section, to, side);
 			return;
 		}
-		await this.completeBlockDrag(file, { section, blockIndex: drag.blockIndex, blockText: drag.blockText }, section, anchorIndex, side);
+		if (d.kind === "line" && a.kind === "sub") {
+			const front = this.cardFaces(section.body).front.split("\n");
+			if (side === "before") {
+				// Above the heading: the end of whatever precedes it (the loose lines, or
+				// the subcard before). Already there, bar blank lines: column only.
+				if (d.end <= a.start && front.slice(d.end, a.start).every((l) => l.trim() === "")) return stay();
+				await moveRangeInFile(this.app, file, this.headingLevel, section, d.start, d.end, drag.text, section, a.start);
+			} else {
+				// Onto the subcard: file the line under its heading, after its last block.
+				const inner = movableBlocks(front)
+					.map((b, i) => ({ b, i }))
+					.filter(({ b }) => b.start > a.start && b.end <= a.end);
+				const last = inner[inner.length - 1];
+				if (last) {
+					await this.completeBlockDrag(file, { section, blockIndex: d.blockIndex ?? 0, blockText: drag.text }, section, last.i, "after");
+					return;
+				}
+				await moveRangeInFile(this.app, file, this.headingLevel, section, d.start, d.end, drag.text, section, a.start + 1);
+			}
+			await this.refresh();
+			return;
+		}
+		if (d.kind === "sub" && a.kind === "sub") {
+			const insertAt = side === "before" ? a.start : a.end;
+			if (insertAt === d.start || insertAt === d.end) return stay();
+			const ok = await moveRangeInFile(this.app, file, this.headingLevel, section, d.start, d.end, drag.text, section, insertAt);
+			if (!ok) new Notice("Single File Section Cards: couldn't move that text — the file changed on disk.");
+			await this.refresh();
+			return;
+		}
+		stay();
 	}
 
-	/** Enter in a column's add box: append the line to the card, in that column. */
-	private async plannerQuickAdd(file: TFile, section: Section, text: string, col: 0 | 1): Promise<void> {
+	/** A card dropped on an arrow: it moves to the neighbouring card's end, keeping its column. */
+	private async sendPlannerCard(file: TFile, section: Section, drag: PlannerItem, target: Section): Promise<void> {
+		await this.updatePlannerSlot(target.headingRaw, drag.key, (slot) => ({ ...slot, col: drag.col }), false);
+		if (drag.card.kind === "line") {
+			await this.completeBlockDrag(file, { section, blockIndex: drag.card.blockIndex ?? 0, blockText: drag.text }, target, null);
+			return;
+		}
+		const ok = await moveRangeInFile(
+			this.app,
+			file,
+			this.headingLevel,
+			section,
+			drag.card.start,
+			drag.card.end,
+			drag.text,
+			target,
+			target.endLine - bodyStartLine(target),
+		);
+		if (!ok) new Notice("Single File Section Cards: couldn't move that text — the file changed on disk.");
+		await this.refresh();
+	}
+
+	/** Enter in a column's add box: a task line joins the card in that column — at the
+	 * end, or above the first sub-heading when the card has subcards. */
+	private async plannerQuickAdd(file: TFile, section: Section, text: string, col: 0 | 1, cards: PlannerCard[]): Promise<void> {
 		const line = /^(?:[-*+]|\d+[.)])\s/.test(text) ? text : `- [ ] ${text}`;
 		if (col === 1) await this.updatePlannerSlot(section.headingRaw, plannerBlockKey(line), (slot) => ({ ...slot, col }), false);
-		const ok = await quickAddToSection(this.app, file, this.headingLevel, section, line, "bottom", this.flipMarker());
+		const firstSub = cards.find((c) => c.kind === "sub");
+		let ok: boolean;
+		if (firstSub) {
+			// Directly under the last loose line, above the blank that precedes the heading.
+			const front = this.cardFaces(section.body).front.split("\n");
+			let at = firstSub.start;
+			while (at > 0 && front[at - 1].trim() === "") at--;
+			ok = await insertAtBodyLineInFile(this.app, file, this.headingLevel, section, at, line);
+		} else {
+			ok = await quickAddToSection(this.app, file, this.headingLevel, section, line, "bottom", this.flipMarker());
+		}
 		if (!ok) new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
 		this.plannerFocusCol = col;
 		await this.refresh();
