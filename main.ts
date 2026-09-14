@@ -5439,8 +5439,25 @@ export class SectionCardsView extends ItemView {
 
 	/** Day Planner: turn to a card (an arrow, ← / →, or `,` / `.`). */
 	private setPlannerActive(entry: CardEntry): void {
-		this.roloActive.set(this.filePath, entry.holder.section.headingRaw);
+		this.roloActive.set(this.filePath, this.plannerKey(entry));
 		this.layoutPlanner();
+	}
+
+	/**
+	 * How the planner remembers which card it's on. The heading line alone isn't
+	 * enough: a week that straddles two months is written under both, so the same
+	 * heading appears twice and stepping onto the second would resolve back to the
+	 * first. Duplicates get their occurrence appended; the first keeps the bare
+	 * heading, which the Rolodex (sharing the memory) still understands.
+	 */
+	private plannerKey(entry: CardEntry): string {
+		const raw = entry.holder.section.headingRaw;
+		let n = 0;
+		for (const other of this.cardEntries) {
+			if (other === entry) break;
+			if (other.holder.section.headingRaw === raw) n++;
+		}
+		return n ? `${raw}\u0000${n}` : raw;
 	}
 
 	/** Day Planner: the previous/next card as the wall is sorted — no wrap-around,
@@ -5449,7 +5466,7 @@ export class SectionCardsView extends ItemView {
 		const visible = this.roloVisible();
 		if (!visible.length) return;
 		const remembered = this.roloActive.get(this.filePath);
-		const at = visible.findIndex((e) => e.holder.section.headingRaw === remembered);
+		const at = visible.findIndex((e) => this.plannerKey(e) === remembered);
 		// A level of days, weeks, months, or years steps by that unit — → always forward
 		// in time, ← back, whatever the sort — offering to create a missing one.
 		const period = at >= 0 ? this.plannerPeriod(visible[at].holder.section) : null;
@@ -5630,7 +5647,7 @@ export class SectionCardsView extends ItemView {
 		const visible = this.roloVisible();
 		const remembered = this.roloActive.get(this.filePath);
 		const active =
-			visible.find((e) => e.holder.section.headingRaw === remembered) ??
+			visible.find((e) => this.plannerKey(e) === remembered) ??
 			visible.find((e) => e.el.hasClass("is-today")) ??
 			visible[0] ??
 			null;
@@ -5648,7 +5665,7 @@ export class SectionCardsView extends ItemView {
 			return;
 		}
 		const section = active.holder.section;
-		this.roloActive.set(this.filePath, section.headingRaw);
+		this.roloActive.set(this.filePath, this.plannerKey(active));
 		this.plannerHeading = section.headingRaw;
 		this.buildPlannerCard(root, file, active, section);
 	}
