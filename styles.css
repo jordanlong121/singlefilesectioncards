@@ -2089,6 +2089,8 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 	width: 26px;
 	height: 26px;
 	padding: 0;
+	/* The card classes fade these out until the card is hovered; here they always show. */
+	opacity: 1;
 	background: transparent;
 	box-shadow: none;
 	color: var(--text-muted);
