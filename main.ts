@@ -536,6 +536,9 @@ interface Section {
 	 * also `unfiled` — no heading line, found by position — but renders as a table and
 	 * takes no block drags, quick adds, or deletes. */
 	properties?: boolean;
+	/** True for the synthetic card spanning the whole note below its properties — the
+	 * Day Planner's stand-in when the card level has no headings. Also `unfiled`. */
+	whole?: boolean;
 }
 
 /** obsidian's `moment` re-export is typed as a namespace; this is the callable form. */
@@ -735,6 +738,28 @@ export function unfiledSection(lines: string[], title: string): Section | null {
 }
 
 /** The properties card's key in per-note state (pins, placements, colors). */
+export const WHOLE_KEY = "::whole::";
+
+/** The whole note below its properties as one headless section: the Day Planner's card
+ * when the chosen level has no headings, so every section beneath can still show. */
+export function wholeNoteSection(lines: string[]): Section {
+	let start = firstContentLine(lines);
+	while (start < lines.length && lines[start].trim() === "") start++;
+	const body = lines.slice(start).join("\n");
+	return {
+		index: -1,
+		title: "",
+		headingRaw: WHOLE_KEY,
+		headingLine: -1,
+		body,
+		raw: body,
+		startLine: start,
+		endLine: lines.length,
+		unfiled: true,
+		whole: true,
+	};
+}
+
 export const PROPERTIES_KEY = "::properties::";
 
 /**
@@ -1566,6 +1591,7 @@ function locateSection(sections: Section[], original: Section): Section | undefi
  */
 function locateCard(lines: string[], level: number, original: Section): Section | undefined {
 	if (original.properties) return propertiesSection(lines, original.title) ?? undefined;
+	if (original.whole) return wholeNoteSection(lines);
 	if (original.unfiled) return unfiledSection(lines, original.title) ?? undefined;
 	return locateSection(parseSections(lines, level), original);
 }
@@ -3427,6 +3453,8 @@ export class SectionCardsView extends ItemView {
 	private plannerDropEl: HTMLElement | null = null;
 	/** The heading the planner is showing, for the height observer's bookkeeping. */
 	private plannerHeading: string | null = null;
+	/** The note's lines as of the last refresh (the planner's whole-note fallback reads them). */
+	private noteLines: string[] = [];
 	/** The starred-only toolbar toggle, so refresh can hide it in notes with no stars. */
 	private starBtn: HTMLElement | null = null;
 	/** Whether the last render found a starred line, so the star toggle is offered. */
@@ -5346,6 +5374,12 @@ export class SectionCardsView extends ItemView {
 			visible.find((e) => e.el.hasClass("is-today")) ??
 			visible[0] ??
 			null;
+		// No headings at this level (H2 picked in a note of H1 months and H3 days): say
+		// so, and show every section the note does have as a card beneath.
+		if (file && !this.cardEntries.some((e) => !e.holder.section.unfiled) && this.noteLines.some((l) => HEADING_RE.test(l))) {
+			this.buildPlannerWholeNote(root, file);
+			return;
+		}
 		if (!active || !file) {
 			root.createDiv({
 				cls: "section-cards-empty",
@@ -5356,6 +5390,12 @@ export class SectionCardsView extends ItemView {
 		const section = active.holder.section;
 		this.roloActive.set(this.filePath, section.headingRaw);
 		this.plannerHeading = section.headingRaw;
+		this.buildPlannerCard(root, file, active, section);
+	}
+
+	/** The showing card's head (arrows, title, strip) and its columns. */
+	private buildPlannerCard(root: HTMLElement, file: TFile, active: CardEntry, section: Section): void {
+		const visible = this.roloVisible();
 		// In a dated note the arrows step by day — ← is yesterday and → tomorrow whatever
 		// the sort: the neighbouring day's card, or an offer to create it. Otherwise by
 		// card, as the wall is sorted.
@@ -5467,6 +5507,58 @@ export class SectionCardsView extends ItemView {
 		});
 		arrow("next");
 
+		this.renderPlannerCards(root, file, section, front, cards);
+	}
+
+	/**
+	 * The planner with no card at this level: a "No Hn headings" title between dead
+	 * arrows, a button that adds the first Hn section, and every section the note has —
+	 * at any level — as a card in the columns, working on the whole note as the card.
+	 */
+	private buildPlannerWholeNote(root: HTMLElement, file: TFile): void {
+		const section = wholeNoteSection(this.noteLines);
+		this.plannerHeading = section.headingRaw;
+		const level = this.headingLevel;
+		const head = root.createDiv({ cls: "sfsc-planner-head" });
+		const dead = (dir: "prev" | "next") => {
+			const btn = head.createEl("button", { cls: `sfsc-planner-arrow is-${dir}` });
+			setIcon(btn, dir === "prev" ? "chevron-left" : "chevron-right");
+			btn.setAttr("aria-label", `No H${level} cards to step through`);
+			btn.toggleAttribute("disabled", true);
+		};
+		dead("prev");
+		const titleWrap = head.createDiv({ cls: "sfsc-planner-title-wrap" });
+		titleWrap.createDiv({ cls: "sfsc-planner-title is-missing", text: `No H${level} headings in this note` });
+		titleWrap.createDiv({ cls: "sfsc-planner-subtitle", text: "Every section the note does have, as cards" });
+		const actions = titleWrap.createDiv({ cls: "sfsc-planner-actions" });
+		const addBtn = actions.createEl("button", { cls: "sfsc-planner-addsub" });
+		setIcon(addBtn, "list-tree");
+		addBtn.setAttr("aria-label", `Add an H${level} section at the note's end`);
+		addBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			new TextInputModal(this.app, `New H${level} section`, "", "Add", (title) => {
+				const text = title.trim();
+				if (!text) return;
+				void (async () => {
+					const ok = await pasteAtSectionEnd(this.app, file, level, section, `${"#".repeat(level)} ${text}`);
+					if (!ok) new Notice("Single File Section Cards: couldn't write to the note.");
+					await this.refresh();
+				})();
+			}).open();
+		});
+		dead("next");
+		const { lines: front, cards } = this.plannerLines(section);
+		this.renderPlannerCards(root, file, section, front, cards);
+	}
+
+	/** The two columns of cards for `section`, whose body is `front` split into `cards`. */
+	private renderPlannerCards(
+		root: HTMLElement,
+		file: TFile,
+		section: Section,
+		front: string[],
+		cards: PlannerCard[],
+	): void {
 		const taskLines = taskLineIndexes(front);
 		const today = this.todayKeys();
 		const slots = this.plugin.getPlanner(this.filePath)[section.headingRaw] ?? {};
@@ -7221,6 +7313,15 @@ export class SectionCardsView extends ItemView {
 			new Notice(`Single File Section Cards: can't find "${this.filePath}".`);
 			return;
 		}
+		// A level with no date headings (H2 in a note of H1 months and H3 days) mustn't
+		// get a dated card: write at the level that holds the dates, and follow it there.
+		const counts = dateHeadingCounts(this.noteLines, this.cardFormat(), this.plugin.settings.dateDetectFormat);
+		const dateLevel = bestDateLevel(counts);
+		if (dateLevel !== null && counts[this.headingLevel] === 0 && dateLevel !== this.headingLevel) {
+			this.headingLevel = dateLevel;
+			this.rememberView();
+			this.buildToolbar();
+		}
 		const title = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
 		const headingRaw = `${"#".repeat(this.headingLevel)} ${title}`;
 		const body = await this.plugin.loadTemplateBody(file.path, title);
@@ -7893,6 +7994,7 @@ export class SectionCardsView extends ItemView {
 		// The Heading dropdown offers only the levels the note actually has (plus the
 		// current one); an edit that introduces or removes a level updates it in place
 		// on the post-save refresh.
+		this.noteLines = lines;
 		this.availableLevels = headingLevelsIn(lines);
 		if (this.levelSelect) {
 			const want = this.levelOptionValues().join(",");
@@ -13881,15 +13983,28 @@ export default class SectionCardsPlugin extends Plugin {
 			new Notice(`Single File Section Cards: can't find "${path || "(no default note)"}" — set the default note in settings.`);
 			return;
 		}
-		const level = this.getStoredView(file.path)?.headingLevel ?? this.settings.headingLevel;
+		const content = await this.app.vault.cachedRead(file);
+		const lines = content.split(/\r?\n/);
+		const stored = this.getStoredView(file.path);
+		let level = stored?.headingLevel ?? this.settings.headingLevel;
+		// The view may be parked on a level with no date headings (H2 in a note of H1
+		// months and H3 days): today's card belongs at the level that holds the dates,
+		// and the view follows it there.
+		const counts = dateHeadingCounts(lines, this.getNewCardFormat(file.path), this.settings.dateDetectFormat);
+		const dateLevel = bestDateLevel(counts);
+		if (dateLevel !== null && counts[level] === 0) {
+			level = dateLevel;
+			if (stored && stored.headingLevel !== level) {
+				stored.headingLevel = level;
+				await this.saveSettings();
+			}
+		}
 		const now = moment();
 		const title = now.format(this.getNewCardFormat(file.path));
 		const headingRaw = `${"#".repeat(level)} ${title}`;
 
 		// "Exists" the way the view decides which card is today's, so a heading written
 		// in another spelling of today's date isn't shadowed by a second one.
-		const content = await this.app.vault.cachedRead(file);
-		const lines = content.split(/\r?\n/);
 		const iso = now.format("YYYY-MM-DD");
 		const sections = parseSections(lines, level);
 		const today = sections.find((section) => isTodayTitle(section.title, iso, title));
