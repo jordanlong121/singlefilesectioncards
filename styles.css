@@ -2065,28 +2065,49 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 	flex: 0 0 auto;
 }
 
-/* Title with the open-in-note button at its right; the pair sits centred. */
+/* The title, with the card's action strip beneath it; both centred. */
 .sfsc-planner-title-wrap {
 	display: flex;
+	flex-direction: column;
 	align-items: center;
-	justify-content: center;
-	gap: 10px;
+	gap: 6px;
 	min-width: 0;
 }
 
-.sfsc-planner-open {
-	flex: 0 0 auto;
+/* The cards' hover strip, always showing here: the same buttons at the same size. */
+.sfsc-planner-actions {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+}
+
+.sfsc-planner-actions button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	background: transparent;
+	box-shadow: none;
 	color: var(--text-muted);
 }
 
-.sfsc-planner-open:hover {
+.sfsc-planner-actions button:hover {
 	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
 }
 
-.sfsc-planner-open svg {
-	width: 16px;
-	height: 16px;
+.sfsc-planner-actions button svg {
+	width: 18px;
+	height: 18px;
 	display: block;
+}
+
+/* A colored card colors its planner title. */
+.sfsc-planner-head[data-sfsc-color] .sfsc-planner-title {
+	color: var(--sfsc-c);
 }
 
 .sfsc-planner-title {
