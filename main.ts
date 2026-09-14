@@ -7178,7 +7178,6 @@ export class SectionCardsView extends ItemView {
 
 		menu.addSeparator();
 		this.addLayoutItems(menu);
-		this.addLayoutVisibilityItems(menu);
 
 		menu.addSeparator();
 		addHeading("Dates");
@@ -7266,23 +7265,41 @@ export class SectionCardsView extends ItemView {
 	 * the hamburger menu and the wall's right-click menu. A single "Layouts" row whose
 	 * submenu opens on hover (flat list under a heading where submenus don't exist).
 	 * The current one is checked; Calendar greys out in notes with no date headings.
+	 * The same list manages which layouts this note offers: Ctrl/⌘-click hides one
+	 * (it stays listed, dimmed, and a click brings it back), remembered per note.
 	 */
 	private addLayoutItems(menu: Menu): void {
 		const addOptions = (target: Menu) => {
 			for (const [value, label] of LAYOUT_OPTIONS) {
-				if (!this.layoutEnabled(value)) continue;
-				target.addItem((item) =>
+				const enabled = this.layoutEnabled(value);
+				target.addItem((item) => {
+					if (!enabled) {
+						item
+							.setTitle(`${label} (hidden)`)
+							.setIcon("eye-off")
+							.onClick(() => void this.toggleLayoutEnabled(value));
+						(item as MenuItem & { dom?: HTMLElement }).dom?.addClass("sfsc-menu-hidden-layout");
+						return;
+					}
 					item
 						.setTitle(label)
 						.setChecked(this.layout === value)
 						.setDisabled(
-						(value === "calendar" || value === "heatmap") &&
-							this.layout !== value &&
-							!this.calendarSelectable(),
-					)
-						.onClick(() => {
+							(value === "calendar" || value === "heatmap") && this.layout !== value && !this.calendarSelectable(),
+						)
+						.onClick((evt) => {
+							const modified = evt instanceof MouseEvent && (evt.ctrlKey || evt.metaKey || evt.altKey);
+							if (modified) {
+								if (value !== this.layout) void this.toggleLayoutEnabled(value);
+								return;
+							}
 							if (this.layout !== value) this.setLayout(value);
-						}),
+						});
+				});
+			}
+			if (!Platform.isMobile) {
+				target.addItem((item) =>
+					item.setTitle(`${MOD_LABEL}-click a layout to hide it from this note`).setIcon("info").setDisabled(true),
 				);
 			}
 		};
@@ -7293,34 +7310,6 @@ export class SectionCardsView extends ItemView {
 		}
 		menu.addItem((item) => {
 			item.setTitle("Layouts").setIcon("layout-grid");
-			addOptions((item as MenuItem & { setSubmenu: () => Menu }).setSubmenu());
-		});
-	}
-
-	/**
-	 * "Layouts shown in this note": a checklist of every layout; unticking one drops it
-	 * from the dropdown, the Layouts menu, and the L cycle for this note (remembered
-	 * per note). The showing layout can't be unticked — switch away first.
-	 */
-	private addLayoutVisibilityItems(menu: Menu): void {
-		const addOptions = (target: Menu) => {
-			for (const [value, label] of LAYOUT_OPTIONS) {
-				target.addItem((item) =>
-					item
-						.setTitle(label)
-						.setChecked(this.layoutEnabled(value))
-						.setDisabled(value === this.layout)
-						.onClick(() => void this.toggleLayoutEnabled(value)),
-				);
-			}
-		};
-		if (!SectionCardsView.submenuSupported()) {
-			SectionCardsView.addMenuHeading(menu, "Layouts shown in this note");
-			addOptions(menu);
-			return;
-		}
-		menu.addItem((item) => {
-			item.setTitle("Layouts shown in this note").setIcon("list-checks");
 			addOptions((item as MenuItem & { setSubmenu: () => Menu }).setSubmenu());
 		});
 	}
