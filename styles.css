@@ -4065,3 +4065,53 @@ body.is-phone .section-cards-label {
 	flex-wrap: wrap;
 	justify-content: flex-end;
 }
+
+/* The properties card: a table of the note's frontmatter. Quick add and delete would
+   splice text into YAML, so they're off; the table fills the card. */
+.section-card.is-properties .section-card-quickadd,
+.section-card.is-properties .section-card-delete {
+	display: none;
+}
+
+.section-card.is-properties .section-card-body table {
+	width: 100%;
+}
+
+/* The properties table: muted names, values that edit in place on click. */
+.sfsc-props td {
+	vertical-align: top;
+	padding: 3px 8px 3px 0;
+}
+
+.sfsc-props .sfsc-prop-key {
+	color: var(--text-muted);
+	white-space: nowrap;
+	width: 1%;
+}
+
+.sfsc-props .sfsc-prop-value {
+	cursor: text;
+	width: 100%;
+	border-radius: var(--radius-s, 4px);
+}
+
+.sfsc-props .sfsc-prop-value:hover:not(.is-editing) {
+	background-color: var(--background-modifier-hover);
+}
+
+.sfsc-props .sfsc-prop-value > p {
+	margin: 0;
+}
+
+.sfsc-props .sfsc-prop-empty {
+	color: var(--text-faint);
+}
+
+.sfsc-props .sfsc-prop-input {
+	width: 100%;
+	font: inherit;
+	line-height: inherit;
+	padding: 1px 6px;
+	margin: 0;
+	resize: vertical;
+}

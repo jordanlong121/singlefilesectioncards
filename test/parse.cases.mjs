@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -1785,6 +1785,86 @@ t("imageLinksIn: HTML <img> tags, data: URIs, and video files all count", () => 
     { target: "demo clip.mp4", external: false },
     { target: "walkthrough.webm", external: false },
   ]);
+});
+
+t("propertiesSection: the lines between the fences, tolerating leading blanks", () => {
+  const lines = L("\n---\ntitle: Hello\ntags: [a, b]\n---\nintro\n### one");
+  const s = propertiesSection(lines, "Properties");
+  assert.equal(s.headingRaw, PROPERTIES_KEY);
+  assert.equal(s.body, "title: Hello\ntags: [a, b]");
+  assert.equal(s.raw, s.body, "body-only: the fences are never card content");
+  assert.deepEqual([s.startLine, s.endLine], [2, 4]);
+  assert.ok(s.unfiled && s.properties);
+});
+
+t("propertiesSection: null without a block, with an unclosed block, or an empty one", () => {
+  assert.equal(propertiesSection(L("### one\nbody"), "P"), null);
+  assert.equal(propertiesSection(L("---\ntitle: x\n### one"), "P"), null);
+  assert.equal(propertiesSection(L("---\n\n---\n### one"), "P"), null);
+});
+
+t("parseCards puts the properties card first, then the unfiled card", () => {
+  const lines = L("---\nstatus: Active\n---\nloose text\n### one\nbody");
+  const cards = parseCards(lines, 3, "_Unfiled_", "Properties");
+  assert.deepEqual(cards.map((c) => c.title), ["Properties", "_Unfiled_", "one"]);
+  assert.equal(parseCards(lines, 3, "_Unfiled_").length, 2, "off by default");
+  const sorted = sortSections(cards, "asc");
+  assert.deepEqual(sorted.map((c) => c.title), ["Properties", "_Unfiled_", "one"], "sorting keeps them first");
+});
+
+t("propertiesMarkdown: scalars, inline and block lists, tags, quotes, and pipes", () => {
+  const md = propertiesMarkdown(["title: \"[[Some Note]]\"", "tags: [work, home]", "people:", "  - Ann", "  - Bob", "note: a | b", "empty:", "aliases:", "  - x"].join("\n"));
+  const rows = md.split("\n");
+  assert.equal(rows[0], "| Property | Value |");
+  assert.ok(rows.includes("| title | [[Some Note]] |"), "quotes shed so links render");
+  assert.ok(rows.includes("| tags | #work, #home |"), "tags become tags");
+  assert.ok(rows.includes("| people | Ann, Bob |"), "block lists join");
+  assert.ok(rows.includes("| note | a \\| b |"), "pipes escaped");
+  assert.ok(rows.includes("| empty |  |"), "empty value keeps its row");
+  assert.ok(rows.includes("| aliases | x |"));
+});
+
+t("propertiesMarkdown falls back to a code block when nothing parses", () => {
+  assert.ok(propertiesMarkdown("- just\n- a list").startsWith("```yaml"));
+});
+
+t("sectionFromEdited keeps the properties card body-only", () => {
+  const s = propertiesSection(L("---\na: 1\n---\n### one"), "P");
+  const e = sectionFromEdited(s, "a: 2\nb: 3");
+  assert.equal(e.raw, "a: 2\nb: 3");
+  assert.equal(e.headingRaw, PROPERTIES_KEY, "the key never changes");
+  assert.equal(e.endLine, 3);
+});
+
+t("parseYamlProperties records each property's shape and lines", () => {
+  const props = parseYamlProperties(["title: \"[[Note]]\"", "tags: [a, b]", "people:", "  - Ann", "  - Bob", "", "note: |", "  line one", "  line two", "count: 3"].join("\n"));
+  assert.deepEqual(props.map((p) => [p.key, p.shape, p.start, p.end]), [
+    ["title", "scalar", 0, 1], ["tags", "inline", 1, 2], ["people", "block", 2, 5], ["note", "folded", 6, 9], ["count", "scalar", 9, 10],
+  ]);
+  assert.equal(props[0].quote, '"');
+  assert.equal(props[3].text, "line one\nline two");
+});
+
+t("setYamlProperty rewrites one property in its original shape and nothing else", () => {
+  const yaml = ["title: \"[[Note]]\"", "tags: [a, b]", "people:", "  - Ann", "", "count: 3"].join("\n");
+  assert.equal(setYamlProperty(yaml, "title", "[[Other]]").split("\n")[0], "title: \"[[Other]]\"", "quotes kept");
+  assert.equal(setYamlProperty(yaml, "tags", "#x, y").split("\n")[1], "tags: [x, y]", "inline list, # shed from tags");
+  const block = setYamlProperty(yaml, "people", "Cy, Di").split("\n");
+  assert.deepEqual(block.slice(2, 6), ["people:", "  - Cy", "  - Di", ""], "block list keeps its indent and the blank after it");
+  assert.equal(setYamlProperty(yaml, "count", "").split("\n")[5], "count:", "empty clears the value");
+  assert.equal(setYamlProperty(yaml, "missing", "x"), yaml, "unknown key is a no-op");
+});
+
+t("yamlScalar quotes only what YAML would misread", () => {
+  assert.equal(yamlScalar("plain words"), "plain words");
+  assert.equal(yamlScalar("true"), "true");
+  assert.equal(yamlScalar("[[Note]]"), "\"[[Note]]\"");
+  assert.equal(yamlScalar("a: b"), "\"a: b\"");
+  assert.equal(yamlScalar("#tag"), "\"#tag\"");
+  assert.equal(yamlScalar("- dash"), "\"- dash\"");
+  assert.equal(yamlScalar("x, y", "", true), "\"x, y\"", "commas quoted inside inline lists");
+  assert.equal(yamlScalar("say \"hi\""), "say \"hi\"", "quotes mid-string are plain YAML");
+  assert.equal(yamlScalar("say \"hi\"", '"'), "\"say \\\"hi\\\"\"", "a quoted original escapes inner quotes");
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
