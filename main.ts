@@ -5237,6 +5237,20 @@ export class SectionCardsView extends ItemView {
 		if (next !== at) this.setPlannerActive(visible[next]);
 	}
 
+	/**
+	 * The body the planner works from, and its cards. A card with headings beneath it
+	 * uses its whole body — a Card Flip marker inside one of its subcards belongs to
+	 * that subcard (a month card would otherwise lose every day after the first flipped
+	 * one). A card with no headings shows its front face only, like the wall does.
+	 */
+	private plannerLines(section: Section): { lines: string[]; cards: PlannerCard[] } {
+		const full = section.body.split("\n");
+		const cards = plannerCards(full);
+		if (cards.some((c) => c.kind === "sub")) return { lines: full, cards };
+		const front = this.cardFaces(section.body).front.split("\n");
+		return { lines: front, cards: plannerCards(front) };
+	}
+
 	/** Day Planner: the ISO date a card's heading names, when the note uses dates. */
 	private plannerDayIso(section: Section): string | null {
 		if (!this.hasDateHeadings) return null;
@@ -5408,8 +5422,7 @@ export class SectionCardsView extends ItemView {
 		arrow("next");
 
 		// Cards: lines above the first sub-heading, then one subcard per sub-heading.
-		const front = this.cardFaces(section.body).front.split("\n");
-		const cards = plannerCards(front);
+		const { lines: front, cards } = this.plannerLines(section);
 		const taskLines = taskLineIndexes(front);
 		const today = this.todayKeys();
 		const slots = this.plugin.getPlanner(this.filePath)[section.headingRaw] ?? {};
@@ -5674,7 +5687,7 @@ export class SectionCardsView extends ItemView {
 			return;
 		}
 		if (d.kind === "line" && a.kind === "sub") {
-			const front = this.cardFaces(section.body).front.split("\n");
+			const { lines: front } = this.plannerLines(section);
 			if (side === "before") {
 				// Above the heading: the end of whatever precedes it (the loose lines, or
 				// the subcard before). Already there, bar blank lines: column only.
@@ -5717,8 +5730,8 @@ export class SectionCardsView extends ItemView {
 	 * neighbour's first sub-heading (its own loose area), or at its end when it has none. */
 	private async sendPlannerCard(file: TFile, section: Section, drag: PlannerItem, target: Section): Promise<void> {
 		await this.updatePlannerSlot(target.headingRaw, drag.key, (slot) => ({ ...slot, col: drag.col }), false);
-		const front = this.cardFaces(target.body).front.split("\n");
-		const firstSub = drag.card.kind === "sub" ? undefined : plannerCards(front).find((c) => c.kind === "sub");
+		const { lines: front, cards: targetCards } = this.plannerLines(target);
+		const firstSub = drag.card.kind === "sub" ? undefined : targetCards.find((c) => c.kind === "sub");
 		if (drag.card.kind === "line" && !firstSub) {
 			await this.completeBlockDrag(file, { section, blockIndex: drag.card.blockIndex ?? 0, blockText: drag.text }, target, null);
 			return;
