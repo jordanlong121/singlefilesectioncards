@@ -134,9 +134,9 @@ tab to send it to that card.
 ### Day Planner
 
 One card at a time, as a planner page: its title in large type across the top, an arrow on
-either side to the previous and next card (or press `←` / `→`, `,` / `.`) — in a note with date
-headings the arrows step a day at a time, → to tomorrow and ← to yesterday whatever the sort, and
-a day with no card yet offers to create it — and its contents as
+either side to the previous and next card in the note's own order (or press `←` / `→`, `,` / `.`)
+— in a note with date headings the arrows step a day at a time, → to tomorrow and ← to yesterday
+whatever the sort, and a day with no card yet offers to create it — and its contents as
 small cards in two columns. Every heading beneath the card, at any level, is a subcard —
 titled by the heading, its tasks live inside — so a day card (H3) shows its H4 blocks, and a
 month card (H1) shows every day in it; whatever sits above the first heading is one more card,
