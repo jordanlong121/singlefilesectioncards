@@ -5373,11 +5373,45 @@ export class SectionCardsView extends ItemView {
 		const titleWrap = head.createDiv({ cls: "sfsc-planner-title-wrap" });
 		const titleEl = titleWrap.createDiv({ cls: "sfsc-planner-title", text: section.title || "(untitled)" });
 		titleEl.toggleClass("is-today", active.el.hasClass("is-today"));
-		// The cards' ↗: this section in the note's editor.
-		const openBtn = titleWrap.createEl("button", { cls: "section-cards-icon-btn sfsc-planner-open" });
-		setIcon(openBtn, "external-link");
-		openBtn.setAttr("aria-label", "Open this section in the note");
-		openBtn.addEventListener("click", () => void this.plugin.revealSection(file, section.headingLine));
+		// The card's color rides along on the title (the palette lives in
+		// --sfsc-color-<name> variables on the body, as the Rolodex tabs use it).
+		const color = active.el.getAttribute("data-sfsc-color");
+		if (color) {
+			head.setAttr("data-sfsc-color", color);
+			head.setCssProps({ "--sfsc-c": `var(--sfsc-color-${color})` });
+		}
+		// The card's action strip, always showing beneath the title: quick add, color,
+		// delete, and open in the note. (Big, pin, collapse, and flip have no meaning here.)
+		const actions = titleWrap.createDiv({ cls: "sfsc-planner-actions" });
+		const action = (cls: string, icon: string, label: string, onClick: (evt: MouseEvent) => void) => {
+			const btn = actions.createEl("button", { cls });
+			setIcon(btn, icon);
+			btn.setAttr("aria-label", label);
+			btn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				onClick(evt);
+			});
+		};
+		action("section-card-quickadd", "plus", "Quick add text to this card", () => {
+			const hasBack = this.cardFaces(section.body).back !== null;
+			new QuickAddModal(this.plugin, section.title || "(untitled)", hasBack, async (text, where) => {
+				const ok = await quickAddToSection(this.app, file, this.headingLevel, section, text, where, this.flipMarker());
+				if (!ok) new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+				await this.refresh();
+			}).open();
+		});
+		action("section-card-color", "palette", "Set this card's color", (evt) => this.openColorMenu(evt, file, section.headingRaw));
+		action("section-card-delete", "trash-2", "Delete this card", () => {
+			new ConfirmDeleteModal(this.app, section.title || "(untitled)", async () => {
+				const ok = await deleteSection(this.app, file, this.headingLevel, section);
+				if (ok) new Notice(`Deleted “${section.title || "(untitled)"}” from ${file.basename}`);
+				else new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+				await this.refresh();
+			}).open();
+		});
+		action("section-card-open", "external-link", "Open this section in the note", () => {
+			void this.plugin.revealSection(file, section.headingLine);
+		});
 		arrow("next");
 
 		// Cards: lines above the first sub-heading, then one subcard per sub-heading.
