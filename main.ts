@@ -2362,7 +2362,9 @@ export function plannerBlockKey(blockText: string): string {
  * block) above the card's first sub-heading, or a subcard — a sub-heading with
  * everything beneath it. */
 export interface PlannerCard {
-	kind: "line" | "sub";
+	/** "line": one movable block (a card with no sub-headings); "loose": everything above
+	 * the first sub-heading, as one card; "sub": a sub-heading with what's beneath it. */
+	kind: "line" | "sub" | "loose";
 	start: number;
 	end: number;
 	/** Lines: the index among the section's movable blocks, which the block writers key on. */
@@ -2374,8 +2376,9 @@ export interface PlannerCard {
 /**
  * Split a card's body for the Day Planner. Sub-headings at the shallowest level the
  * body has (H4 under an H3 card — or H5 when there's no H4) each start a subcard that
- * runs to the next one; deeper headings are content. Lines above the first sub-heading
- * are cards of their own, one per movable block. Fenced code is never a heading.
+ * runs to the next one; deeper headings are content. What's above the first sub-heading
+ * is one "loose" card; with no sub-headings at all, every movable block is a card of its
+ * own. Fenced code is never a heading.
  */
 export function plannerCards(body: string[]): PlannerCard[] {
 	const blocks = sectionBlocks(body);
@@ -2387,13 +2390,17 @@ export function plannerCards(body: string[]): PlannerCard[] {
 	}
 	const subLevel = headings.length ? Math.min(...headings.map((h) => h.level)) : 0;
 	const subs = headings.filter((h) => h.level === subLevel);
-	const firstSub = subs.length ? subs[0].line : body.length;
 	const cards: PlannerCard[] = [];
-	blocks
-		.filter((b) => b.kind !== "other")
-		.forEach((b, blockIndex) => {
-			if (b.end <= firstSub) cards.push({ kind: "line", start: b.start, end: b.end, blockIndex });
-		});
+	if (!subs.length) {
+		blocks
+			.filter((b) => b.kind !== "other")
+			.forEach((b, blockIndex) => cards.push({ kind: "line", start: b.start, end: b.end, blockIndex }));
+		return cards;
+	}
+	const firstSub = subs[0].line;
+	let looseStart = 0;
+	while (looseStart < firstSub && body[looseStart].trim() === "") looseStart++;
+	if (looseStart < firstSub) cards.push({ kind: "loose", start: looseStart, end: firstSub });
 	subs.forEach((h, i) => {
 		cards.push({ kind: "sub", start: h.line, end: i + 1 < subs.length ? subs[i + 1].line : body.length, title: h.title });
 	});
@@ -5310,16 +5317,23 @@ export class SectionCardsView extends ItemView {
 				el: item,
 				card,
 				text,
-				editText: card.kind === "sub" ? front.slice(card.start, editEnd).join("\n") : text,
+				editText: card.kind === "line" ? text : front.slice(card.start, editEnd).join("\n"),
 				editEnd,
 				key,
 				col,
 				// Checkbox n of this card is task line (tasks before it + n) of the section.
 				tasksBefore: taskLines.filter((line) => line < card.start).length,
 			};
+			// Subcards are titled by their heading; the loose card by the unfiled card's name.
 			if (card.kind === "sub") item.createDiv({ cls: "sfsc-planner-item-title", text: card.title || "(untitled)" });
+			if (card.kind === "loose") item.createDiv({ cls: "sfsc-planner-item-title", text: this.plannerLooseTitle() });
 			const body = item.createDiv({ cls: "sfsc-planner-item-body" });
-			const markdown = card.kind === "sub" ? front.slice(card.start + 1, editEnd).join("\n") : text;
+			const markdown =
+				card.kind === "sub"
+					? front.slice(card.start + 1, editEnd).join("\n")
+					: card.kind === "loose"
+						? front.slice(card.start, editEnd).join("\n")
+						: text;
 			if (markdown.trim()) {
 				void MarkdownRenderer.render(this.app, bodyForRender(markdown), body, file.path, scope).then(() => {
 					// Rendered task checkboxes come back disabled, and disabled inputs never fire clicks.
@@ -5565,13 +5579,25 @@ export class SectionCardsView extends ItemView {
 		stay();
 	}
 
-	/** A card dropped on an arrow: it moves to the neighbouring card's end, keeping its column. */
+	/** The loose card's title: the unfiled card's name, its markdown emphasis stripped. */
+	private plannerLooseTitle(): string {
+		const raw = this.plugin.settings.unfiledTitle || DEFAULT_SETTINGS.unfiledTitle;
+		return raw.replace(/[*_`]/g, "").trim() || "Unfiled";
+	}
+
+	/** A card dropped on an arrow moves to the neighbouring card, keeping its column. A
+	 * subcard joins that card's end; a line or the loose card lands above the
+	 * neighbour's first sub-heading (its own loose area), or at its end when it has none. */
 	private async sendPlannerCard(file: TFile, section: Section, drag: PlannerItem, target: Section): Promise<void> {
 		await this.updatePlannerSlot(target.headingRaw, drag.key, (slot) => ({ ...slot, col: drag.col }), false);
-		if (drag.card.kind === "line") {
+		const front = this.cardFaces(target.body).front.split("\n");
+		const firstSub = drag.card.kind === "sub" ? undefined : plannerCards(front).find((c) => c.kind === "sub");
+		if (drag.card.kind === "line" && !firstSub) {
 			await this.completeBlockDrag(file, { section, blockIndex: drag.card.blockIndex ?? 0, blockText: drag.text }, target, null);
 			return;
 		}
+		let at = firstSub ? firstSub.start : target.endLine - bodyStartLine(target);
+		while (firstSub && at > 0 && front[at - 1].trim() === "") at--;
 		const ok = await moveRangeInFile(
 			this.app,
 			file,
@@ -5581,7 +5607,7 @@ export class SectionCardsView extends ItemView {
 			drag.card.end,
 			drag.text,
 			target,
-			target.endLine - bodyStartLine(target),
+			at,
 		);
 		if (!ok) new Notice("Single File Section Cards: couldn't move that text — the file changed on disk.");
 		await this.refresh();

@@ -129,11 +129,12 @@ tab to send it to that card.
 
 One card at a time, as a planner page: its title in large type across the top, an arrow on
 either side to the previous and next card (or press `←` / `→`, `,` / `.`), and its contents as
-small cards in two columns. Each task or paragraph above the card's first sub-heading is a line
-card of its own; each sub-heading (H4 under an H3 card, say) with everything beneath it is a
-subcard, titled by the heading, its tasks live inside. Drag a card into the other column or to a
-new spot (which also moves the text in the note — lines reorder among the lines, subcards among
-the subcards, and a line dropped onto a subcard files under that heading), drag its bottom edge
+small cards in two columns. Each sub-heading (H4 under an H3 card, say) with everything beneath
+it is a subcard, titled by the heading, its tasks live inside; whatever sits above the first
+sub-heading is one more card, titled with the unfiled card's name. A card with no sub-headings
+shows each task or paragraph as a line card of its own instead. Drag a card into the other
+column or to a new spot (which also moves the text in the note — subcards reorder among the
+subcards, lines among the lines), drag its bottom edge
 to give it more or less room, or drop it on an arrow to send it to the neighbouring card. The
 column and height of each card are remembered per note. Right-click a card for the usual line
 menu (or **Edit text…** on a subcard) plus **Move to right/left column** and **Reset height**;

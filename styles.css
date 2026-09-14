@@ -2175,7 +2175,9 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 	box-shadow: inset 0 -2px 0 var(--interactive-accent);
 }
 
-/* A subcard's heading is its title; the text beneath renders as the card body. */
+/* A subcard's heading is its title; the text beneath renders as the card body. The
+   loose card (what sits above the first sub-heading) wears the same shape, titled by
+   the unfiled card's name, with a quieter edge. */
 .sfsc-planner-item-title {
 	font-weight: 600;
 	font-size: calc(var(--font-ui-medium, var(--font-ui-small)) * var(--sfsc-font-scale, 1));
@@ -2186,6 +2188,14 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 
 .sfsc-planner-item.is-sub {
 	border-left: 3px solid var(--interactive-accent);
+}
+
+.sfsc-planner-item.is-loose {
+	border-left: 3px solid var(--text-faint);
+}
+
+.sfsc-planner-item.is-loose .sfsc-planner-item-title {
+	color: var(--text-muted);
 }
 
 /* A line held over a subcard: it can be dropped to file under that heading. */
@@ -2211,10 +2221,13 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 	margin: 0;
 }
 
-/* Inside a subcard the blocks keep a little air between them. */
+/* Inside a subcard or the loose card the blocks keep a little air between them. */
 .sfsc-planner-item.is-sub .sfsc-planner-item-body > p + p,
 .sfsc-planner-item.is-sub .sfsc-planner-item-body > ul + p,
-.sfsc-planner-item.is-sub .sfsc-planner-item-body > p + ul {
+.sfsc-planner-item.is-sub .sfsc-planner-item-body > p + ul,
+.sfsc-planner-item.is-loose .sfsc-planner-item-body > p + p,
+.sfsc-planner-item.is-loose .sfsc-planner-item-body > ul + p,
+.sfsc-planner-item.is-loose .sfsc-planner-item-body > p + ul {
 	margin-top: 6px;
 }
 
