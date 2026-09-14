@@ -1896,13 +1896,24 @@ t("plannerCards: no sub-headings — one line card per movable block", () => {
   ]);
 });
 
-t("plannerCards: one loose card above the first sub-heading, then a subcard per sub-heading", () => {
+t("plannerCards: one loose card above the first heading, then a subcard per heading at any level", () => {
   const body = L("\n- [ ] loose\n- [ ] also loose\n\n#### Morning\n- [ ] run\n##### detail\ntext\n\n#### Afternoon\n- [ ] dentist");
   const cards = plannerCards(body);
-  assert.deepEqual(cards.map((c) => [c.kind, c.start, c.end, c.title]), [
-    ["loose", 1, 4, undefined],
-    ["sub", 4, 9, "Morning"],
-    ["sub", 9, 11, "Afternoon"],
+  assert.deepEqual(cards.map((c) => [c.kind, c.start, c.end, c.title, c.level]), [
+    ["loose", 1, 4, undefined, undefined],
+    ["sub", 4, 6, "Morning", 4],
+    ["sub", 6, 9, "detail", 5],
+    ["sub", 9, 11, "Afternoon", 4],
+  ]);
+});
+
+t("plannerCards: a month card with a stray H2 among H1s still shows every H3 day", () => {
+  const body = L("### 2026-09-02\n- [ ] a\n\n### 2026-09-01\n- [ ] b\n\n## August 2026\n### 2026-08-31\n- [ ] c");
+  assert.deepEqual(plannerCards(body).map((c) => [c.kind, c.title, c.level]), [
+    ["sub", "2026-09-02", 3],
+    ["sub", "2026-09-01", 3],
+    ["sub", "August 2026", 2],
+    ["sub", "2026-08-31", 3],
   ]);
 });
 
@@ -1911,7 +1922,7 @@ t("plannerCards: nothing (or only blanks) above the first sub-heading — no loo
   assert.deepEqual(plannerCards(L("\n\n#### A\n- x")).map((c) => c.kind), ["sub"]);
 });
 
-t("plannerCards: the shallowest sub-level splits; deeper headings are content; fences don't count", () => {
+t("plannerCards: a heading inside a fence doesn't split", () => {
   const body = L("##### Only fives\n- x\n```\n#### not a heading\n```\n##### Two\n- y");
   const cards = plannerCards(body);
   assert.deepEqual(cards.map((c) => [c.kind, c.title]), [["sub", "Only fives"], ["sub", "Two"]]);
