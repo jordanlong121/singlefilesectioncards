@@ -148,7 +148,9 @@ subcards, lines among the lines), drag its bottom edge
 to give it more or less room, or drop it on an arrow to send it to the neighbouring card. The
 column and height of each card are remembered per note. Right-click a card for the usual line
 menu (or **Edit text…** on a subcard) plus **Move to right/left column** and **Reset height**;
-double-click it to edit.
+double-click it to edit. Beneath the title sit the card's color, delete, and open-in-note
+buttons, and an **Add a subsection** button that appends a new heading one level below the card
+(a new subcard) after asking for its title.
 
 ### Calendar
 

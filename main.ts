@@ -5373,6 +5373,9 @@ export class SectionCardsView extends ItemView {
 			return { entry: (from >= 0 ? order[index] : null) ?? null, createIso: null };
 		};
 
+		// Cards: lines above the first sub-heading, then one subcard per sub-heading.
+		const { lines: front, cards } = this.plannerLines(section);
+
 		// Head: an arrow to each neighbour with the title between.
 		const head = root.createDiv({ cls: "sfsc-planner-head" });
 		const arrow = (dir: "prev" | "next") => {
@@ -5423,8 +5426,8 @@ export class SectionCardsView extends ItemView {
 			head.setAttr("data-sfsc-color", color);
 			head.setCssProps({ "--sfsc-c": `var(--sfsc-color-${color})` });
 		}
-		// The card's action strip, always showing beneath the title: quick add, color,
-		// delete, and open in the note. (Big, pin, collapse, and flip have no meaning here.)
+		// The card's action strip, always showing beneath the title: add a subsection,
+		// color, delete, and open in the note. (Big, pin, collapse, and flip have no meaning here.)
 		const actions = titleWrap.createDiv({ cls: "sfsc-planner-actions" });
 		const action = (cls: string, icon: string, label: string, onClick: (evt: MouseEvent) => void) => {
 			const btn = actions.createEl("button", { cls });
@@ -5435,12 +5438,19 @@ export class SectionCardsView extends ItemView {
 				onClick(evt);
 			});
 		};
-		action("section-card-quickadd", "plus", "Quick add text to this card", () => {
-			const hasBack = this.cardFaces(section.body).back !== null;
-			new QuickAddModal(this.plugin, section.title || "(untitled)", hasBack, async (text, where) => {
-				const ok = await quickAddToSection(this.app, file, this.headingLevel, section, text, where, this.flipMarker());
-				if (!ok) new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
-				await this.refresh();
+		// Not the cards' quick add: this adds a subsection — a heading one level below the
+		// card (or at the level its subcards already use), at the card's end — which shows
+		// up as a new subcard.
+		const subLevel = Math.min(6, cards.find((c) => c.kind === "sub")?.level ?? this.headingLevel + 1);
+		action("sfsc-planner-addsub", "list-tree", `Add a subsection (H${subLevel}) to this card`, () => {
+			new TextInputModal(this.app, `New H${subLevel} subsection in “${section.title || "(untitled)"}”`, "", "Add", (title) => {
+				const text = title.trim();
+				if (!text) return;
+				void (async () => {
+					const ok = await pasteAtSectionEnd(this.app, file, this.headingLevel, section, `${"#".repeat(subLevel)} ${text}`);
+					if (!ok) new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+					await this.refresh();
+				})();
 			}).open();
 		});
 		action("section-card-color", "palette", "Set this card's color", (evt) => this.openColorMenu(evt, file, section.headingRaw));
@@ -5457,8 +5467,6 @@ export class SectionCardsView extends ItemView {
 		});
 		arrow("next");
 
-		// Cards: lines above the first sub-heading, then one subcard per sub-heading.
-		const { lines: front, cards } = this.plannerLines(section);
 		const taskLines = taskLineIndexes(front);
 		const today = this.todayKeys();
 		const slots = this.plugin.getPlanner(this.filePath)[section.headingRaw] ?? {};
