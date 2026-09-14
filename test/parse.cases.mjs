@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -1865,6 +1865,21 @@ t("yamlScalar quotes only what YAML would misread", () => {
   assert.equal(yamlScalar("x, y", "", true), "\"x, y\"", "commas quoted inside inline lists");
   assert.equal(yamlScalar("say \"hi\""), "say \"hi\"", "quotes mid-string are plain YAML");
   assert.equal(yamlScalar("say \"hi\"", '"'), "\"say \\\"hi\\\"\"", "a quoted original escapes inner quotes");
+});
+
+t("plannerBlockKey: the marker, checkbox, and Tasks fields go; the words stay", () => {
+  assert.equal(plannerBlockKey("- [ ] Pack   snacks"), "pack snacks");
+  assert.equal(plannerBlockKey("- [x] pack snacks ✅ 2026-09-12"), "pack snacks");
+  assert.equal(plannerBlockKey("- [ ] pack snacks 📅 2026-09-14 🔺"), "pack snacks");
+  assert.equal(plannerBlockKey("- [ ] pack snacks 🔁 every week ⏳ 2026-09-13 ^abc12"), "pack snacks");
+  assert.equal(plannerBlockKey("1. pack snacks #home"), "pack snacks #home");
+  assert.equal(plannerBlockKey("A plain paragraph\nwith a second line"), "a plain paragraph");
+});
+
+t("plannerBlockKey: ticking a task off keeps its key", () => {
+  const open = "- [ ] call the vendor about the quote 📅 2026-09-14";
+  const done = "- [x] call the vendor about the quote 📅 2026-09-14 ✅ 2026-09-14";
+  assert.equal(plannerBlockKey(open), plannerBlockKey(done));
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

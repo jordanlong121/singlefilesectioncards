@@ -94,7 +94,8 @@ export type Layout =
 	| "links"
 	| "calendar"
 	| "heatmap"
-	| "rolodex";
+	| "rolodex"
+	| "planner";
 
 const SORT_LABELS: Record<SortOrder, string> = {
 	asc: "A → Z",
@@ -113,6 +114,11 @@ const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["tasks", "Tasks Only", "Just the tasks: each card shows only its task lines, ordered by date and tag"],
 	["vertical", "Vertical", "Full-height cards side by side, scrolling sideways"],
 	["rolodex", "Rolodex", "One card at a time, filling the pane; every card's title is a tab across the top"],
+	[
+		"planner",
+		"Day Planner",
+		"One card at a time: its title up top, arrows to its neighbours, and its lines as cards in two columns to arrange and resize",
+	],
 	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
 	["images", "Images", "Freeform canvas of the note's images: drag previews on from the tray, place and resize them"],
 	["links", "Links", "Freeform canvas of the note's web links: drag page previews on from the tray, place and resize them"],
@@ -237,6 +243,8 @@ export interface PerFileView extends ViewSettings {
 	imagesZoom?: number;
 	linksGrid?: Record<string, CardRect>;
 	linksZoom?: number;
+	/** Day Planner: per card (heading line), each line's column and height by line key. */
+	planner?: Record<string, Record<string, PlannerSlot>>;
 	/** Headings pinned to the top of the card wall, in the order they were pinned. */
 	pinned?: string[];
 	/** Whether this note's headings name dates (today highlight, jump-to-date). Unset
@@ -2324,6 +2332,31 @@ export function computeTabEdit(text: string, selStart: number, selEnd: number, o
 	return { start: lineStart, end: regionEnd, insert, selStart: lineStart, selEnd: lineStart + insert.length };
 }
 
+/** A line's place on the Day Planner: which column, and a height when it was resized. */
+export interface PlannerSlot {
+	col: 0 | 1;
+	h?: number;
+}
+
+/**
+ * The Day Planner remembers a line's column and height by this key: its first line with
+ * the list marker, checkbox, Tasks emoji fields (done/due/scheduled dates, priorities,
+ * recurrence) and block id stripped, whitespace collapsed, lowercased — so ticking a task
+ * off, or Tasks stamping its done date, keeps it where it was put.
+ */
+export function plannerBlockKey(blockText: string): string {
+	const first = blockText.split("\n")[0] ?? "";
+	return first
+		.replace(BLOCK_PREFIX_RE, "")
+		.replace(/\s*(?:✅|❌|📅|⏳|🛫|➕)\s*\d{4}-\d{2}-\d{2}/gu, "")
+		.replace(/\s*(?:🔺|⏫|🔼|🔽|⏬)/gu, "")
+		.replace(/\s*🔁[^✅❌📅⏳🛫➕🔺⏫🔼🔽⏬#^]*/u, "")
+		.replace(/\s*\^[A-Za-z0-9-]+\s*$/, "")
+		.replace(/\s+/g, " ")
+		.trim()
+		.toLowerCase();
+}
+
 /** A card's placement on the Custom Grid canvas, in px. */
 export interface CardRect {
 	x: number;
@@ -3216,6 +3249,21 @@ export class SectionCardsView extends ItemView {
 	private roloZoomBtns: { fewer: HTMLButtonElement; more: HTMLButtonElement } | null = null;
 	/** Rolodex: which card each note was showing (heading line), for the view's lifetime. */
 	private roloActive = new Map<string, string>();
+	/** Day Planner: the pane below the toolbar (title, arrows, two columns of lines). */
+	private plannerEl: HTMLElement | null = null;
+	/** Owns the planner's rendered markdown; replaced on every rebuild. */
+	private plannerScope: Component | null = null;
+	/** Watches the planner's line cards for the native vertical resize. */
+	private plannerObserver: ResizeObserver | null = null;
+	/** The line card being dragged between or within the planner's columns. */
+	private plannerDrag: { el: HTMLElement; blockIndex: number; blockText: string; key: string; col: 0 | 1 } | null =
+		null;
+	/** The element wearing the planner's drop mark (a line card or a column). */
+	private plannerDropEl: HTMLElement | null = null;
+	/** The heading the planner is showing, for the height observer's bookkeeping. */
+	private plannerHeading: string | null = null;
+	/** Which column's add box to refocus after a quick add rebuilds the planner. */
+	private plannerFocusCol: 0 | 1 | null = null;
 	/** The starred-only toolbar toggle, so refresh can hide it in notes with no stars. */
 	private starBtn: HTMLElement | null = null;
 	/** Whether the last render found a starred line, so the star toggle is offered. */
@@ -3512,7 +3560,12 @@ export class SectionCardsView extends ItemView {
 	 * view modes (hierarchy columns, section dividers) don't apply on them. One
 	 * predicate, so the next self-placing layout changes exactly one line. */
 	private layoutOwnsPlacement(): boolean {
-		return this.isCanvasLayout() || this.isDateLayout() || this.layout === "rolodex";
+		return this.isCanvasLayout() || this.isDateLayout() || this.isSingleCardLayout();
+	}
+
+	/** The Rolodex and the Day Planner show one card at a time, and share which one. */
+	private isSingleCardLayout(): boolean {
+		return this.layout === "rolodex" || this.layout === "planner";
 	}
 
 	/** Calendar and Heatmap both place by date headings: they borrow the note's date
@@ -3714,6 +3767,8 @@ export class SectionCardsView extends ItemView {
 				strip.scrollBy({ left: (side === "left" ? -1 : 1) * strip.clientWidth * 0.8, behavior: "smooth" });
 			});
 		}
+		// Day Planner pane: filled by layoutPlanner, shown by the layout class only.
+		this.plannerEl = this.contentEl.createDiv({ cls: "sfsc-planner" });
 		this.gridEl = this.contentEl.createDiv({ cls: "section-cards-grid" });
 		this.selectionBar = this.contentEl.createDiv({ cls: "sfsc-selection-bar is-hidden" });
 		// The hide-dates status bar lives on the leaf container, not in the scrolling
@@ -3898,6 +3953,10 @@ export class SectionCardsView extends ItemView {
 				this.stepRolodex(delta);
 				return false;
 			}
+			if (this.layout === "planner") {
+				this.stepPlanner(delta);
+				return false;
+			}
 			if (this.hierarchyActive()) {
 				this.stepHierSelection(delta);
 				return false;
@@ -3957,9 +4016,11 @@ export class SectionCardsView extends ItemView {
 			for (const mods of [[], ["Shift"]] as Modifier[][]) {
 				this.scope.register(mods, key, (evt) => {
 					if (!this.plainShortcutOk(evt) || this.isMaximized()) return true;
-					if (this.layout === "rolodex") {
+					if (this.isSingleCardLayout()) {
 						if (dir === "left" || dir === "right") {
-							this.stepRolodex(dir === "left" ? -1 : 1);
+							const delta = dir === "left" ? -1 : 1;
+							if (this.layout === "rolodex") this.stepRolodex(delta);
+							else this.stepPlanner(delta);
 							return false;
 						}
 						return true;
@@ -4135,6 +4196,7 @@ export class SectionCardsView extends ItemView {
 			"calendar",
 			"heatmap",
 			"rolodex",
+			"planner",
 		]) {
 			// The Deck replaces the layout wholesale; its class drops the layout chrome.
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name && !this.deckMode);
@@ -4318,6 +4380,7 @@ export class SectionCardsView extends ItemView {
 			this.pinnedEl.toggleClass("is-all-filtered", bandCards.length > 0 && !anyShown);
 		}
 		if (this.layout === "rolodex") this.layoutRolodex(); // a hidden active card hands over
+		if (this.layout === "planner") this.layoutPlanner();
 		this.repack(); // masonry and row rules re-pack around the hidden cards
 	}
 
@@ -4469,9 +4532,9 @@ export class SectionCardsView extends ItemView {
 		if (!key) return;
 		const hit = this.cardsByHeading.get(key);
 		if (!hit) return;
-		if (this.layout === "rolodex") {
+		if (this.isSingleCardLayout()) {
 			const entry = this.cardEntries.find((e) => e.el === hit.el);
-			if (entry) this.setRoloActive(entry);
+			if (entry) this.setSingleCardActive(entry);
 			return;
 		}
 		hit.el.scrollIntoView({ block: "center", inline: "center" });
@@ -4958,6 +5021,397 @@ export class SectionCardsView extends ItemView {
 		const next = ((at < 0 ? 0 : at + delta) + visible.length) % visible.length;
 		this.setRoloActive(visible[next]);
 	}
+
+	/** Rolodex or Day Planner: turn to a card, whichever of the two is showing. */
+	private setSingleCardActive(entry: CardEntry): void {
+		if (this.layout === "rolodex") this.setRoloActive(entry);
+		else if (this.layout === "planner") this.setPlannerActive(entry);
+	}
+
+	// ---------- Day Planner: one card, its lines as cards in two columns ----------
+
+	/** Day Planner: turn to a card (an arrow, ← / →, or `,` / `.`). */
+	private setPlannerActive(entry: CardEntry): void {
+		this.roloActive.set(this.filePath, entry.holder.section.headingRaw);
+		this.layoutPlanner();
+	}
+
+	/** Day Planner: the previous/next card as the wall is sorted — no wrap-around,
+	 * since a planner's days run in a line. */
+	private stepPlanner(delta: number): void {
+		const visible = this.roloVisible();
+		if (!visible.length) return;
+		const remembered = this.roloActive.get(this.filePath);
+		const at = visible.findIndex((e) => e.holder.section.headingRaw === remembered);
+		const next = Math.max(0, Math.min(visible.length - 1, (at < 0 ? 0 : at) + delta));
+		if (next !== at) this.setPlannerActive(visible[next]);
+	}
+
+	/** Tear the planner down: its markdown scope, resize watcher, and DOM. */
+	private clearPlanner(): void {
+		if (this.plannerScope) {
+			this.removeChild(this.plannerScope);
+			this.plannerScope = null;
+		}
+		this.plannerObserver?.disconnect();
+		this.plannerObserver = null;
+		this.plannerDropEl = null;
+		this.plannerDrag = null;
+		this.plannerHeading = null;
+		if (this.plannerEl?.childElementCount) this.plannerEl.empty();
+	}
+
+	/**
+	 * Day Planner: the showing card's title in large type between arrows to its
+	 * neighbours, and each of its lines (task or paragraph) as a card in one of two
+	 * columns — left unless it was dragged right — in document order. A line card is
+	 * resizable vertically (the browser's grip) and its column and height are kept per
+	 * note, keyed by the line's text. Rebuilt whole on every refresh, filter pass, and
+	 * turn; the DOM is small, so nothing is reused.
+	 */
+	private layoutPlanner(): void {
+		const root = this.plannerEl;
+		if (!root || this.layout !== "planner") return;
+		this.clearPlanner();
+		const file = this.getFile();
+		const visible = this.roloVisible();
+		const remembered = this.roloActive.get(this.filePath);
+		const active =
+			visible.find((e) => e.holder.section.headingRaw === remembered) ??
+			visible.find((e) => e.el.hasClass("is-today")) ??
+			visible[0] ??
+			null;
+		if (!active || !file) {
+			root.createDiv({
+				cls: "section-cards-empty",
+				text: this.cardEntries.length ? "Every card is hidden by the filter." : "No cards to plan — add a heading to the note.",
+			});
+			return;
+		}
+		const section = active.holder.section;
+		this.roloActive.set(this.filePath, section.headingRaw);
+		this.plannerHeading = section.headingRaw;
+		const at = visible.indexOf(active);
+		const prev = at > 0 ? visible[at - 1] : null;
+		const next = at < visible.length - 1 ? visible[at + 1] : null;
+
+		// Head: an arrow to each neighbour (as the wall is sorted) with the title between.
+		const head = root.createDiv({ cls: "sfsc-planner-head" });
+		const arrow = (neighbour: CardEntry | null, dir: "prev" | "next") => {
+			const btn = head.createEl("button", { cls: `sfsc-planner-arrow is-${dir}` });
+			setIcon(btn, dir === "prev" ? "chevron-left" : "chevron-right");
+			const word = dir === "prev" ? "Previous" : "Next";
+			const title = neighbour?.holder.section.title || "(untitled)";
+			btn.setAttr("aria-label", neighbour ? `${word} card: ${title} (${dir === "prev" ? "←" : "→"})` : `No ${word.toLowerCase()} card`);
+			btn.toggleAttribute("disabled", !neighbour);
+			if (!neighbour) return;
+			btn.addEventListener("click", () => this.setPlannerActive(neighbour));
+			// A line dragged onto an arrow lands at that neighbour's end: the planner's
+			// way of pushing something to tomorrow (or back to yesterday).
+			btn.addEventListener("dragover", (evt) => {
+				if (!this.plannerDrag) return;
+				evt.preventDefault();
+				if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
+				btn.addClass("is-drop");
+			});
+			btn.addEventListener("dragleave", () => btn.removeClass("is-drop"));
+			btn.addEventListener("drop", (evt) => {
+				const drag = this.plannerDrag;
+				btn.removeClass("is-drop");
+				if (!drag) return;
+				evt.preventDefault();
+				evt.stopPropagation();
+				this.plannerDrag = null;
+				const target = neighbour.holder.section;
+				// The line keeps its column on the card it moves to.
+				void this.updatePlannerSlot(target.headingRaw, drag.key, (slot) => ({ ...slot, col: drag.col }), false).then(() =>
+					this.completeBlockDrag(file, { section, blockIndex: drag.blockIndex, blockText: drag.blockText }, target, null),
+				);
+			});
+		};
+		arrow(prev, "prev");
+		const titleEl = head.createDiv({ cls: "sfsc-planner-title", text: section.title || "(untitled)" });
+		titleEl.toggleClass("is-today", active.el.hasClass("is-today"));
+		arrow(next, "next");
+
+		// Lines: each movable block is its own card, in its remembered column.
+		const front = this.cardFaces(section.body).front.split("\n");
+		const blocks = movableBlocks(front);
+		const taskLines = taskLineIndexes(front);
+		const slots = this.plugin.getPlanner(this.filePath)[section.headingRaw] ?? {};
+		const scope = new Component();
+		this.addChild(scope);
+		this.plannerScope = scope;
+		const colsEl = root.createDiv({ cls: "sfsc-planner-cols" });
+		const cols = ([0, 1] as const).map((col) => {
+			const el = colsEl.createDiv({ cls: "sfsc-planner-col" });
+			this.wirePlannerColumn(el, col, file, section);
+			return el;
+		});
+		const items: HTMLElement[] = [];
+		blocks.forEach((block, blockIndex) => {
+			const blockText = front.slice(block.start, block.end).join("\n");
+			const key = plannerBlockKey(blockText);
+			const slot = slots[key];
+			const col: 0 | 1 = slot?.col === 1 ? 1 : 0;
+			const item = cols[col].createDiv({ cls: "sfsc-planner-item markdown-rendered" });
+			item.dataset.blockIndex = String(blockIndex);
+			item.dataset.key = key;
+			if (slot?.h) item.setCssStyles({ height: `${slot.h}px` });
+			items.push(item);
+			const body = item.createDiv({ cls: "sfsc-planner-item-body" });
+			// Checkbox n of this card is task line (tasks before this block + n) of the section.
+			const tasksBefore = taskLines.filter((line) => line < block.start).length;
+			void MarkdownRenderer.render(this.app, blockText, body, file.path, scope).then(() => {
+				// Rendered task checkboxes come back disabled, and disabled inputs never fire clicks.
+				for (const box of Array.from(body.querySelectorAll<HTMLInputElement>("input[type=checkbox]"))) {
+					box.removeAttribute("disabled");
+					box.removeAttribute("readonly");
+				}
+			});
+			this.wirePlannerItem(item, body, { file, section, blockIndex, blockText, key, col, tasksBefore });
+		});
+
+		// An add box at the foot of each column: Enter appends the line to the card (as
+		// a task unless it's already a list item) and remembers the column it was typed in.
+		cols.forEach((colEl, col) => {
+			const add = colEl.createEl("input", {
+				cls: "sfsc-planner-add",
+				attr: {
+					type: "text",
+					placeholder: "Add a task…",
+					"aria-label": "Add a task to this card, in this column",
+					spellcheck: "false",
+				},
+			});
+			add.addEventListener("keydown", (evt) => {
+				if (evt.key !== "Enter" || evt.isComposing) return;
+				const text = add.value.trim();
+				if (!text) return;
+				evt.preventDefault();
+				add.value = "";
+				void this.plannerQuickAdd(file, section, text, col as 0 | 1);
+			});
+			if (this.plannerFocusCol === col) add.focus();
+		});
+		this.plannerFocusCol = null;
+
+		// The browser's resize grip writes an inline height; the observer saves it.
+		if (typeof ResizeObserver !== "undefined") {
+			const observer = new ResizeObserver(() => this.plannerHeightsChanged());
+			for (const item of items) observer.observe(item);
+			this.plannerObserver = observer;
+		}
+	}
+
+	/** Drag, checkbox, double-click edit, and right-click menu for one planner line card. */
+	private wirePlannerItem(
+		item: HTMLElement,
+		body: HTMLElement,
+		ctx: { file: TFile; section: Section; blockIndex: number; blockText: string; key: string; col: 0 | 1; tasksBefore: number },
+	): void {
+		const { file, section, blockIndex, blockText, key, col } = ctx;
+		item.draggable = true;
+		item.addEventListener("dragstart", (evt) => {
+			const target = evt.target as HTMLElement | null;
+			if (target?.closest("a")) return; // native link dragging stays native
+			// The bottom-right corner is the resize grip: a press there resizes, never drags.
+			const rect = item.getBoundingClientRect();
+			if (evt.clientX > rect.right - 20 && evt.clientY > rect.bottom - 20) {
+				evt.preventDefault();
+				return;
+			}
+			evt.stopPropagation();
+			this.plannerDrag = { el: item, blockIndex, blockText, key, col };
+			item.addClass("is-dragging-block");
+			if (evt.dataTransfer) {
+				evt.dataTransfer.effectAllowed = "move";
+				evt.dataTransfer.setData("text/plain", blockText);
+			}
+		});
+		item.addEventListener("dragend", () => {
+			item.removeClass("is-dragging-block");
+			this.plannerDrag = null;
+			this.clearPlannerDropMarks();
+		});
+		const toggle = (box: HTMLInputElement) => {
+			const boxes = Array.from(body.querySelectorAll<HTMLInputElement>("input[type=checkbox]"));
+			const nth = boxes.indexOf(box);
+			if (nth >= 0) void this.toggleNthTask(file, section, ctx.tasksBefore + nth, box, item);
+		};
+		item.addEventListener("click", (evt) => {
+			const box = (evt.target as HTMLElement).closest<HTMLInputElement>("input[type=checkbox]");
+			if (!box) return;
+			evt.preventDefault();
+			evt.stopPropagation();
+			toggle(box);
+		});
+		item.addEventListener("dblclick", (evt) => {
+			if ((evt.target as HTMLElement).closest("a, input")) return;
+			evt.preventDefault();
+			evt.stopPropagation();
+			this.openEditBlockModal(file, section, blockIndex, blockText);
+		});
+		item.addEventListener("contextmenu", (evt) => {
+			if ((evt.target as HTMLElement).closest("a")) return;
+			evt.preventDefault();
+			evt.stopPropagation();
+			this.openBlockMenu(evt, file, section, blockIndex, blockText, item, {
+				prepend: (menu) => {
+					menu.addItem((mi) =>
+						mi
+							.setTitle(col === 0 ? "Move to right column" : "Move to left column")
+							.setIcon(col === 0 ? "arrow-right" : "arrow-left")
+							.onClick(() => void this.updatePlannerSlot(section.headingRaw, key, (slot) => ({ ...slot, col: col === 0 ? 1 : 0 }))),
+					);
+					if (item.style.height) {
+						menu.addItem((mi) =>
+							mi
+								.setTitle("Reset height")
+								.setIcon("unfold-vertical")
+								.onClick(() => void this.updatePlannerSlot(section.headingRaw, key, ({ col: c }) => ({ col: c }))),
+						);
+					}
+					menu.addSeparator();
+				},
+				toggle,
+			});
+		});
+	}
+
+	/** A planner column takes line drops: beside the hovered line card, or — in the open
+	 * space below them — after the column's last line. */
+	private wirePlannerColumn(colEl: HTMLElement, col: 0 | 1, file: TFile, section: Section): void {
+		const cardsIn = () => Array.from(colEl.querySelectorAll<HTMLElement>(":scope > .sfsc-planner-item"));
+		const aim = (evt: DragEvent): { anchor: HTMLElement | null; before: boolean } => {
+			const hovered = (evt.target as HTMLElement | null)?.closest<HTMLElement>(".sfsc-planner-item");
+			if (hovered && colEl.contains(hovered) && hovered !== this.plannerDrag?.el) {
+				const rect = hovered.getBoundingClientRect();
+				return { anchor: hovered, before: evt.clientY < rect.top + rect.height / 2 };
+			}
+			return { anchor: null, before: false };
+		};
+		colEl.addEventListener("dragover", (evt) => {
+			if (!this.plannerDrag) return;
+			evt.preventDefault();
+			if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
+			const { anchor, before } = aim(evt);
+			this.clearPlannerDropMarks();
+			if (anchor) {
+				anchor.addClass(before ? "sc-blockdrop-before" : "sc-blockdrop-after");
+				this.plannerDropEl = anchor;
+			} else {
+				colEl.addClass("is-drop-target");
+				this.plannerDropEl = colEl;
+			}
+		});
+		colEl.addEventListener("dragleave", (evt) => {
+			if (!colEl.contains(evt.relatedTarget as Node | null)) this.clearPlannerDropMarks();
+		});
+		colEl.addEventListener("drop", (evt) => {
+			const drag = this.plannerDrag;
+			if (!drag) return;
+			evt.preventDefault();
+			evt.stopPropagation();
+			this.clearPlannerDropMarks();
+			this.plannerDrag = null;
+			drag.el.removeClass("is-dragging-block");
+			const { anchor, before } = aim(evt);
+			let anchorEl = anchor;
+			let side: "before" | "after" = before ? "before" : "after";
+			if (!anchorEl) {
+				anchorEl = cardsIn().filter((el) => el !== drag.el).pop() ?? null;
+				side = "after";
+			}
+			const anchorIndex = anchorEl ? Number(anchorEl.dataset.blockIndex) : null;
+			void this.finishPlannerDrop(file, section, drag, col, anchorIndex, side);
+		});
+	}
+
+	private clearPlannerDropMarks(): void {
+		this.plannerDropEl?.removeClass("sc-blockdrop-before");
+		this.plannerDropEl?.removeClass("sc-blockdrop-after");
+		this.plannerDropEl?.removeClass("is-drop-target");
+		this.plannerDropEl = null;
+	}
+
+	/** A line dropped in a planner column: remember its column, and move it in the note
+	 * to sit beside the anchor — unless it already does, when only the column changes. */
+	private async finishPlannerDrop(
+		file: TFile,
+		section: Section,
+		drag: { blockIndex: number; blockText: string; key: string; col: 0 | 1 },
+		col: 0 | 1,
+		anchorIndex: number | null,
+		side: "before" | "after",
+	): Promise<void> {
+		if (drag.col !== col) await this.updatePlannerSlot(section.headingRaw, drag.key, (slot) => ({ ...slot, col }), false);
+		const adjacent =
+			anchorIndex === null ||
+			anchorIndex === drag.blockIndex ||
+			(side === "after" && anchorIndex === drag.blockIndex - 1) ||
+			(side === "before" && anchorIndex === drag.blockIndex + 1);
+		if (adjacent) {
+			this.layoutPlanner();
+			return;
+		}
+		await this.completeBlockDrag(file, { section, blockIndex: drag.blockIndex, blockText: drag.blockText }, section, anchorIndex, side);
+	}
+
+	/** Enter in a column's add box: append the line to the card, in that column. */
+	private async plannerQuickAdd(file: TFile, section: Section, text: string, col: 0 | 1): Promise<void> {
+		const line = /^(?:[-*+]|\d+[.)])\s/.test(text) ? text : `- [ ] ${text}`;
+		if (col === 1) await this.updatePlannerSlot(section.headingRaw, plannerBlockKey(line), (slot) => ({ ...slot, col }), false);
+		const ok = await quickAddToSection(this.app, file, this.headingLevel, section, line, "bottom", this.flipMarker());
+		if (!ok) new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+		this.plannerFocusCol = col;
+		await this.refresh();
+	}
+
+	/** Change one line's remembered column/height on one card and save; a slot back at
+	 * the defaults (left column, natural height) is dropped rather than stored. */
+	private async updatePlannerSlot(
+		headingRaw: string,
+		key: string,
+		change: (slot: PlannerSlot) => PlannerSlot,
+		rebuild = true,
+	): Promise<void> {
+		const all = { ...this.plugin.getPlanner(this.filePath) };
+		const slots = { ...(all[headingRaw] ?? {}) };
+		const next = change(slots[key] ?? { col: 0 });
+		if (next.col === 0 && next.h === undefined) delete slots[key];
+		else slots[key] = next;
+		if (Object.keys(slots).length) all[headingRaw] = slots;
+		else delete all[headingRaw];
+		await this.plugin.savePlanner(this.filePath, all, this.viewSettings());
+		if (rebuild) this.layoutPlanner();
+	}
+
+	/** The resize grip left new inline heights on some line cards: save them. Settled
+	 * briefly, so a drag of the grip saves once, not per pixel. */
+	private plannerHeightsChanged = debounce(
+		() => {
+			const root = this.plannerEl;
+			const heading = this.plannerHeading;
+			if (this.layout !== "planner" || !root || !heading || root.clientHeight === 0) return;
+			const all = { ...this.plugin.getPlanner(this.filePath) };
+			const slots = { ...(all[heading] ?? {}) };
+			let changed = false;
+			for (const item of Array.from(root.querySelectorAll<HTMLElement>(".sfsc-planner-item"))) {
+				const key = item.dataset.key;
+				if (!key || !item.style.height) continue; // never resized: natural height
+				const h = Math.round(item.offsetHeight);
+				if (!h || Math.abs(h - (slots[key]?.h ?? 0)) < 2) continue;
+				slots[key] = { ...(slots[key] ?? { col: 0 }), h };
+				changed = true;
+			}
+			if (!changed) return;
+			all[heading] = slots;
+			void this.plugin.savePlanner(this.filePath, all, this.viewSettings());
+		},
+		200,
+		true,
+	);
 
 	/** The card-body height cap for the current layout; also re-applied to reused cards. */
 	private applyBodyHeight(bodyEl: HTMLElement | null): void {
@@ -5929,7 +6383,7 @@ export class SectionCardsView extends ItemView {
 				btn.toggleClass("is-active", isOn());
 				btn.toggleAttribute("disabled", modesOff);
 				if (modesOff) {
-					btn.setAttr("aria-label", "View modes aren't available on the canvas layouts, the Calendar, or the Rolodex");
+					btn.setAttr("aria-label", "View modes aren't available on the canvas layouts, the Calendar, the Rolodex, or the Day Planner");
 				}
 			}
 		};
@@ -6321,8 +6775,9 @@ export class SectionCardsView extends ItemView {
 			}
 			if (showing === 0) this.peekNoTasks(entry.el);
 		}
-		// The Rolodex shows one card: turn to this one, or there'd be nothing to scroll to.
-		if (this.layout === "rolodex") this.setRoloActive(entry);
+		// The Rolodex and Day Planner show one card: turn to this one, or there'd be
+		// nothing to scroll to.
+		if (this.isSingleCardLayout()) this.setSingleCardActive(entry);
 		entry.el.scrollIntoView({ block: "center", inline: "center" });
 		entry.el.addClass("is-linked");
 		window.setTimeout(() => entry.el.removeClass("is-linked"), 1600);
@@ -6896,7 +7351,7 @@ export class SectionCardsView extends ItemView {
 
 				// Open the new card's editor once it has been re-rendered (the Rolodex
 				// turns to it first, or the editor would open on a hidden card).
-				if (this.layout === "rolodex") this.roloActive.set(this.filePath, headingRaw);
+				if (this.isSingleCardLayout()) this.roloActive.set(this.filePath, headingRaw);
 				this.pendingEditHeading = headingRaw;
 				await this.refresh();
 			},
@@ -7204,6 +7659,8 @@ export class SectionCardsView extends ItemView {
 			// On the canvas, unplaced cards are display:none — rendering their markdown
 			// would be pure waste. Placement back-fills the owed render (applyCustomLayout).
 			if (this.layout === "custom" && !this.customPlacements[entry.holder.section.headingRaw]) return;
+			// The Day Planner renders the showing card's lines itself; the cards stay hidden.
+			if (this.layout === "planner") return;
 			if (immediate.length < INITIAL_RENDER_COUNT) {
 				immediate.push(entry);
 				renders.push(this.runBodyRender(entry));
@@ -7294,6 +7751,8 @@ export class SectionCardsView extends ItemView {
 		// cells, so grid auto-placement puts every day in its weekday column.
 		if (calendar) this.layoutCalendar(isoByHeading);
 		if (this.layout === "rolodex") this.layoutRolodex();
+		if (this.layout === "planner") this.layoutPlanner();
+		else this.clearPlanner();
 
 		// Hierarchy: rebuild the drill-down columns and hide off-branch cards before the
 		// masonry pass below measures anything.
@@ -8029,9 +8488,9 @@ export class SectionCardsView extends ItemView {
 		const wanted = heading.replace(/^#+\s*/, "").trim().toLowerCase();
 		for (const { el, section } of this.cardsByHeading.values()) {
 			if (section.title.trim().toLowerCase() !== wanted) continue;
-			if (this.layout === "rolodex") {
+			if (this.isSingleCardLayout()) {
 				const entry = this.cardEntries.find((e) => e.el === el);
-				if (entry) this.setRoloActive(entry);
+				if (entry) this.setSingleCardActive(entry);
 			}
 			el.scrollIntoView({ block: "center", inline: "center" });
 			el.addClass("is-linked");
@@ -9827,6 +10286,8 @@ export class SectionCardsView extends ItemView {
 		blockIndex: number,
 		blockText: string,
 		blockEl: HTMLElement,
+		/** Day Planner: its own items lead the menu, and its line cards toggle tasks themselves. */
+		planner?: { prepend: (menu: Menu) => void; toggle: (box: HTMLInputElement) => void },
 	): void {
 		const at = this.cardEntries.findIndex((entry) => entry.holder.section.headingRaw === section.headingRaw);
 		const prev = at > 0 ? this.cardEntries[at - 1].holder.section : null;
@@ -9838,6 +10299,7 @@ export class SectionCardsView extends ItemView {
 		};
 
 		const menu = new Menu();
+		planner?.prepend(menu);
 		if (prev) {
 			// Arrives at the previous card's end, the spot adjacent to where it left.
 			menu.addItem((item) =>
@@ -9899,12 +10361,15 @@ export class SectionCardsView extends ItemView {
 		const box = isTask ? blockEl.querySelector<HTMLInputElement>("input[type=checkbox]") : null;
 		const cardEl = blockEl.closest<HTMLElement>(".section-card");
 		const bodyEl = blockEl.closest<HTMLElement>(".section-card-body");
-		if (box && cardEl && bodyEl) {
+		if (box && (planner || (cardEl && bodyEl))) {
 			menu.addItem((item) =>
 				item
 					.setTitle(box.checked ? "Mark undone" : "Mark done")
 					.setIcon(box.checked ? "undo-2" : "check")
-					.onClick(() => void this.toggleTask(cardEl, file, section, bodyEl, box)),
+					.onClick(() => {
+						if (planner) planner.toggle(box);
+						else if (cardEl && bodyEl) void this.toggleTask(cardEl, file, section, bodyEl, box);
+					}),
 			);
 		}
 
@@ -10205,7 +10670,19 @@ export class SectionCardsView extends ItemView {
 		const boxes = Array.from(bodyEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]"));
 		const nth = boxes.indexOf(box);
 		if (nth < 0) return;
+		await this.toggleNthTask(file, section, nth, box, card);
+	}
 
+	/** Toggle a section's nth task line in the file and reflect it on its checkbox at
+	 * once (the vault-modify refresh reconciles shortly after); `flash` gets the
+	 * is-toggling pulse. Shared by the cards and the Day Planner's line cards. */
+	private async toggleNthTask(
+		file: TFile,
+		section: Section,
+		nth: number,
+		box: HTMLInputElement,
+		flash: HTMLElement,
+	): Promise<void> {
 		// Tasks' own toggle knows recurrence and its done-date settings; ours is the fallback.
 		const api = this.plugin.settings.tasksToggle ? this.plugin.tasksApi() : null;
 		const checked = api
@@ -10226,15 +10703,14 @@ export class SectionCardsView extends ItemView {
 			return;
 		}
 
-		// Reflect it immediately; the vault-modify refresh will reconcile shortly after.
 		box.checked = checked;
 		const item = box.closest<HTMLElement>("li");
 		if (item) {
 			item.toggleClass("is-checked", checked);
 			item.setAttribute("data-task", checked ? "x" : " ");
 		}
-		card.addClass("is-toggling");
-		window.setTimeout(() => card.removeClass("is-toggling"), 400);
+		flash.addClass("is-toggling");
+		window.setTimeout(() => flash.removeClass("is-toggling"), 400);
 	}
 
 	/** Ctrl/⌘+T in a card editor: the Tasks plugin's create dialog; its line lands at the cursor. */
@@ -13080,6 +13556,11 @@ export default class SectionCardsPlugin extends Plugin {
 			delete entry.customGrid[oldRaw];
 			changed = true;
 		}
+		if (entry.planner?.[oldRaw]) {
+			entry.planner[newRaw] = entry.planner[oldRaw];
+			delete entry.planner[oldRaw];
+			changed = true;
+		}
 		if (changed) await this.saveSettings();
 	}
 
@@ -13326,6 +13807,21 @@ export default class SectionCardsPlugin extends Plugin {
 		const current = this.settings.perFile[path] ?? { ...base };
 		current.customGrid = placements;
 		if (zoom !== undefined) current.customZoom = zoom;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
+	/** The Day Planner's column and height per line, by card (heading line) then line key. */
+	getPlanner(path: string): Record<string, Record<string, PlannerSlot>> {
+		return this.settings.perFile?.[path]?.planner ?? {};
+	}
+
+	async savePlanner(path: string, planner: Record<string, Record<string, PlannerSlot>>, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (Object.keys(planner).length) current.planner = planner;
+		else delete current.planner;
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
 	}

@@ -13,7 +13,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { parseCards, sortSections, parseAncestorHeadings, hierarchyColumnItems, groupByAncestor, HIER_GAP_KEY, openTaskCount } from "../test/.tmp/main.js";
+import { parseCards, sortSections, parseAncestorHeadings, hierarchyColumnItems, groupByAncestor, HIER_GAP_KEY, openTaskCount, movableBlocks } from "../test/.tmp/main.js";
 
 const OUT_DIR = process.argv[2] ?? "harness-out";
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -126,7 +126,7 @@ function cardHtml(s, { maxHeight = null, placed = null, hierHidden = false } = {
 
 const DECK_ICON = `<svg viewBox="0 0 100 100" class="svg-icon" width="16" height="16"><g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="9" width="12" height="12.5" rx="2"/><path d="M5.5 6h10a2 2 0 0 1 2 2v10"/><path d="M8.5 3h10a2 2 0 0 1 2 2v10"/></g></svg>`;
 
-const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", tasks: "Tasks Only", horizontal: "Horizontal", vertical: "Vertical", rolodex: "Rolodex", custom: "Custom Grid", images: "Images", links: "Links", calendar: "Calendar", heatmap: "Heatmap" };
+const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", tasks: "Tasks Only", horizontal: "Horizontal", vertical: "Vertical", rolodex: "Rolodex", planner: "Day Planner", custom: "Custom Grid", images: "Images", links: "Links", calendar: "Calendar", heatmap: "Heatmap" };
 const SORT_LABELS = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 /* On the Calendar the sort control orders the months instead of the cards. */
 const CAL_SORT_LABELS = { asc: "Ascending", desc: "Descending", doc: "Ascending" };
@@ -430,6 +430,25 @@ function gridHtml(layout, mode = "default") {
 <div class="section-cards-grid">
 ${sections.map((s, i) => cardHtml(s).replace('class="section-card', `class="section-card${i === activeAt ? " is-rolo-active" : ""}`)).join("\n")}
 </div>`;
+	}
+	if (layout === "planner") {
+		// Mirrors layoutPlanner: arrows and the title, then the showing card's movable
+		// blocks as line cards — odd ones staged in the right column, the third resized.
+		const activeAt = Math.max(0, sections.findIndex((s) => process.env.ROLO_ACTIVE && s.title.includes(process.env.ROLO_ACTIVE)));
+		const s = sections[activeAt];
+		const lines = s.body.split("\n");
+		const cols = [[], []];
+		movableBlocks(lines).forEach((b, i) => {
+			const text = lines.slice(b.start, b.end).join("\n");
+			const style = i === 2 ? ' style="height: 96px"' : "";
+			cols[i % 2 ? 1 : 0].push(`<div class="sfsc-planner-item markdown-rendered" draggable="true"${style}><div class="sfsc-planner-item-body">${renderBody(text)}</div></div>`);
+		});
+		const col = (items) => `<div class="sfsc-planner-col">${items.join("\n")}<input type="text" class="sfsc-planner-add" placeholder="Add a task…" spellcheck="false"></div>`;
+		return `<div class="sfsc-planner">
+<div class="sfsc-planner-head"><button class="sfsc-planner-arrow is-prev"${activeAt === 0 ? " disabled" : ""}>${CHEVRON_LEFT}</button><div class="sfsc-planner-title${s.title.includes(TODAY) ? " is-today" : ""}">${esc(s.title)}</div><button class="sfsc-planner-arrow is-next"${activeAt === sections.length - 1 ? " disabled" : ""}>${CHEVRON_RIGHT}</button></div>
+<div class="sfsc-planner-cols">${col(cols[0])}${col(cols[1])}</div>
+</div>
+<div class="section-cards-grid"></div>`;
 	}
 	if (layout === "custom") {
 		const placedCards = sections.slice(0, PLACEMENTS.length).map((s, i) => cardHtml(s, { placed: PLACEMENTS[i] }));

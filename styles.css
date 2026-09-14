@@ -2015,6 +2015,211 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 	grid-row-end: auto;
 }
 
+/* ---------- Day Planner: one card, its lines as cards in two columns ---------- */
+
+.sfsc-planner {
+	display: none;
+}
+
+/* Toolbar, then the planner pane; only the pane scrolls. */
+.workspace-leaf-content .view-content.section-cards-view.is-layout-planner {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.is-layout-planner .section-cards-toolbar {
+	position: static;
+	flex: 0 0 auto;
+}
+
+/* The cards themselves stay off-screen: the planner renders the showing one's lines. */
+.is-layout-planner .section-cards-pinned,
+.is-layout-planner .section-cards-hier,
+.is-layout-planner .section-cards-grid,
+.is-layout-planner .section-cards-tray {
+	display: none;
+}
+
+.is-layout-planner .sfsc-planner {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 14px var(--sc-pad) var(--sc-pad);
+}
+
+/* Arrow, title, arrow: the title takes the middle and wraps rather than pushing. */
+.sfsc-planner-head {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 12px;
+	flex: 0 0 auto;
+}
+
+.sfsc-planner-title {
+	text-align: center;
+	font-size: calc(var(--font-ui-large, 20px) * 1.5 * var(--sfsc-font-scale, 1));
+	font-weight: 700;
+	line-height: 1.2;
+	color: var(--text-normal);
+	overflow-wrap: anywhere;
+}
+
+.sfsc-planner-title.is-today {
+	color: var(--interactive-accent);
+}
+
+.sfsc-planner-arrow {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+	border-radius: 50%;
+	color: var(--text-muted);
+}
+
+.sfsc-planner-arrow:hover:not([disabled]) {
+	color: var(--text-normal);
+}
+
+.sfsc-planner-arrow[disabled] {
+	opacity: 0.3;
+	cursor: default;
+}
+
+/* A line held over an arrow: it can be dropped to move to that neighbouring card. */
+.sfsc-planner-arrow.is-drop {
+	border-color: var(--interactive-accent);
+	color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px var(--interactive-accent);
+}
+
+.sfsc-planner-arrow svg {
+	width: 24px;
+	height: 24px;
+}
+
+.sfsc-planner-cols {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 14px;
+	align-items: start;
+	flex: 1 1 auto;
+}
+
+/* A column is a drop target down its whole height, add box included. */
+.sfsc-planner-col {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 160px;
+	padding: 8px;
+	border: 1px dashed transparent;
+	border-radius: var(--radius-l, 12px);
+	transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.sfsc-planner-col.is-drop-target {
+	border-color: var(--interactive-accent);
+	background-color: var(--background-modifier-hover);
+}
+
+/* A line card: card chrome, the browser's vertical resize grip, scrolls when it's
+   been made shorter than its text. */
+.sfsc-planner-item {
+	position: relative;
+	/* The saved height is the box's outer height, so the grip's inline height must be too. */
+	box-sizing: border-box;
+	background-color: var(--sc-surface);
+	backdrop-filter: var(--sc-blur);
+	-webkit-backdrop-filter: var(--sc-blur);
+	border: 1px solid var(--sc-line);
+	border-radius: var(--radius-m, 8px);
+	box-shadow: var(--sc-shadow);
+	padding: 8px 14px 10px 12px;
+	min-height: 40px;
+	resize: vertical;
+	overflow: auto;
+	cursor: grab;
+	transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.sfsc-planner-item:hover {
+	border-color: var(--interactive-accent);
+}
+
+.sfsc-planner-item:active {
+	cursor: grabbing;
+}
+
+.sfsc-planner-item.is-dragging-block {
+	opacity: 0.4;
+}
+
+.sfsc-planner-item.is-toggling {
+	border-color: var(--interactive-accent);
+}
+
+/* Accent line on the side of the line card the drop will land. */
+.sfsc-planner-item.sc-blockdrop-before {
+	box-shadow: inset 0 2px 0 var(--interactive-accent);
+}
+
+.sfsc-planner-item.sc-blockdrop-after {
+	box-shadow: inset 0 -2px 0 var(--interactive-accent);
+}
+
+/* One block per card: no outer margins, the list bullet/checkbox tucked in. */
+.sfsc-planner-item-body > p,
+.sfsc-planner-item-body > ul,
+.sfsc-planner-item-body > ol {
+	margin: 0;
+}
+
+.sfsc-planner-item-body > ul,
+.sfsc-planner-item-body > ol {
+	padding-inline-start: 1.6em;
+}
+
+.sfsc-planner-item-body input[type="checkbox"] {
+	cursor: pointer;
+}
+
+/* The add box at each column's foot: quiet until focused. */
+.sfsc-planner-add {
+	width: 100%;
+	margin-top: auto;
+	background-color: transparent;
+	border: 1px dashed var(--sc-line);
+	box-shadow: none;
+}
+
+.sfsc-planner-add:focus {
+	background-color: var(--background-primary);
+	border-style: solid;
+}
+
+.is-layout-planner .section-cards-empty {
+	grid-row-end: auto;
+	padding: 40px 0;
+	text-align: center;
+	color: var(--text-muted);
+}
+
+body.is-phone .sfsc-planner-cols {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+body.is-phone .sfsc-planner-title {
+	font-size: calc(var(--font-ui-large, 20px) * 1.15 * var(--sfsc-font-scale, 1));
+}
+
 /* ---------- Custom Grid + Images: freeform canvas + tray ---------- */
 
 /* Toolbar spans the top; canvas left, tray right; each pane scrolls itself. */
