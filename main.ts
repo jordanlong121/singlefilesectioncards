@@ -2577,6 +2577,14 @@ export function formatPeriod(key: string, role: LevelRole, format: string): stri
 	}
 }
 
+/** A title that is nothing but a month name ("August", "Aug"): its month, 1–12, else 0. */
+export function bareMonthIndex(title: string): number {
+	const word = title.trim().replace(/\.$/, "").toLowerCase();
+	if (!word) return 0;
+	const index = MONTH_NAMES.findIndex((name) => name.toLowerCase() === word || name.slice(0, 3).toLowerCase() === word);
+	return index + 1;
+}
+
 /** The unit word for prompts: "day", "week", "month", "year". */
 export function periodUnit(role: LevelRole): string {
 	return role === "year" || role === "month" || role === "week" || role === "day" ? role : "card";
@@ -5544,9 +5552,28 @@ export class SectionCardsView extends ItemView {
 	 * filtered-out card must still be found, or it would be offered for creation twice). */
 	private plannerPeriodEntry(period: PlannerPeriod): CardEntry | null {
 		if (period.role === "day") return this.plannerDayEntry(period.key);
-		return (
-			this.cardEntries.find((e) => parsePeriod(e.holder.section.title, period.role, period.format) === period.key) ?? null
-		);
+		const exact = this.cardEntries.find((e) => parsePeriod(e.holder.section.title, period.role, period.format) === period.key);
+		if (exact || period.role !== "month") return exact ?? null;
+		// A month heading written without its year ("# August" among "# September 2026"
+		// and "# July 2026") still names the month: take it when the nearest month card
+		// around it in the note carries the target year — or when it's the only one.
+		const month = Number(period.key.slice(5, 7));
+		const year = period.key.slice(0, 4);
+		const bare = this.cardEntries.filter((e) => bareMonthIndex(e.holder.section.title) === month);
+		if (!bare.length) return null;
+		if (bare.length === 1) return bare[0];
+		for (const candidate of bare) {
+			const at = this.cardEntries.indexOf(candidate);
+			for (const step of [-1, 1]) {
+				for (let i = at + step; i >= 0 && i < this.cardEntries.length; i += step) {
+					const key = parsePeriod(this.cardEntries[i].holder.section.title, "month", period.format);
+					if (!key) continue;
+					if (key.slice(0, 4) === year) return candidate;
+					break;
+				}
+			}
+		}
+		return null;
 	}
 
 	/** The planner's cards in the order the arrows walk them for a text level: the
@@ -5646,9 +5673,12 @@ export class SectionCardsView extends ItemView {
 		const file = this.getFile();
 		const visible = this.roloVisible();
 		const remembered = this.roloActive.get(this.filePath);
+		// Opening on the properties or unfiled card would show YAML or a preamble as
+		// line cards: the first real card is the fallback.
 		const active =
 			visible.find((e) => this.plannerKey(e) === remembered) ??
 			visible.find((e) => e.el.hasClass("is-today")) ??
+			visible.find((e) => !e.holder.section.unfiled) ??
 			visible[0] ??
 			null;
 		// No headings at this level (H2 picked in a note of H1 months and H3 days): say
