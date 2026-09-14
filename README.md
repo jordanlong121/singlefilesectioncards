@@ -125,6 +125,17 @@ press `,` / `.`) to turn to that card; drag a tab onto another to move its secti
 note (in document order, like dragging a card). Drag a paragraph or task from the card onto a
 tab to send it to that card.
 
+### Day Planner
+
+One card at a time, as a planner page: its title in large type across the top, an arrow on
+either side to the previous and next card (or press `←` / `→`, `,` / `.`), and each of its lines
+— every task or paragraph — as its own small card in one of two columns. Drag a line card into
+the other column or to a new spot (which also moves the line in the note), drag its bottom edge
+to give it more or less room, or drop it on an arrow to send it to the neighbouring card. The
+column and height of each line are remembered per note. Right-click a line card for the usual
+line menu plus **Move to right/left column** and **Reset height**; double-click it to edit the
+line; Enter in a column's add box appends a task to the card in that column.
+
 ### Calendar
 
 Date cards on a monthly grid, today highlighted. Click an empty day to start its card,
@@ -188,7 +199,8 @@ them all (document order). Esc clears the selection.
 
 **Keyboard.** The arrow keys move a dashed focus ring to the nearest card in that direction;
 Enter opens that card's editor, Space selects or deselects it, and Shift+arrow extends the
-selection as it moves. In the Rolodex, left and right step the tabs.
+selection as it moves. In the Rolodex and the Day Planner, left and right step to the
+neighbouring card.
 
 ## Collapsing cards
 
