@@ -5617,6 +5617,39 @@ export class SectionCardsView extends ItemView {
 		).open();
 	}
 
+	/**
+	 * Rename a card: rewrite its heading line's text (the #'s stay, so the level does),
+	 * body untouched. Pins, colors, canvas placements, and planner slots are keyed by
+	 * the heading line and follow it; so does the Rolodex/planner's remembered card.
+	 */
+	private promptRenameCard(section: Section): void {
+		if (section.unfiled) return;
+		new TextInputModal(this.app, "Rename card", section.title, "Rename", (value) => {
+			const title = value.trim();
+			if (!title || title === section.title) return;
+			void (async () => {
+				const file = this.getFile();
+				if (!file) return;
+				const hashes = /^#+/.exec(section.headingRaw)?.[0] ?? "#".repeat(this.headingLevel);
+				const newHeading = `${hashes} ${title}`;
+				const ok = await retitleSectionInFile(this.app, file, this.headingLevel, section, newHeading);
+				if (!ok) {
+					new Notice("Single File Section Cards: couldn't find that card — the file changed on disk.");
+					await this.refresh();
+					return;
+				}
+				await this.plugin.renameCardKey(file.path, section.headingRaw, newHeading);
+				const placed = this.customPlacements[section.headingRaw];
+				if (placed) {
+					this.customPlacements[newHeading] = placed;
+					delete this.customPlacements[section.headingRaw];
+				}
+				if (this.roloActive.get(this.filePath) === section.headingRaw) this.roloActive.set(this.filePath, newHeading);
+				await this.refresh();
+			})();
+		}).open();
+	}
+
 	/** Write a card with this title at the view's level (template applied, default
 	 * placement) and turn the planner to it. */
 	private async createTitledCard(title: string): Promise<void> {
@@ -5767,6 +5800,15 @@ export class SectionCardsView extends ItemView {
 		const titleWrap = head.createDiv({ cls: "sfsc-planner-title-wrap" });
 		const titleEl = titleWrap.createDiv({ cls: "sfsc-planner-title", text: section.title || "(untitled)" });
 		titleEl.toggleClass("is-today", active.el.hasClass("is-today"));
+		if (!section.unfiled) {
+			titleEl.addEventListener("contextmenu", (evt) => {
+				evt.preventDefault();
+				evt.stopPropagation();
+				const menu = new Menu();
+				menu.addItem((item) => item.setTitle("Rename card…").setIcon("pencil").onClick(() => this.promptRenameCard(section)));
+				menu.showAtMouseEvent(evt);
+			});
+		}
 		// The card's color paints the title bar (the per-color CSS variables key off the
 		// attribute, as on the cards).
 		const color = active.el.getAttribute("data-sfsc-color");
@@ -8797,6 +8839,14 @@ export class SectionCardsView extends ItemView {
 						}
 					}),
 			);
+			if (!holder.section.unfiled) {
+				menu.addItem((item) =>
+					item
+						.setTitle("Rename card…")
+						.setIcon("pencil")
+						.onClick(() => this.promptRenameCard(holder.section)),
+				);
+			}
 			menu.addItem((item) => item.setTitle("Delete card").setIcon("trash-2").onClick(confirmDeleteCard));
 			// The Rolodex card already fills the pane, so "big" has nothing to do there.
 			if (this.layout !== "rolodex") {

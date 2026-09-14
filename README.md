@@ -222,7 +222,7 @@ Selection works like a file manager: click a card's title bar to select it, Shif
 card to select the run between them, `Ctrl/⌘+A` for every visible card, and click empty space (or
 press Esc) to clear. Ctrl/⌘-click makes a card big instead.
 Changing the sort or grouping keeps the selected card in view. A bar along the bottom then offers **Pin**, **Unpin**,
-**Color…**, **Flip** / **Unflip** (two-faced cards), and **Delete…**; a title bar's right-click menu
+**Color…**, **Flip** / **Unflip** (two-faced cards), **Rename card…** (rewrites the heading text; pins, colors, and placements follow), and **Delete…**; a title bar's right-click menu
 has the same, plus **Move selected before / after this card**. Dragging one selected card drags
 them all (document order). Esc clears the selection.
 
