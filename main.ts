@@ -5384,6 +5384,7 @@ export class SectionCardsView extends ItemView {
 		const front = this.cardFaces(section.body).front.split("\n");
 		const cards = plannerCards(front);
 		const taskLines = taskLineIndexes(front);
+		const today = this.todayKeys();
 		const slots = this.plugin.getPlanner(this.filePath)[section.headingRaw] ?? {};
 		const scope = new Component();
 		this.addChild(scope);
@@ -5419,7 +5420,12 @@ export class SectionCardsView extends ItemView {
 				tasksBefore: taskLines.filter((line) => line < card.start).length,
 			};
 			// Subcards are titled by their heading; the loose card by the unfiled card's name.
-			if (card.kind === "sub") item.createDiv({ cls: "sfsc-planner-item-title", text: card.title || "(untitled)" });
+			if (card.kind === "sub") {
+				item.createDiv({ cls: "sfsc-planner-item-title", text: card.title || "(untitled)" });
+				// In a dated note, today's subcard (a day under a month card, say) is lit
+				// the way today's card is on the wall.
+				if (today && isTodayTitle(card.title ?? "", today.iso, today.formatted)) item.addClass("is-today");
+			}
 			if (card.kind === "loose") item.createDiv({ cls: "sfsc-planner-item-title", text: this.plannerLooseTitle() });
 			const body = item.createDiv({ cls: "sfsc-planner-item-body" });
 			const markdown =

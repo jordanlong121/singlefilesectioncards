@@ -436,13 +436,15 @@ ${sections.map((s, i) => cardHtml(s).replace('class="section-card', `class="sect
 		// blocks as line cards — odd ones staged in the right column, the third resized.
 		const activeAt = Math.max(0, sections.findIndex((s) => process.env.ROLO_ACTIVE && s.title.includes(process.env.ROLO_ACTIVE)));
 		const s = sections[activeAt];
+		if (!s) return `<div class="sfsc-planner"><div class="section-cards-empty">No cards to plan.</div></div>\n<div class="section-cards-grid"></div>`;
 		const lines = s.body.split("\n");
 		const cols = [[], []];
 		plannerCards(lines).forEach((c, i) => {
 			const style = i === 2 ? ' style="height: 96px"' : "";
 			const title = c.kind === "line" ? "" : `<div class="sfsc-planner-item-title">${esc(c.kind === "sub" ? c.title : "Unfiled")}</div>`;
 			const text = lines.slice(c.kind === "sub" ? c.start + 1 : c.start, c.end).join("\n");
-			cols[i % 2 ? 1 : 0].push(`<div class="sfsc-planner-item markdown-rendered is-${c.kind}" draggable="true"${style}>${title}<div class="sfsc-planner-item-body">${text.trim() ? renderBody(text) : ""}</div></div>`);
+			const today = c.kind === "sub" && c.title.includes(TODAY) ? " is-today" : "";
+			cols[i % 2 ? 1 : 0].push(`<div class="sfsc-planner-item markdown-rendered is-${c.kind}${today}" draggable="true"${style}>${title}<div class="sfsc-planner-item-body">${text.trim() ? renderBody(text) : ""}</div></div>`);
 		});
 		const col = (items) => `<div class="sfsc-planner-col">${items.join("\n")}</div>`;
 		return `<div class="sfsc-planner">

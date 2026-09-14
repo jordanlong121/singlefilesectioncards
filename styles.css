@@ -2225,6 +2225,24 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 	border-left: 3px solid var(--interactive-accent);
 }
 
+/* Today's subcard, in a dated note: the wall's today ring and a filled title band. */
+.sfsc-planner-item.is-today {
+	border-color: var(--text-highlight-bg, var(--interactive-accent));
+	box-shadow: 0 0 0 1px var(--text-highlight-bg, var(--interactive-accent)), var(--sc-shadow);
+}
+
+.sfsc-planner-item.is-today .sfsc-planner-item-title {
+	color: var(--text-normal);
+	font-weight: 700;
+	margin: -8px -14px 6px -12px;
+	padding: 6px 14px 6px 12px;
+	background: linear-gradient(
+			var(--text-highlight-bg, var(--interactive-accent)),
+			var(--text-highlight-bg, var(--interactive-accent))
+		),
+		linear-gradient(var(--sc-surface), var(--sc-surface)), var(--background-primary);
+}
+
 .sfsc-planner-item.is-loose {
 	border-left: 3px solid var(--text-faint);
 }
