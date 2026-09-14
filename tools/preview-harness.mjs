@@ -440,7 +440,7 @@ ${sections.map((s, i) => cardHtml(s).replace('class="section-card', `class="sect
 		const cols = [[], []];
 		plannerCards(lines).forEach((c, i) => {
 			const style = i === 2 ? ' style="height: 96px"' : "";
-			const title = c.kind === "sub" ? `<div class="sfsc-planner-item-title">${esc(c.title)}</div>` : "";
+			const title = c.kind === "line" ? "" : `<div class="sfsc-planner-item-title">${esc(c.kind === "sub" ? c.title : "Unfiled")}</div>`;
 			const text = lines.slice(c.kind === "sub" ? c.start + 1 : c.start, c.end).join("\n");
 			cols[i % 2 ? 1 : 0].push(`<div class="sfsc-planner-item markdown-rendered is-${c.kind}" draggable="true"${style}>${title}<div class="sfsc-planner-item-body">${text.trim() ? renderBody(text) : ""}</div></div>`);
 		});

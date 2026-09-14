@@ -1896,14 +1896,19 @@ t("plannerCards: no sub-headings — one line card per movable block", () => {
   ]);
 });
 
-t("plannerCards: lines above the first sub-heading, then a subcard per sub-heading", () => {
-  const body = L("- [ ] loose\n\n#### Morning\n- [ ] run\n##### detail\ntext\n\n#### Afternoon\n- [ ] dentist");
+t("plannerCards: one loose card above the first sub-heading, then a subcard per sub-heading", () => {
+  const body = L("\n- [ ] loose\n- [ ] also loose\n\n#### Morning\n- [ ] run\n##### detail\ntext\n\n#### Afternoon\n- [ ] dentist");
   const cards = plannerCards(body);
-  assert.deepEqual(cards.map((c) => [c.kind, c.start, c.end, c.title ?? c.blockIndex]), [
-    ["line", 0, 1, 0],
-    ["sub", 2, 7, "Morning"],
-    ["sub", 7, 9, "Afternoon"],
+  assert.deepEqual(cards.map((c) => [c.kind, c.start, c.end, c.title]), [
+    ["loose", 1, 4, undefined],
+    ["sub", 4, 9, "Morning"],
+    ["sub", 9, 11, "Afternoon"],
   ]);
+});
+
+t("plannerCards: nothing (or only blanks) above the first sub-heading — no loose card", () => {
+  assert.deepEqual(plannerCards(L("#### A\n- x")).map((c) => c.kind), ["sub"]);
+  assert.deepEqual(plannerCards(L("\n\n#### A\n- x")).map((c) => c.kind), ["sub"]);
 });
 
 t("plannerCards: the shallowest sub-level splits; deeper headings are content; fences don't count", () => {
