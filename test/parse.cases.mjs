@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -1880,6 +1880,42 @@ t("plannerBlockKey: ticking a task off keeps its key", () => {
   const open = "- [ ] call the vendor about the quote 📅 2026-09-14";
   const done = "- [x] call the vendor about the quote 📅 2026-09-14 ✅ 2026-09-14";
   assert.equal(plannerBlockKey(open), plannerBlockKey(done));
+});
+
+t("plannerBlockKey: a sub-heading keys by its text, #'s gone", () => {
+  assert.equal(plannerBlockKey("#### Morning  block"), "morning block");
+  assert.equal(plannerBlockKey("#### Morning\n- [ ] run"), "morning");
+});
+
+t("plannerCards: no sub-headings — one line card per movable block", () => {
+  const cards = plannerCards(L("- [ ] a\n- [ ] b\n\npara\n> quote"));
+  assert.deepEqual(cards.map((c) => [c.kind, c.start, c.end, c.blockIndex]), [
+    ["line", 0, 1, 0],
+    ["line", 1, 2, 1],
+    ["line", 3, 4, 2],
+  ]);
+});
+
+t("plannerCards: lines above the first sub-heading, then a subcard per sub-heading", () => {
+  const body = L("- [ ] loose\n\n#### Morning\n- [ ] run\n##### detail\ntext\n\n#### Afternoon\n- [ ] dentist");
+  const cards = plannerCards(body);
+  assert.deepEqual(cards.map((c) => [c.kind, c.start, c.end, c.title ?? c.blockIndex]), [
+    ["line", 0, 1, 0],
+    ["sub", 2, 7, "Morning"],
+    ["sub", 7, 9, "Afternoon"],
+  ]);
+});
+
+t("plannerCards: the shallowest sub-level splits; deeper headings are content; fences don't count", () => {
+  const body = L("##### Only fives\n- x\n```\n#### not a heading\n```\n##### Two\n- y");
+  const cards = plannerCards(body);
+  assert.deepEqual(cards.map((c) => [c.kind, c.title]), [["sub", "Only fives"], ["sub", "Two"]]);
+  assert.deepEqual(cards.map((c) => [c.start, c.end]), [[0, 5], [5, 7]]);
+});
+
+t("plannerCards: lines after the first sub-heading are never loose line cards", () => {
+  const cards = plannerCards(L("#### A\n- [ ] inside a\n#### B\n- [ ] inside b"));
+  assert.deepEqual(cards.map((c) => c.kind), ["sub", "sub"]);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

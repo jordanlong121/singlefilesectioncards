@@ -128,13 +128,17 @@ tab to send it to that card.
 ### Day Planner
 
 One card at a time, as a planner page: its title in large type across the top, an arrow on
-either side to the previous and next card (or press `←` / `→`, `,` / `.`), and each of its lines
-— every task or paragraph — as its own small card in one of two columns. Drag a line card into
-the other column or to a new spot (which also moves the line in the note), drag its bottom edge
+either side to the previous and next card (or press `←` / `→`, `,` / `.`), and its contents as
+small cards in two columns. Each task or paragraph above the card's first sub-heading is a line
+card of its own; each sub-heading (H4 under an H3 card, say) with everything beneath it is a
+subcard, titled by the heading, its tasks live inside. Drag a card into the other column or to a
+new spot (which also moves the text in the note — lines reorder among the lines, subcards among
+the subcards, and a line dropped onto a subcard files under that heading), drag its bottom edge
 to give it more or less room, or drop it on an arrow to send it to the neighbouring card. The
-column and height of each line are remembered per note. Right-click a line card for the usual
-line menu plus **Move to right/left column** and **Reset height**; double-click it to edit the
-line; Enter in a column's add box appends a task to the card in that column.
+column and height of each card are remembered per note. Right-click a card for the usual line
+menu (or **Edit text…** on a subcard) plus **Move to right/left column** and **Reset height**;
+double-click it to edit; Enter in a column's add box adds a task to the card in that column,
+above the first sub-heading.
 
 ### Calendar
 

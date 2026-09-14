@@ -2175,11 +2175,47 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 	box-shadow: inset 0 -2px 0 var(--interactive-accent);
 }
 
+/* A subcard's heading is its title; the text beneath renders as the card body. */
+.sfsc-planner-item-title {
+	font-weight: 600;
+	font-size: calc(var(--font-ui-medium, var(--font-ui-small)) * var(--sfsc-font-scale, 1));
+	line-height: 1.3;
+	margin-bottom: 4px;
+	color: var(--text-normal);
+}
+
+.sfsc-planner-item.is-sub {
+	border-left: 3px solid var(--interactive-accent);
+}
+
+/* A line held over a subcard: it can be dropped to file under that heading. */
+.sfsc-planner-item.is-drop-target {
+	border-color: var(--interactive-accent);
+	background-color: var(--background-modifier-hover);
+}
+
+.sfsc-planner-item-body > h1,
+.sfsc-planner-item-body > h2,
+.sfsc-planner-item-body > h3,
+.sfsc-planner-item-body > h4,
+.sfsc-planner-item-body > h5,
+.sfsc-planner-item-body > h6 {
+	margin: 6px 0 2px;
+	font-size: calc(var(--font-ui-small) * var(--sfsc-font-scale, 1));
+}
+
 /* One block per card: no outer margins, the list bullet/checkbox tucked in. */
 .sfsc-planner-item-body > p,
 .sfsc-planner-item-body > ul,
 .sfsc-planner-item-body > ol {
 	margin: 0;
+}
+
+/* Inside a subcard the blocks keep a little air between them. */
+.sfsc-planner-item.is-sub .sfsc-planner-item-body > p + p,
+.sfsc-planner-item.is-sub .sfsc-planner-item-body > ul + p,
+.sfsc-planner-item.is-sub .sfsc-planner-item-body > p + ul {
+	margin-top: 6px;
 }
 
 .sfsc-planner-item-body > ul,

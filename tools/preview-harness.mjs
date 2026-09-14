@@ -13,7 +13,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { parseCards, sortSections, parseAncestorHeadings, hierarchyColumnItems, groupByAncestor, HIER_GAP_KEY, openTaskCount, movableBlocks } from "../test/.tmp/main.js";
+import { parseCards, sortSections, parseAncestorHeadings, hierarchyColumnItems, groupByAncestor, HIER_GAP_KEY, openTaskCount, plannerCards } from "../test/.tmp/main.js";
 
 const OUT_DIR = process.argv[2] ?? "harness-out";
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -438,10 +438,11 @@ ${sections.map((s, i) => cardHtml(s).replace('class="section-card', `class="sect
 		const s = sections[activeAt];
 		const lines = s.body.split("\n");
 		const cols = [[], []];
-		movableBlocks(lines).forEach((b, i) => {
-			const text = lines.slice(b.start, b.end).join("\n");
+		plannerCards(lines).forEach((c, i) => {
 			const style = i === 2 ? ' style="height: 96px"' : "";
-			cols[i % 2 ? 1 : 0].push(`<div class="sfsc-planner-item markdown-rendered" draggable="true"${style}><div class="sfsc-planner-item-body">${renderBody(text)}</div></div>`);
+			const title = c.kind === "sub" ? `<div class="sfsc-planner-item-title">${esc(c.title)}</div>` : "";
+			const text = lines.slice(c.kind === "sub" ? c.start + 1 : c.start, c.end).join("\n");
+			cols[i % 2 ? 1 : 0].push(`<div class="sfsc-planner-item markdown-rendered is-${c.kind}" draggable="true"${style}>${title}<div class="sfsc-planner-item-body">${text.trim() ? renderBody(text) : ""}</div></div>`);
 		});
 		const col = (items) => `<div class="sfsc-planner-col">${items.join("\n")}<input type="text" class="sfsc-planner-add" placeholder="Add a task…" spellcheck="false"></div>`;
 		return `<div class="sfsc-planner">
