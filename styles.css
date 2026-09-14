@@ -3156,6 +3156,23 @@ body.is-phone .section-cards-view.is-deck .section-cards-grid {
 	margin-bottom: 8px;
 }
 
+/* Document setup: one row per heading level; the intro and per-row notes stay quiet. */
+.sfsc-docsetup-intro,
+.sfsc-docsetup-note {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.sfsc-docsetup-note {
+	margin-top: 2px;
+}
+
+.sfsc-docsetup .setting-item-control {
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 6px;
+}
+
 .sfsc-library-list {
 	max-height: 50vh;
 	overflow-y: auto;

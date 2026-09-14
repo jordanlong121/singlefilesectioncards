@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -1942,6 +1942,53 @@ t("wholeNoteSection: the note below its properties, headless, spanning to the en
   assert.ok(s.unfiled && s.whole);
   assert.equal(s.body.split("\n")[0], "# Sept");
   assert.deepEqual(plannerCards(s.body.split("\n")).map((c) => c.title), ["Sept", "2026-09-14", "Aug", "2026-08-31"]);
+});
+
+t("parsePeriod: years, months, and weeks in each supported spelling", () => {
+  assert.equal(parsePeriod("2026", "year", "YYYY"), "2026");
+  assert.equal(parsePeriod("September 2026", "month", "MMMM YYYY"), "2026-09");
+  assert.equal(parsePeriod("Sep 2026", "month", "MMM YYYY"), "2026-09");
+  assert.equal(parsePeriod("2026-09", "month", "YYYY-MM"), "2026-09");
+  assert.equal(parsePeriod("September 2026", "month", "MMM YYYY"), null, "spelling must match the format");
+  assert.equal(parsePeriod("Week 38, 2026", "week", "[Week] W, YYYY"), "2026-W38");
+  assert.equal(parsePeriod("Week 38 2026", "week", "[Week] W YYYY"), "2026-W38");
+  assert.equal(parsePeriod("2026-W38", "week", "YYYY-[W]WW"), "2026-W38");
+  assert.equal(parsePeriod("Week of 2026-09-14", "week", "[Week of] YYYY-MM-DD"), "D:2026-09-14");
+  assert.equal(parsePeriod("Week 60, 2026", "week", "[Week] W, YYYY"), null);
+  assert.equal(parsePeriod("Notes", "month", "MMMM YYYY"), null);
+});
+
+t("shiftPeriod / formatPeriod: stepping rolls over years and 52/53-week years", () => {
+  assert.equal(shiftPeriod("2026", "year", 1), "2027");
+  assert.equal(shiftPeriod("2026-12", "month", 1), "2027-01");
+  assert.equal(shiftPeriod("2026-01", "month", -1), "2025-12");
+  assert.equal(formatPeriod("2027-01", "month", "MMMM YYYY"), "January 2027");
+  assert.equal(formatPeriod("2027-01", "month", "MMM YYYY"), "Jan 2027");
+  assert.equal(formatPeriod("2027-01", "month", "YYYY-MM"), "2027-01");
+  // 2026 has 53 ISO weeks (Jan 1 2026 is a Thursday); 2027 has 52.
+  assert.equal(shiftPeriod("2026-W53", "week", 1), "2027-W01");
+  assert.equal(shiftPeriod("2027-W01", "week", -1), "2026-W53");
+  assert.equal(shiftPeriod("2025-W52", "week", 1), "2026-W01");
+  assert.equal(formatPeriod("2026-W05", "week", "[Week] W, YYYY"), "Week 5, 2026");
+  assert.equal(formatPeriod("2026-W05", "week", "YYYY-[W]WW"), "2026-W05");
+  assert.equal(shiftPeriod("D:2026-09-14", "week", 1), "D:2026-09-21");
+  assert.equal(formatPeriod("D:2026-09-21", "week", "[Week of] YYYY-MM-DD"), "Week of 2026-09-21");
+});
+
+t("detectLevelSetup: months at H1, days at H3, nothing at H2; text when Dates is off", () => {
+  const lines = L("# September 2026\n### 2026-09-14, Monday\n- a\n### 2026-09-13, Sunday\n# August 2026\n### 2026-08-31, Monday\n#### Notes");
+  const dated = detectLevelSetup(lines, "YYYY-MM-DD, dddd", "", true);
+  assert.deepEqual(dated["1"], { role: "month", format: "MMMM YYYY" });
+  assert.deepEqual(dated["2"], { role: "none" });
+  assert.deepEqual(dated["3"], { role: "day" });
+  assert.deepEqual(dated["4"], { role: "text" });
+  const plain = detectLevelSetup(lines, "YYYY-MM-DD, dddd", "", false);
+  assert.deepEqual(plain["1"], { role: "text" });
+  assert.deepEqual(plain["3"], { role: "text" });
+});
+
+t("alphanumericCompare: numbers order by value", () => {
+  assert.deepEqual(["Week 10", "Week 2", "week 1"].sort(alphanumericCompare), ["week 1", "Week 2", "Week 10"]);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
