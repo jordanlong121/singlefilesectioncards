@@ -64,9 +64,9 @@ If this plugin is useful to you, you can support its development:
 
 Pick a layout from the toolbar's **Layout** dropdown, the **Layouts** row of the toolbar's ☰
 menu or any right-click menu, or press `L` to cycle (Shift+L backwards). Layouts you never use
-in a note can be switched off for it: ☰ → **Layouts shown in this note** is a checklist, and an
-unticked layout leaves that note's dropdown, menus, and `L` cycle (remembered per note; the
-layout showing can't be unticked — switch away first).
+in a note can be hidden from it: Ctrl/⌘-click one in the **Layouts** menu and it leaves that
+note's dropdown and `L` cycle, staying in the menu dimmed as "(hidden)" — click it there to
+bring it back (remembered per note; the layout showing can't be hidden — switch away first).
 
 ### Vertical
 
