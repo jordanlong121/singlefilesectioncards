@@ -5672,16 +5672,25 @@ export class SectionCardsView extends ItemView {
 		const compact = this.plugin.settings.toolbarStyle === "compact";
 		bar.toggleClass("is-compact", compact);
 
+		// Three clusters: the note controls, the date controls, the view controls. In
+		// the full bar they're transparent (display: contents) and everything wraps as
+		// one flow; the compact bar lays them out as a grid so the dates sit dead centre
+		// while the note button and filter box grow into whatever room the left has.
+		const left = bar.createDiv({ cls: "section-cards-cluster section-cards-cluster-left" });
+		const mid = bar.createDiv({ cls: "section-cards-cluster section-cards-cluster-mid" });
+		const right = bar.createDiv({ cls: "section-cards-cluster section-cards-cluster-right" });
+		let cluster: HTMLElement = left;
+
 		// The hamburger menu leads the bar: dates, new-card options, and the per-note
 		// background live here as well as (for now) on their own toolbar controls.
-		const menuBtn = bar.createEl("button", { cls: "section-cards-icon-btn section-cards-menu-btn" });
+		const menuBtn = cluster.createEl("button", { cls: "section-cards-icon-btn section-cards-menu-btn" });
 		setIcon(menuBtn, "menu");
 		menuBtn.setAttr("aria-label", "Cards view menu");
 		menuBtn.addEventListener("click", (evt) => this.openMainMenu(evt));
 
 		// The Deck toggle: a wall of note thumbnails instead of the cards. It sits before
 		// the note button: pick a note from thumbnails, or from the list.
-		const deckBtn = bar.createEl("button", { cls: "section-cards-icon-btn section-cards-deck-btn" });
+		const deckBtn = cluster.createEl("button", { cls: "section-cards-icon-btn section-cards-deck-btn" });
 		setIcon(deckBtn, DECK_ICON);
 		deckBtn.toggleClass("is-active", this.deckMode);
 		deckBtn.setAttr(
@@ -5690,7 +5699,7 @@ export class SectionCardsView extends ItemView {
 		);
 		deckBtn.addEventListener("click", () => void this.toggleDeck());
 
-		const fileBtn = bar.createEl("button", { cls: "section-cards-file-btn" });
+		const fileBtn = cluster.createEl("button", { cls: "section-cards-file-btn" });
 		fileBtn.setAttr("aria-label", "Pick a different note (O)");
 		fileBtn.createSpan({ text: this.filePath || "(no file)" });
 		fileBtn.addEventListener("click", () => {
@@ -5700,7 +5709,7 @@ export class SectionCardsView extends ItemView {
 		if (this.deckMode) {
 			// The Deck's own sort — the rest of the toolbar is note-specific and
 			// stands down, but ordering the thumbnails belongs here.
-			const sortWrap = bar.createDiv({ cls: "section-cards-control section-cards-sort-control" });
+			const sortWrap = cluster.createDiv({ cls: "section-cards-control section-cards-sort-control" });
 			sortWrap.setAttr("aria-label", "Order the deck's notes");
 			sortWrap.createSpan({ text: "Sort", cls: "section-cards-label" });
 			const sortSelect = sortWrap.createEl("select", { cls: "dropdown" });
@@ -5711,13 +5720,13 @@ export class SectionCardsView extends ItemView {
 				this.plugin.settings.deckSort = sortSelect.value as DeckSort;
 				void this.plugin.saveSettings().then(() => this.refresh());
 			});
-			this.addHelpButton(bar);
+			this.addHelpButton(right);
 			return;
 		}
 
 		// Heading level leads the controls, the filter box beside it: what becomes a
 		// card sits on the left with the note name; the view options keep the right.
-		const levelWrap = bar.createDiv({ cls: "section-cards-control section-cards-level-control" });
+		const levelWrap = cluster.createDiv({ cls: "section-cards-control section-cards-level-control" });
 		levelWrap.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
 		levelWrap.createSpan({ text: "Card level", cls: "section-cards-label" });
 		const levelSelect = levelWrap.createEl("select", { cls: "dropdown" });
@@ -5740,7 +5749,7 @@ export class SectionCardsView extends ItemView {
 		});
 
 		// Filter box: typing narrows the wall to cards containing the text; X clears.
-		const filterWrap = bar.createDiv({ cls: "section-cards-control section-cards-filter" });
+		const filterWrap = cluster.createDiv({ cls: "section-cards-control section-cards-filter" });
 		const filterInput = filterWrap.createEl("input", {
 			cls: "section-cards-filter-input",
 			attr: {
@@ -5789,7 +5798,7 @@ export class SectionCardsView extends ItemView {
 
 		// Starred-only: show just the starred lines, and only the cards that hold one.
 		// Hidden while the note has no starred lines (refresh keeps that current).
-		const starBtn = bar.createEl("button", { cls: "section-cards-icon-btn section-cards-star-btn" });
+		const starBtn = cluster.createEl("button", { cls: "section-cards-icon-btn section-cards-star-btn" });
 		this.starBtn = starBtn;
 		starBtn.toggleClass("is-hidden", !this.hasStars);
 		setIcon(starBtn, "star");
@@ -5811,12 +5820,13 @@ export class SectionCardsView extends ItemView {
 			this.app.workspace.requestSaveLayout();
 		});
 
-		bar.createDiv({ cls: "section-cards-spacer" });
+		cluster.createDiv({ cls: "section-cards-spacer" });
+		cluster = mid;
 
 		// The date controls sit mid-bar, between the note cluster on the left and the
 		// view controls on the right: jump-to-date and the per-note Dates checkbox
 		// that governs whether it's offered.
-		const datesWrap = bar.createDiv({ cls: "section-cards-control" });
+		const datesWrap = cluster.createDiv({ cls: "section-cards-control" });
 
 		// Jump to date: only offered when headings are dates and the note actually has
 		// some (refresh keeps the visibility current). The native date picker does the
@@ -5897,10 +5907,11 @@ export class SectionCardsView extends ItemView {
 
 		// The second stretch of space: with one on each side, the date controls sit
 		// centered between the left and right clusters.
-		bar.createDiv({ cls: "section-cards-spacer" });
+		cluster = right;
+		cluster.createDiv({ cls: "section-cards-spacer" });
 
 		// The new-card button leads the right cluster, ahead of the view controls.
-		const newBtn = bar.createEl("button", { cls: "section-cards-new-btn mod-cta", text: compact ? "+" : "+ New card" });
+		const newBtn = cluster.createEl("button", { cls: "section-cards-new-btn mod-cta", text: compact ? "+" : "+ New card" });
 		newBtn.setAttr("aria-label", "Create a new section in this note (N)");
 		newBtn.addEventListener("click", () => this.promptNewCard());
 
@@ -5908,7 +5919,7 @@ export class SectionCardsView extends ItemView {
 		// above the card level — one flat wall, drill-down hierarchy columns, or a
 		// collapsible divider bar per heading. The grouped modes keep whatever layout
 		// the dropdown says; neither is available on the Custom Grid canvas.
-		const modeWrap = bar.createDiv({ cls: "section-cards-control section-cards-mode-control" });
+		const modeWrap = cluster.createDiv({ cls: "section-cards-control section-cards-mode-control" });
 		modeWrap.createSpan({ text: "View mode", cls: "section-cards-label" });
 		const modeSeg = modeWrap.createDiv({ cls: "section-cards-segmented" });
 		const modeButtons: [HTMLButtonElement, () => boolean][] = [];
@@ -5971,7 +5982,7 @@ export class SectionCardsView extends ItemView {
 
 		// Tooltips sit on the wrapper as well as the control, so hovering the text
 		// label ("Sort", "Layout", …) shows them too, not just the dropdown.
-		const sortWrap = bar.createDiv({ cls: "section-cards-control section-cards-sort-control" });
+		const sortWrap = cluster.createDiv({ cls: "section-cards-control section-cards-sort-control" });
 		sortWrap.setAttr("aria-label", "Order the cards are shown in");
 		sortWrap.createSpan({ text: "Sort", cls: "section-cards-label" });
 		const sortSelect = sortWrap.createEl("select", { cls: "dropdown" });
@@ -6007,7 +6018,7 @@ export class SectionCardsView extends ItemView {
 		// Group-by: divider bars over buckets, per note like the sort. Not on the layouts
 		// that place everything themselves (no bars there).
 		if (!this.layoutOwnsPlacement()) {
-			const groupWrap = bar.createDiv({ cls: "section-cards-control section-cards-group-control" });
+			const groupWrap = cluster.createDiv({ cls: "section-cards-control section-cards-group-control" });
 			groupWrap.setAttr("aria-label", "Group the cards under divider bars");
 			groupWrap.createSpan({ text: "Group", cls: "section-cards-label" });
 			const groupSelect = groupWrap.createEl("select", { cls: "dropdown" });
@@ -6028,7 +6039,7 @@ export class SectionCardsView extends ItemView {
 
 		// Tasks layout: the complete/incomplete filter, beside the sort it refines.
 		if (this.layout === "tasks") {
-			const taskWrap = bar.createDiv({ cls: "section-cards-control section-cards-taskfilter-control" });
+			const taskWrap = cluster.createDiv({ cls: "section-cards-control section-cards-taskfilter-control" });
 			taskWrap.setAttr("aria-label", "Which task states the cards show");
 			taskWrap.createSpan({ text: "Tasks", cls: "section-cards-label" });
 			const taskSelect = taskWrap.createEl("select", { cls: "dropdown" });
@@ -6049,7 +6060,7 @@ export class SectionCardsView extends ItemView {
 		// Layout sits rightmost of the dropdowns: everything between it and the pane
 		// edge is fixed-width, so it stays put when the Sort options change widths
 		// (the Calendar's do) or a mid-bar control comes and goes.
-		const layoutWrap = bar.createDiv({ cls: "section-cards-control" });
+		const layoutWrap = cluster.createDiv({ cls: "section-cards-control" });
 		layoutWrap.setAttr("aria-label", "Card layout (L cycles)");
 		layoutWrap.createSpan({ text: "Layout", cls: "section-cards-label" });
 		const layoutSelect = layoutWrap.createEl("select", { cls: "dropdown" });
@@ -6065,18 +6076,18 @@ export class SectionCardsView extends ItemView {
 		layoutSelect.value = this.layout;
 		layoutSelect.addEventListener("change", () => this.setLayout(layoutSelect.value as Layout));
 
-		const templateBtn = bar.createEl("button", { cls: "section-cards-icon-btn section-cards-template-btn" });
+		const templateBtn = cluster.createEl("button", { cls: "section-cards-icon-btn section-cards-template-btn" });
 		this.templateBtn = templateBtn;
 		setIcon(templateBtn, "layout-template");
 		templateBtn.setAttr("aria-label", "New-card options for this note: template and heading name");
 		templateBtn.toggleClass("has-template", !!this.plugin.getTemplatePath(this.filePath));
 		templateBtn.addEventListener("click", (evt) => this.openTemplateMenu(evt, templateBtn));
 
-		const refreshBtn = bar.createEl("button", { cls: "section-cards-icon-btn", text: "↻" });
+		const refreshBtn = cluster.createEl("button", { cls: "section-cards-icon-btn", text: "↻" });
 		refreshBtn.setAttr("aria-label", "Reload from file");
 		refreshBtn.addEventListener("click", () => void this.refresh());
 
-		this.addHelpButton(bar);
+		this.addHelpButton(right);
 	}
 
 	/** The ? button ends every toolbar variant — full, compact, and the Deck's. */

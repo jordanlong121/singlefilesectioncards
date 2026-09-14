@@ -244,13 +244,26 @@ body.sfsc-flat-cards .section-cards-view {
 	min-width: 14ch;
 	max-width: 36ch;
 	overflow: hidden;
-	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+/* Obsidian's buttons are inline-flex, so the ellipsis has to live on the name
+   itself: a long name trails off at the end instead of being clipped at both sides. */
+.section-cards-file-btn > span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .section-cards-spacer {
 	flex: 1 1 auto;
 	min-width: 0;
+}
+
+/* The bar's three clusters (note controls, date controls, view controls) are
+   transparent in the full bar: their children wrap in its flex flow as one row. */
+.section-cards-cluster {
+	display: contents;
 }
 
 /* The toolbar's help button: a small round circle, quieter than the other buttons. */
@@ -302,11 +315,32 @@ body.sfsc-flat-cards .section-cards-view {
    filter box shortened. If the pane is narrower still, the bar pans sideways rather
    than ever wrapping to a second line. */
 .section-cards-toolbar.is-compact {
-	flex-wrap: nowrap;
+	/* Three columns: the outer two share the room equally, so the date controls in
+	   the middle sit centred whatever the note button and filter box grow to. Each
+	   outer column never drops below its controls' minimum widths; past that the bar
+	   pans sideways (wheel or drag) instead of squeezing or wrapping. */
+	display: grid;
+	grid-template-columns: minmax(auto, 1fr) auto minmax(auto, 1fr);
 	gap: 6px;
 	padding: 4px 8px;
 	overflow-x: auto;
 	scrollbar-width: none;
+}
+
+.section-cards-toolbar.is-compact .section-cards-cluster {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.section-cards-toolbar.is-compact .section-cards-cluster-right {
+	justify-content: flex-end;
+}
+
+/* The grid columns do the centring; the full bar's stretch spacers would only
+   take the growth away from the note button and filter box. */
+.section-cards-toolbar.is-compact .section-cards-spacer {
+	display: none;
 }
 
 .section-cards-toolbar.is-compact::-webkit-scrollbar {
@@ -323,14 +357,28 @@ body.sfsc-flat-cards .section-cards-view {
 	font-size: calc(var(--font-ui-smaller, 12px) * 0.8);
 }
 
+/* The note button and filter box grow into the left column's spare room (the
+   button taking the larger share), and shrink back to a readable stub in a narrow
+   pane. The definite widths are what the grid measures as their minimum: without
+   them a long note name would hold the column at the full name's width. */
 .section-cards-toolbar.is-compact .section-cards-file-btn {
+	width: 14ch;
 	min-width: 14ch;
-	max-width: 24ch;
-	flex: 0 1 auto;
+	max-width: 48ch;
+	flex: 3 1 auto;
+}
+
+.section-cards-toolbar.is-compact .section-cards-filter {
+	width: 12ch;
+	min-width: 12ch;
+	max-width: 40ch;
+	flex: 2 1 auto;
 }
 
 .section-cards-toolbar.is-compact .section-cards-filter-input {
-	width: 11.25ch;
+	width: 100%;
+	min-width: 0;
+	flex: 1 1 auto;
 }
 
 /* Much smaller type and tighter boxes throughout the compact bar. The bare
