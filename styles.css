@@ -2113,7 +2113,7 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 	flex: 1 1 auto;
 }
 
-/* A column is a drop target down its whole height, add box included. */
+/* A column is a drop target down its whole height. */
 .sfsc-planner-col {
 	display: flex;
 	flex-direction: column;
@@ -2225,20 +2225,6 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 
 .sfsc-planner-item-body input[type="checkbox"] {
 	cursor: pointer;
-}
-
-/* The add box at each column's foot: quiet until focused. */
-.sfsc-planner-add {
-	width: 100%;
-	margin-top: auto;
-	background-color: transparent;
-	border: 1px dashed var(--sc-line);
-	box-shadow: none;
-}
-
-.sfsc-planner-add:focus {
-	background-color: var(--background-primary);
-	border-style: solid;
 }
 
 .is-layout-planner .section-cards-empty {
