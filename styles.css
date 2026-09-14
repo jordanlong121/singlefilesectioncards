@@ -2122,6 +2122,17 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 	overflow-wrap: anywhere;
 }
 
+/* No card at this level: a quieter title, with a line under it saying what shows instead. */
+.sfsc-planner-title.is-missing {
+	color: var(--text-muted);
+	font-size: calc(var(--font-ui-large, 20px) * 1.1 * var(--sfsc-font-scale, 1));
+}
+
+.sfsc-planner-subtitle {
+	color: var(--text-faint);
+	font-size: calc(var(--font-ui-small) * var(--sfsc-font-scale, 1));
+}
+
 .sfsc-planner-title.is-today {
 	color: var(--interactive-accent);
 }
