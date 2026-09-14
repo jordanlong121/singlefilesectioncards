@@ -5370,8 +5370,14 @@ export class SectionCardsView extends ItemView {
 			});
 		};
 		arrow("prev");
-		const titleEl = head.createDiv({ cls: "sfsc-planner-title", text: section.title || "(untitled)" });
+		const titleWrap = head.createDiv({ cls: "sfsc-planner-title-wrap" });
+		const titleEl = titleWrap.createDiv({ cls: "sfsc-planner-title", text: section.title || "(untitled)" });
 		titleEl.toggleClass("is-today", active.el.hasClass("is-today"));
+		// The cards' ↗: this section in the note's editor.
+		const openBtn = titleWrap.createEl("button", { cls: "section-cards-icon-btn sfsc-planner-open" });
+		setIcon(openBtn, "external-link");
+		openBtn.setAttr("aria-label", "Open this section in the note");
+		openBtn.addEventListener("click", () => void this.plugin.revealSection(file, section.headingLine));
 		arrow("next");
 
 		// Cards: lines above the first sub-heading, then one subcard per sub-heading.

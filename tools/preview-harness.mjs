@@ -446,7 +446,7 @@ ${sections.map((s, i) => cardHtml(s).replace('class="section-card', `class="sect
 		});
 		const col = (items) => `<div class="sfsc-planner-col">${items.join("\n")}</div>`;
 		return `<div class="sfsc-planner">
-<div class="sfsc-planner-head"><button class="sfsc-planner-arrow is-prev"${activeAt === 0 ? " disabled" : ""}>${CHEVRON_LEFT}</button><div class="sfsc-planner-title${s.title.includes(TODAY) ? " is-today" : ""}">${esc(s.title)}</div><button class="sfsc-planner-arrow is-next"${activeAt === sections.length - 1 ? " disabled" : ""}>${CHEVRON_RIGHT}</button></div>
+<div class="sfsc-planner-head"><button class="sfsc-planner-arrow is-prev"${activeAt === 0 ? " disabled" : ""}>${CHEVRON_LEFT}</button><div class="sfsc-planner-title-wrap"><div class="sfsc-planner-title${s.title.includes(TODAY) ? " is-today" : ""}">${esc(s.title)}</div><button class="section-cards-icon-btn sfsc-planner-open"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-external-link"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></button></div><button class="sfsc-planner-arrow is-next"${activeAt === sections.length - 1 ? " disabled" : ""}>${CHEVRON_RIGHT}</button></div>
 <div class="sfsc-planner-cols">${col(cols[0])}${col(cols[1])}</div>
 </div>
 <div class="section-cards-grid"></div>`;
