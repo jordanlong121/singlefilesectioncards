@@ -444,7 +444,7 @@ ${sections.map((s, i) => cardHtml(s).replace('class="section-card', `class="sect
 			const text = lines.slice(c.kind === "sub" ? c.start + 1 : c.start, c.end).join("\n");
 			cols[i % 2 ? 1 : 0].push(`<div class="sfsc-planner-item markdown-rendered is-${c.kind}" draggable="true"${style}>${title}<div class="sfsc-planner-item-body">${text.trim() ? renderBody(text) : ""}</div></div>`);
 		});
-		const col = (items) => `<div class="sfsc-planner-col">${items.join("\n")}<input type="text" class="sfsc-planner-add" placeholder="Add a task…" spellcheck="false"></div>`;
+		const col = (items) => `<div class="sfsc-planner-col">${items.join("\n")}</div>`;
 		return `<div class="sfsc-planner">
 <div class="sfsc-planner-head"><button class="sfsc-planner-arrow is-prev"${activeAt === 0 ? " disabled" : ""}>${CHEVRON_LEFT}</button><div class="sfsc-planner-title${s.title.includes(TODAY) ? " is-today" : ""}">${esc(s.title)}</div><button class="sfsc-planner-arrow is-next"${activeAt === sections.length - 1 ? " disabled" : ""}>${CHEVRON_RIGHT}</button></div>
 <div class="sfsc-planner-cols">${col(cols[0])}${col(cols[1])}</div>

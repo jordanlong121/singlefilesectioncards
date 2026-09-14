@@ -3122,35 +3122,6 @@ async function replaceRangeInFile(
 	return ok;
 }
 
-/** Day Planner: put a line above the card's first sub-heading (at `at`, a body line),
- * so it shows as a line card rather than vanishing into the last subcard. */
-async function insertAtBodyLineInFile(
-	app: App,
-	file: TFile,
-	level: number,
-	original: Section,
-	at: number,
-	text: string,
-): Promise<boolean> {
-	let ok = true;
-
-	await app.vault.process(file, (data) => {
-		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
-		const lines = data.split(/\r?\n/);
-		const target = locateCard(lines, level, original);
-		if (!target) {
-			ok = false;
-			return data;
-		}
-		const bodyStart = bodyStartLine(target);
-		const abs = bodyStart + Math.max(0, Math.min(at, target.endLine - bodyStart));
-		lines.splice(abs, 0, ...text.replace(/\s+$/, "").split(/\r?\n/));
-		return lines.join(eol);
-	});
-
-	return ok;
-}
-
 /** Insert text right after a given movable block, verifying the block's text first. */
 async function insertAfterBlockInFile(
 	app: App,
@@ -3441,8 +3412,6 @@ export class SectionCardsView extends ItemView {
 	private plannerDropEl: HTMLElement | null = null;
 	/** The heading the planner is showing, for the height observer's bookkeeping. */
 	private plannerHeading: string | null = null;
-	/** Which column's add box to refocus after a quick add rebuilds the planner. */
-	private plannerFocusCol: 0 | 1 | null = null;
 	/** The starred-only toolbar toggle, so refresh can hide it in notes with no stars. */
 	private starBtn: HTMLElement | null = null;
 	/** Whether the last render found a starred line, so the star toggle is offered. */
@@ -5364,30 +5333,6 @@ export class SectionCardsView extends ItemView {
 			return ctx;
 		});
 
-		// An add box at the foot of each column: Enter adds a task line to the card (above
-		// its first sub-heading, so it shows as a line card) in the column it was typed in.
-		cols.forEach((colEl, col) => {
-			const add = colEl.createEl("input", {
-				cls: "sfsc-planner-add",
-				attr: {
-					type: "text",
-					placeholder: "Add a task…",
-					"aria-label": "Add a task to this card, in this column",
-					spellcheck: "false",
-				},
-			});
-			add.addEventListener("keydown", (evt) => {
-				if (evt.key !== "Enter" || evt.isComposing) return;
-				const text = add.value.trim();
-				if (!text) return;
-				evt.preventDefault();
-				add.value = "";
-				void this.plannerQuickAdd(file, section, text, col as 0 | 1, cards);
-			});
-			if (this.plannerFocusCol === col) add.focus();
-		});
-		this.plannerFocusCol = null;
-
 		// The browser's resize grip writes an inline height; the observer saves it.
 		if (typeof ResizeObserver !== "undefined") {
 			const observer = new ResizeObserver(() => this.plannerHeightsChanged());
@@ -5639,27 +5584,6 @@ export class SectionCardsView extends ItemView {
 			target.endLine - bodyStartLine(target),
 		);
 		if (!ok) new Notice("Single File Section Cards: couldn't move that text — the file changed on disk.");
-		await this.refresh();
-	}
-
-	/** Enter in a column's add box: a task line joins the card in that column — at the
-	 * end, or above the first sub-heading when the card has subcards. */
-	private async plannerQuickAdd(file: TFile, section: Section, text: string, col: 0 | 1, cards: PlannerCard[]): Promise<void> {
-		const line = /^(?:[-*+]|\d+[.)])\s/.test(text) ? text : `- [ ] ${text}`;
-		if (col === 1) await this.updatePlannerSlot(section.headingRaw, plannerBlockKey(line), (slot) => ({ ...slot, col }), false);
-		const firstSub = cards.find((c) => c.kind === "sub");
-		let ok: boolean;
-		if (firstSub) {
-			// Directly under the last loose line, above the blank that precedes the heading.
-			const front = this.cardFaces(section.body).front.split("\n");
-			let at = firstSub.start;
-			while (at > 0 && front[at - 1].trim() === "") at--;
-			ok = await insertAtBodyLineInFile(this.app, file, this.headingLevel, section, at, line);
-		} else {
-			ok = await quickAddToSection(this.app, file, this.headingLevel, section, line, "bottom", this.flipMarker());
-		}
-		if (!ok) new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
-		this.plannerFocusCol = col;
 		await this.refresh();
 	}
 

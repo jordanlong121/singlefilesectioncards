@@ -137,8 +137,7 @@ the subcards, and a line dropped onto a subcard files under that heading), drag 
 to give it more or less room, or drop it on an arrow to send it to the neighbouring card. The
 column and height of each card are remembered per note. Right-click a card for the usual line
 menu (or **Edit text…** on a subcard) plus **Move to right/left column** and **Reset height**;
-double-click it to edit; Enter in a column's add box adds a task to the card in that column,
-above the first sub-heading.
+double-click it to edit.
 
 ### Calendar
 
