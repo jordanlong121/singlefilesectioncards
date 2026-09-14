@@ -150,16 +150,21 @@ function toolbarHtml(layout, mode = "default") {
 	// filter controls via the layout class.
 	const datesHidden = ["calendar", "heatmap", "images", "links"].includes(layout) ? " is-hidden" : "";
 	return `<div class="section-cards-toolbar${MOBILE ? " is-compact" : ""}">
+	<div class="section-cards-cluster section-cards-cluster-left">
 	<button class="section-cards-icon-btn section-cards-menu-btn">${MENU_ICON}</button>
 	<button class="section-cards-icon-btn section-cards-deck-btn is-active">${DECK_ICON}</button>
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
 	<div class="section-cards-control section-cards-level-control"><span class="section-cards-label">Card level</span><select class="dropdown"${["calendar", "heatmap"].includes(layout) ? " disabled" : ""}><option>H${LEVEL}</option></select></div>
 	<div class="section-cards-control section-cards-filter"><input type="text" class="section-cards-filter-input" placeholder="Filter…" spellcheck="false"><button class="section-cards-filter-clear"></button></div>
 	<div class="section-cards-spacer"></div>
+	</div>
+	<div class="section-cards-cluster section-cards-cluster-mid">
 	<div class="section-cards-control">
 		<div class="section-cards-jump-date${NOTE_HAS_DATES ? "" : " is-hidden"}"><button class="section-cards-icon-btn section-cards-jump-btn">${CAL_ICON}</button></div>
 		<label class="section-cards-dates-label${datesHidden}"><span class="section-cards-label">Dates</span><input type="checkbox" class="section-cards-dates-toggle"${NOTE_HAS_DATES ? " checked" : ""}></label>
 	</div>
+	</div>
+	<div class="section-cards-cluster section-cards-cluster-right">
 	<div class="section-cards-spacer"></div>
 	<button class="section-cards-new-btn mod-cta">${MOBILE ? "+" : "+ New card"}</button>
 	<div class="section-cards-control section-cards-mode-control"><span class="section-cards-label">View mode</span><div class="section-cards-segmented">${seg("Default", "default")}${seg("Hierarchy", "hier")}${seg("Dividers", "sections")}</div></div>
@@ -169,6 +174,7 @@ function toolbarHtml(layout, mode = "default") {
 	<button class="section-cards-icon-btn section-cards-template-btn">${TEMPLATE_ICON}</button>
 	<button class="section-cards-icon-btn">↻</button>
 	<button class="section-cards-help-btn">?</button>
+	</div>
 </div>`;
 }
 
@@ -372,10 +378,15 @@ const DECK_NOTES = [
 
 function deckToolbarHtml() {
 	return `<div class="section-cards-toolbar is-compact">
+	<div class="section-cards-cluster section-cards-cluster-left">
 	<button class="section-cards-icon-btn section-cards-menu-btn">${MENU_ICON}</button>
 	<button class="section-cards-file-btn"><span>${esc(path.basename(notePath))}</span></button>
 	<div class="section-cards-control section-cards-sort-control"><span class="section-cards-label">Sort</span><select class="dropdown"><option>Recent</option></select></div>
+	</div>
+	<div class="section-cards-cluster section-cards-cluster-mid"></div>
+	<div class="section-cards-cluster section-cards-cluster-right">
 	<button class="section-cards-help-btn">?</button>
+	</div>
 </div>`;
 }
 
