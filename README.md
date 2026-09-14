@@ -62,6 +62,12 @@ If this plugin is useful to you, you can support its development:
 
 ## Layouts
 
+Pick a layout from the toolbar's **Layout** dropdown, the **Layouts** row of the toolbar's ☰
+menu or any right-click menu, or press `L` to cycle (Shift+L backwards). Layouts you never use
+in a note can be switched off for it: ☰ → **Layouts shown in this note** is a checklist, and an
+unticked layout leaves that note's dropdown, menus, and `L` cycle (remembered per note; the
+layout showing can't be unticked — switch away first).
+
 ### Vertical
 
 Full-height cards side by side.

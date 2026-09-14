@@ -245,6 +245,8 @@ export interface PerFileView extends ViewSettings {
 	linksZoom?: number;
 	/** Day Planner: per card (heading line), each line's column and height by line key. */
 	planner?: Record<string, Record<string, PlannerSlot>>;
+	/** Layouts switched off for this note: left out of the dropdown, the menus, and the L cycle. */
+	hiddenLayouts?: Layout[];
 	/** Headings pinned to the top of the card wall, in the order they were pinned. */
 	pinned?: string[];
 	/** Whether this note's headings name dates (today highlight, jump-to-date). Unset
@@ -3784,6 +3786,19 @@ export class SectionCardsView extends ItemView {
 		return this.hasAnyDates || this.isDateLayout();
 	}
 
+	/** Whether a layout is offered in this note: not switched off for it (the one
+	 * showing always is, so the dropdown never names a value it doesn't list). */
+	private layoutEnabled(value: Layout): boolean {
+		return value === this.layout || !this.plugin.getHiddenLayouts(this.filePath).includes(value);
+	}
+
+	/** Switch a layout on or off for this note, and redraw the toolbar's dropdown. */
+	private async toggleLayoutEnabled(value: Layout): Promise<void> {
+		await this.plugin.setLayoutEnabled(this.filePath, value, !this.layoutEnabled(value), this.viewSettings());
+		this.buildToolbar();
+		this.updateToolbarOffset();
+	}
+
 	/** Grey the layout dropdown's date options in/out as the note's headings change. */
 	private syncCalendarOption(): void {
 		for (const value of ["calendar", "heatmap"]) {
@@ -4064,8 +4079,12 @@ export class SectionCardsView extends ItemView {
 			const values = LAYOUT_OPTIONS.map(([value]) => value);
 			const step = (from: Layout) => values[(values.indexOf(from) + delta + values.length) % values.length];
 			let next = step(this.layout);
-			// The cycle skips the greyed-out date layouts, like the dropdown refuses them.
-			while ((next === "calendar" || next === "heatmap") && !this.calendarSelectable()) {
+			// The cycle skips the greyed-out date layouts, like the dropdown refuses them,
+			// and the layouts switched off for this note.
+			while (
+				next !== this.layout &&
+				(((next === "calendar" || next === "heatmap") && !this.calendarSelectable()) || !this.layoutEnabled(next))
+			) {
 				next = step(next);
 			}
 			this.setLayout(next);
@@ -6829,6 +6848,7 @@ export class SectionCardsView extends ItemView {
 		this.layoutSelect = layoutSelect;
 		layoutSelect.setAttr("aria-label", "Card layout (L cycles)");
 		for (const [value, label, hint] of LAYOUT_OPTIONS) {
+			if (!this.layoutEnabled(value)) continue; // switched off for this note
 			const option = layoutSelect.createEl("option", { text: label, value });
 			option.title = hint;
 			// Calendar is greyed out in notes with no date headings at any level
@@ -7152,6 +7172,7 @@ export class SectionCardsView extends ItemView {
 
 		menu.addSeparator();
 		this.addLayoutItems(menu);
+		this.addLayoutVisibilityItems(menu);
 
 		menu.addSeparator();
 		addHeading("Dates");
@@ -7243,6 +7264,7 @@ export class SectionCardsView extends ItemView {
 	private addLayoutItems(menu: Menu): void {
 		const addOptions = (target: Menu) => {
 			for (const [value, label] of LAYOUT_OPTIONS) {
+				if (!this.layoutEnabled(value)) continue;
 				target.addItem((item) =>
 					item
 						.setTitle(label)
@@ -7265,6 +7287,34 @@ export class SectionCardsView extends ItemView {
 		}
 		menu.addItem((item) => {
 			item.setTitle("Layouts").setIcon("layout-grid");
+			addOptions((item as MenuItem & { setSubmenu: () => Menu }).setSubmenu());
+		});
+	}
+
+	/**
+	 * "Layouts shown in this note": a checklist of every layout; unticking one drops it
+	 * from the dropdown, the Layouts menu, and the L cycle for this note (remembered
+	 * per note). The showing layout can't be unticked — switch away first.
+	 */
+	private addLayoutVisibilityItems(menu: Menu): void {
+		const addOptions = (target: Menu) => {
+			for (const [value, label] of LAYOUT_OPTIONS) {
+				target.addItem((item) =>
+					item
+						.setTitle(label)
+						.setChecked(this.layoutEnabled(value))
+						.setDisabled(value === this.layout)
+						.onClick(() => void this.toggleLayoutEnabled(value)),
+				);
+			}
+		};
+		if (!SectionCardsView.submenuSupported()) {
+			SectionCardsView.addMenuHeading(menu, "Layouts shown in this note");
+			addOptions(menu);
+			return;
+		}
+		menu.addItem((item) => {
+			item.setTitle("Layouts shown in this note").setIcon("list-checks");
 			addOptions((item as MenuItem & { setSubmenu: () => Menu }).setSubmenu());
 		});
 	}
@@ -13992,6 +14042,24 @@ export default class SectionCardsPlugin extends Plugin {
 	}
 
 	/** Which dated cards a note hides relative to today. */
+	/** The layouts this note has switched off (Cards view menu → Layouts shown in this note). */
+	getHiddenLayouts(path: string): Layout[] {
+		return this.settings.perFile?.[path]?.hiddenLayouts ?? [];
+	}
+
+	async setLayoutEnabled(path: string, layout: Layout, enabled: boolean, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		const hidden = new Set(current.hiddenLayouts ?? []);
+		if (enabled) hidden.delete(layout);
+		else hidden.add(layout);
+		if (hidden.size) current.hiddenLayouts = LAYOUT_OPTIONS.map(([value]) => value).filter((value) => hidden.has(value));
+		else delete current.hiddenLayouts;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
 	getDateHide(path: string): { future: boolean; past: boolean } {
 		const entry = this.settings.perFile?.[path];
 		return { future: !!entry?.hideFutureDates, past: !!entry?.hidePastDates };
