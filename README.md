@@ -154,6 +154,17 @@ double-click it to edit. Beneath the title sit the card's color, delete, and ope
 buttons, and an **Add a subsection** button that appends a new heading one level below the card
 (a new subcard) after asking for its title.
 
+#### Document setup
+
+☰ → **Document setup…** says what each heading level of the note holds: nothing, text in
+document order, text in alphanumeric order, or a **year**, **month**, **week**, or **day**.
+With the toolbar's Dates checkbox on, the defaults are detected from the headings themselves
+(“September 2026” at H1 is a month in the “MMMM YYYY” spelling, ISO days at H3 are days); with
+it off every level is text. The Day Planner's arrows follow the setup: at a month level → is
+the next month and ← the one before, a missing month can be created on the spot, and at an
+alphanumeric level the arrows walk the sections A→Z (numbers by value). Saved per note; **Reset
+to detected** forgets the saved rows.
+
 ### Calendar
 
 Date cards on a monthly grid, today highlighted. Click an empty day to start its card,

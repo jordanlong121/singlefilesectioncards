@@ -247,6 +247,8 @@ export interface PerFileView extends ViewSettings {
 	planner?: Record<string, Record<string, PlannerSlot>>;
 	/** Layouts switched off for this note: left out of the dropdown, the menus, and the L cycle. */
 	hiddenLayouts?: Layout[];
+	/** Document setup: what each heading level holds (☰ → Document setup…). */
+	levels?: DocumentLevels;
 	/** Headings pinned to the top of the card wall, in the order they were pinned. */
 	pinned?: string[];
 	/** Whether this note's headings name dates (today highlight, jump-to-date). Unset
@@ -2441,6 +2443,188 @@ export function plannerCards(body: string[]): PlannerCard[] {
 	return cards;
 }
 
+/* ---------- Document setup: what each heading level means in a note ---------- */
+
+/** What a heading level holds: nothing, plain text (in document or alphanumeric order),
+ * or a span of time — a year, a month, a week, or a day. */
+export type LevelRole = "none" | "text" | "alpha" | "year" | "month" | "week" | "day";
+
+export interface LevelSetup {
+	role: LevelRole;
+	/** Year/month/week: which of PERIOD_FORMATS[role] the titles are written in. Days use
+	 * the note's new-card format. */
+	format?: string;
+}
+
+/** Per heading level ("1"–"6"), as saved per note; missing levels fall back to detection. */
+export type DocumentLevels = Record<string, LevelSetup>;
+
+export const LEVEL_ROLE_LABELS: [LevelRole, string][] = [
+	["none", "Not used"],
+	["text", "Text — document order"],
+	["alpha", "Text — alphanumeric sort"],
+	["year", "Year"],
+	["month", "Month"],
+	["week", "Week"],
+	["day", "Day"],
+];
+
+/** The title spellings the year/month/week roles understand (moment-style, for the
+ * dialog's benefit; the parsing here is the plugin's own, so tests need no moment). */
+export const PERIOD_FORMATS: Record<"year" | "month" | "week", string[]> = {
+	year: ["YYYY"],
+	month: ["MMMM YYYY", "MMM YYYY", "YYYY-MM"],
+	week: ["[Week] W, YYYY", "[Week] W YYYY", "YYYY-[W]WW", "[Week of] YYYY-MM-DD"],
+};
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** ISO weeks in a year: 53 when Jan 1 is a Thursday, or a Wednesday in a leap year. */
+function isoWeeksInYear(year: number): number {
+	const jan1 = new Date(year, 0, 1).getDay();
+	const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+	return jan1 === 4 || (leap && jan1 === 3) ? 53 : 52;
+}
+
+/**
+ * A title read as a period of the given role and format, as a canonical key that
+ * sorts chronologically within the role: "YYYY", "YYYY-MM", "YYYY-Www", or — for the
+ * "[Week of] YYYY-MM-DD" spelling — "D:YYYY-MM-DD". Null when it doesn't fit.
+ */
+export function parsePeriod(title: string, role: LevelRole, format: string): string | null {
+	const t = title.trim();
+	let m: RegExpExecArray | null;
+	switch (role) {
+		case "year":
+			return /^\d{4}$/.test(t) ? t : null;
+		case "month": {
+			if (format === "YYYY-MM") {
+				m = /^(\d{4})-(\d{2})$/.exec(t);
+				return m && Number(m[2]) >= 1 && Number(m[2]) <= 12 ? `${m[1]}-${m[2]}` : null;
+			}
+			m = /^([A-Za-z]+)\.? (\d{4})$/.exec(t);
+			if (!m) return null;
+			const word = m[1].toLowerCase();
+			const index = MONTH_NAMES.findIndex((name) =>
+				format === "MMM YYYY" ? name.slice(0, 3).toLowerCase() === word : name.toLowerCase() === word,
+			);
+			return index >= 0 ? `${m[2]}-${pad2(index + 1)}` : null;
+		}
+		case "week": {
+			if (format === "[Week of] YYYY-MM-DD") {
+				m = /^Week of (\d{4}-\d{2}-\d{2})$/i.exec(t);
+				return m && validIsoDate(m[1]) ? `D:${m[1]}` : null;
+			}
+			m = format === "YYYY-[W]WW" ? /^(\d{4})-W(\d{1,2})$/i.exec(t) : /^Week (\d{1,2}),? (\d{4})$/i.exec(t);
+			if (!m) return null;
+			const [year, week] = format === "YYYY-[W]WW" ? [Number(m[1]), Number(m[2])] : [Number(m[2]), Number(m[1])];
+			return week >= 1 && week <= isoWeeksInYear(year) ? `${year}-W${pad2(week)}` : null;
+		}
+		default:
+			return null;
+	}
+}
+
+/** The key `delta` periods on from `key` (same role). */
+export function shiftPeriod(key: string, role: LevelRole, delta: number): string {
+	switch (role) {
+		case "year":
+			return String(Number(key) + delta);
+		case "month": {
+			const total = Number(key.slice(0, 4)) * 12 + (Number(key.slice(5, 7)) - 1) + delta;
+			return `${Math.floor(total / 12)}-${pad2((total % 12) + 1)}`;
+		}
+		case "week": {
+			if (key.startsWith("D:")) {
+				const iso = key.slice(2);
+				const dt = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) + 7 * delta);
+				return `D:${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+			}
+			let year = Number(key.slice(0, 4));
+			let week = Number(key.slice(6)) + delta;
+			while (week < 1) week += isoWeeksInYear(--year);
+			while (week > isoWeeksInYear(year)) week -= isoWeeksInYear(year++);
+			return `${year}-W${pad2(week)}`;
+		}
+		default:
+			return key;
+	}
+}
+
+/** A key written back as a title in the given format. */
+export function formatPeriod(key: string, role: LevelRole, format: string): string {
+	switch (role) {
+		case "year":
+			return key;
+		case "month": {
+			const name = MONTH_NAMES[Number(key.slice(5, 7)) - 1] ?? "";
+			if (format === "YYYY-MM") return key;
+			if (format === "MMM YYYY") return `${name.slice(0, 3)} ${key.slice(0, 4)}`;
+			return `${name} ${key.slice(0, 4)}`;
+		}
+		case "week": {
+			if (key.startsWith("D:")) return `Week of ${key.slice(2)}`;
+			const year = key.slice(0, 4);
+			const week = Number(key.slice(6));
+			if (format === "YYYY-[W]WW") return `${year}-W${pad2(week)}`;
+			if (format === "[Week] W YYYY") return `Week ${week} ${year}`;
+			return `Week ${week}, ${year}`;
+		}
+		default:
+			return key;
+	}
+}
+
+/** The unit word for prompts: "day", "week", "month", "year". */
+export function periodUnit(role: LevelRole): string {
+	return role === "year" || role === "month" || role === "week" || role === "day" ? role : "card";
+}
+
+/**
+ * What each heading level of a note looks like it holds, for the Document setup
+ * dialog's defaults and for notes that never opened it. A level with headings is
+ * "text" (document order) — unless the note deals in dates, when at least half its
+ * titles reading as days (the note's new-card format), years, months, or weeks (any
+ * spelling in PERIOD_FORMATS) makes it that role. Levels with no headings are "none".
+ */
+export function detectLevelSetup(lines: string[], cardFormat: string, detect: string, dated: boolean): DocumentLevels {
+	const titles: string[][] = [[], [], [], [], [], [], []];
+	for (const h of parseAncestorHeadings(lines, 7)) titles[h.level].push(h.title);
+	const out: DocumentLevels = {};
+	for (let level = 1; level <= 6; level++) {
+		const sample = titles[level].slice(0, 40);
+		if (!sample.length) {
+			out[String(level)] = { role: "none" };
+			continue;
+		}
+		let setup: LevelSetup = { role: "text" };
+		if (dated) {
+			const need = Math.ceil(sample.length / 2);
+			if (sample.filter((t) => titleHasDate(t, cardFormat, detect)).length >= need) {
+				setup = { role: "day" };
+			} else {
+				outer: for (const role of ["year", "month", "week"] as const) {
+					for (const format of PERIOD_FORMATS[role]) {
+						if (sample.filter((t) => parsePeriod(t, role, format) !== null).length >= need) {
+							setup = { role, format };
+							break outer;
+						}
+					}
+				}
+			}
+		}
+		out[String(level)] = setup;
+	}
+	return out;
+}
+
+/** Natural ordering for the alphanumeric-sort role: "Week 2" before "Week 10". */
+export function alphanumericCompare(a: string, b: string): number {
+	return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
 /** A card's placement on the Custom Grid canvas, in px. */
 export interface CardRect {
 	x: number;
@@ -3344,6 +3528,14 @@ interface CardEntry {
 	raw: string;
 	/** Set while the body's markdown render is still owed; null once started. */
 	renderBody: (() => Promise<void>) | null;
+}
+
+/** A period a planner card names, per the level's Document setup role. */
+interface PlannerPeriod {
+	role: "year" | "month" | "week" | "day";
+	/** Canonical key (see parsePeriod); an ISO date for days. */
+	key: string;
+	format: string;
 }
 
 /** A card as built on the Day Planner: its element, source range, and remembered slot. */
@@ -5258,19 +5450,20 @@ export class SectionCardsView extends ItemView {
 		if (!visible.length) return;
 		const remembered = this.roloActive.get(this.filePath);
 		const at = visible.findIndex((e) => e.holder.section.headingRaw === remembered);
-		// A dated card in a dated note steps by day — → is always tomorrow, ← yesterday,
-		// whatever the sort — offering to create a missing one.
-		const iso = at >= 0 ? this.plannerDayIso(visible[at].holder.section) : null;
-		if (iso) {
-			const target = this.plannerDayShift(iso, delta);
-			const entry = this.plannerDayEntry(target);
+		// A level of days, weeks, months, or years steps by that unit — → always forward
+		// in time, ← back, whatever the sort — offering to create a missing one.
+		const period = at >= 0 ? this.plannerPeriod(visible[at].holder.section) : null;
+		if (period) {
+			const target = { ...period, key: shiftPeriod(period.key, period.role, delta) };
+			if (period.role === "day") target.key = this.plannerDayShift(period.key, delta);
+			const entry = this.plannerPeriodEntry(target);
 			if (entry) this.setPlannerActive(entry);
-			else this.promptPlannerMissingDay(target, delta > 0 ? 1 : -1);
+			else this.promptPlannerMissing(target, delta > 0 ? 1 : -1);
 			return;
 		}
-		// Undated cards step through the note in document order — the next section down,
-		// or the one above — not the wall's sort (alphabetical would shuffle month names).
-		const order = this.plannerDocOrder(visible);
+		// Text levels step through the note's own order (or alphanumeric, when the level
+		// is set up that way) — not the wall's sort.
+		const order = this.plannerOrder(visible);
 		const from = at < 0 ? -1 : order.indexOf(visible[at]);
 		const next = Math.max(0, Math.min(order.length - 1, (from < 0 ? 0 : from) + delta));
 		if (next !== from && order[next]) this.setPlannerActive(order[next]);
@@ -5297,10 +5490,56 @@ export class SectionCardsView extends ItemView {
 		return { lines: front, cards: plannerCards(front) };
 	}
 
-	/** Day Planner: the ISO date a card's heading names, when the note uses dates. */
-	private plannerDayIso(section: Section): string | null {
-		if (!this.hasDateHeadings) return null;
-		return titleToIso(section.title, this.cardFormat(), this.plugin.settings.dateDetectFormat);
+	/** What the note's headings look like they hold, level by level (Document setup's defaults). */
+	private detectedLevels(): DocumentLevels {
+		return detectLevelSetup(this.noteLines, this.cardFormat(), this.plugin.settings.dateDetectFormat, this.containsDates);
+	}
+
+	/** The Document setup for a level: saved for this note, else as detected. */
+	private levelSetup(level = this.headingLevel): LevelSetup {
+		return this.plugin.getDocumentLevels(this.filePath)?.[String(level)] ?? this.detectedLevels()[String(level)] ?? { role: "text" };
+	}
+
+	/** Day Planner: the period a card's heading names at this level's role — a day
+	 * (the note's date spelling), or a year/month/week in the setup's format — as a
+	 * canonical key; null for text levels or a title that doesn't fit. */
+	private plannerPeriod(section: Section): PlannerPeriod | null {
+		const setup = this.levelSetup();
+		if (setup.role === "day") {
+			const iso = titleToIso(section.title, this.cardFormat(), this.plugin.settings.dateDetectFormat);
+			return iso ? { role: "day", key: iso, format: this.cardFormat() } : null;
+		}
+		if (setup.role === "year" || setup.role === "month" || setup.role === "week") {
+			const format = setup.format ?? PERIOD_FORMATS[setup.role][0];
+			const key = parsePeriod(section.title, setup.role, format);
+			return key ? { role: setup.role, key, format } : null;
+		}
+		return null;
+	}
+
+	/** The period's title as this note writes it. */
+	private plannerPeriodTitle(period: PlannerPeriod): string {
+		if (period.role === "day") return mo(period.key, "YYYY-MM-DD").format(this.cardFormat());
+		return formatPeriod(period.key, period.role, period.format);
+	}
+
+	/** The card whose heading names this period, if the note has one (hidden or not — a
+	 * filtered-out card must still be found, or it would be offered for creation twice). */
+	private plannerPeriodEntry(period: PlannerPeriod): CardEntry | null {
+		if (period.role === "day") return this.plannerDayEntry(period.key);
+		return (
+			this.cardEntries.find((e) => parsePeriod(e.holder.section.title, period.role, period.format) === period.key) ?? null
+		);
+	}
+
+	/** The planner's cards in the order the arrows walk them for a text level: the
+	 * note's own order, or alphanumeric when the level is set up that way. */
+	private plannerOrder(visible: CardEntry[]): CardEntry[] {
+		const order = this.plannerDocOrder(visible);
+		if (this.levelSetup().role === "alpha") {
+			order.sort((a, b) => alphanumericCompare(a.holder.section.title, b.holder.section.title));
+		}
+		return order;
 	}
 
 	private plannerDayShift(iso: string, days: number): string {
@@ -5310,26 +5549,40 @@ export class SectionCardsView extends ItemView {
 	}
 
 	/**
-	 * The arrow landed on a day with no card: offer to create it, or to skip on to the
-	 * nearest day that does have one in that direction (when there is one).
+	 * The arrow landed on a period with no card: offer to create it, or to skip on to
+	 * the nearest period that does have one in that direction (when there is one).
 	 */
-	private promptPlannerMissingDay(iso: string, direction: 1 | -1): void {
-		const formatted = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
-		// The dated cards in that direction, nearest first.
-		const dated = this.roloVisible()
-			.map((entry) => ({ entry, iso: this.plannerDayIso(entry.holder.section) }))
-			.filter((d): d is { entry: CardEntry; iso: string } => !!d.iso && (direction > 0 ? d.iso > iso : d.iso < iso))
-			.sort((a, b) => (direction > 0 ? a.iso.localeCompare(b.iso) : b.iso.localeCompare(a.iso)));
-		const skipTo = dated[0]?.entry ?? null;
+	private promptPlannerMissing(period: PlannerPeriod, direction: 1 | -1): void {
+		const title = this.plannerPeriodTitle(period);
+		// The cards of this role in that direction, nearest first (keys sort in time).
+		const keyOf = (entry: CardEntry) => this.plannerPeriod(entry.holder.section)?.key ?? null;
+		const ahead = this.roloVisible()
+			.map((entry) => ({ entry, key: keyOf(entry) }))
+			.filter((d): d is { entry: CardEntry; key: string } => !!d.key && (direction > 0 ? d.key > period.key : d.key < period.key))
+			.sort((a, b) => (direction > 0 ? a.key.localeCompare(b.key) : b.key.localeCompare(a.key)));
+		const skipTo = ahead[0]?.entry ?? null;
 		new PlannerMissingDayModal(
 			this.app,
-			formatted,
+			periodUnit(period.role),
+			title,
 			skipTo ? skipTo.holder.section.title || "(untitled)" : null,
-			() => this.createDateCard(iso),
+			() => (period.role === "day" ? this.createDateCard(period.key) : this.createTitledCard(title)),
 			() => {
 				if (skipTo) this.setPlannerActive(skipTo);
 			},
 		).open();
+	}
+
+	/** Write a card with this title at the view's level (template applied, default
+	 * placement) and turn the planner to it. */
+	private async createTitledCard(title: string): Promise<void> {
+		const file = this.getFile();
+		if (!file) return;
+		const headingRaw = `${"#".repeat(this.headingLevel)} ${title}`;
+		const body = await this.plugin.loadTemplateBody(file.path, title);
+		await insertSection(this.app, file, headingRaw, this.plugin.settings.newCardPlacement, body ?? undefined);
+		this.roloActive.set(this.filePath, headingRaw);
+		await this.refresh();
 	}
 
 	/** The card whose heading names this day, if the note has one (hidden or not — a
@@ -5403,21 +5656,22 @@ export class SectionCardsView extends ItemView {
 	/** The showing card's head (arrows, title, strip) and its columns. */
 	private buildPlannerCard(root: HTMLElement, file: TFile, active: CardEntry, section: Section): void {
 		const visible = this.roloVisible();
-		// In a dated note the arrows step by day — ← is yesterday and → tomorrow whatever
-		// the sort: the neighbouring day's card, or an offer to create it. Otherwise by
-		// card, as the wall is sorted.
-		const iso = this.plannerDayIso(section);
-		const neighbourOf = (dir: "prev" | "next"): { entry: CardEntry | null; createIso: string | null } => {
-			if (iso) {
-				const day = this.plannerDayShift(iso, dir === "next" ? 1 : -1);
-				const entry = this.plannerDayEntry(day);
-				return { entry, createIso: entry ? null : day };
+		// At a level of days, weeks, months, or years the arrows step by that unit — ←
+		// back in time, → forward, whatever the sort: the neighbouring period's card, or
+		// an offer to create it. At a text level, by card in the note's order (or the
+		// alphanumeric order the Document setup asks for).
+		const period = this.plannerPeriod(section);
+		const neighbourOf = (dir: "prev" | "next"): { entry: CardEntry | null; create: PlannerPeriod | null } => {
+			if (period) {
+				const delta = dir === "next" ? 1 : -1;
+				const target = { ...period, key: period.role === "day" ? this.plannerDayShift(period.key, delta) : shiftPeriod(period.key, period.role, delta) };
+				const entry = this.plannerPeriodEntry(target);
+				return { entry, create: entry ? null : target };
 			}
-			// Undated: the neighbouring section in the note itself, not the sort.
-			const order = this.plannerDocOrder(visible);
+			const order = this.plannerOrder(visible);
 			const from = order.indexOf(active);
 			const index = dir === "prev" ? from - 1 : from + 1;
-			return { entry: (from >= 0 ? order[index] : null) ?? null, createIso: null };
+			return { entry: (from >= 0 ? order[index] : null) ?? null, create: null };
 		};
 
 		// Cards: lines above the first sub-heading, then one subcard per sub-heading.
@@ -5426,20 +5680,20 @@ export class SectionCardsView extends ItemView {
 		// Head: an arrow to each neighbour with the title between.
 		const head = root.createDiv({ cls: "sfsc-planner-head" });
 		const arrow = (dir: "prev" | "next") => {
-			const { entry: neighbour, createIso } = neighbourOf(dir);
+			const { entry: neighbour, create } = neighbourOf(dir);
 			const btn = head.createEl("button", { cls: `sfsc-planner-arrow is-${dir}` });
 			setIcon(btn, dir === "prev" ? "chevron-left" : "chevron-right");
 			const word = dir === "prev" ? "Previous" : "Next";
 			const key = dir === "prev" ? "←" : "→";
-			if (createIso) {
-				const formatted = mo(createIso, "YYYY-MM-DD").format(this.cardFormat());
-				btn.setAttr("aria-label", `${word} day: ${formatted} — no card yet, click to create it (${key})`);
+			const unit = period ? periodUnit(period.role) : "card";
+			if (create) {
+				btn.setAttr("aria-label", `${word} ${unit}: ${this.plannerPeriodTitle(create)} — no card yet, click to create it (${key})`);
 				btn.addClass("is-create");
-				btn.addEventListener("click", () => this.promptPlannerMissingDay(createIso, dir === "next" ? 1 : -1));
+				btn.addEventListener("click", () => this.promptPlannerMissing(create, dir === "next" ? 1 : -1));
 				return;
 			}
 			const title = neighbour?.holder.section.title || "(untitled)";
-			btn.setAttr("aria-label", neighbour ? `${word} ${iso ? "day" : "card"}: ${title} (${key})` : `No ${word.toLowerCase()} card`);
+			btn.setAttr("aria-label", neighbour ? `${word} ${unit}: ${title} (${key})` : `No ${word.toLowerCase()} card`);
 			btn.toggleAttribute("disabled", !neighbour);
 			if (!neighbour) return;
 			btn.addEventListener("click", () => this.setPlannerActive(neighbour));
@@ -7375,6 +7629,26 @@ export class SectionCardsView extends ItemView {
 				.setTitle("Manage notes…")
 				.setIcon("library")
 				.onClick(() => new NoteLibraryModal(this.plugin, (path) => void this.navigateTo(path)).open()),
+		);
+		// What each heading level of this note holds — a year, month, week, day, or
+		// text — which the Day Planner's arrows follow.
+		menu.addItem((item) =>
+			item
+				.setTitle("Document setup…")
+				.setIcon("sliders-horizontal")
+				.setDisabled(this.deckMode)
+				.onClick(() => {
+					new DocumentSetupModal(
+						this.plugin,
+						this.getFile()?.basename ?? this.filePath,
+						this.noteLines,
+						this.plugin.getDocumentLevels(this.filePath),
+						this.detectedLevels(),
+						this.containsDates,
+						this.cardFormat(),
+						(levels) => void this.plugin.setDocumentLevels(this.filePath, levels, base),
+					).open();
+				}),
 		);
 
 		menu.addSeparator();
@@ -12733,13 +13007,22 @@ class CreateDateCardModal extends Modal {
 /** Day Planner: the arrow reached a day with no card — create it, or skip to the
  * nearest day that has one. */
 class PlannerMissingDayModal extends Modal {
+	private readonly unit: string;
 	private readonly title: string;
 	private readonly skipTitle: string | null;
 	private readonly onCreate: () => void | Promise<void>;
 	private readonly onSkip: () => void;
 
-	constructor(app: App, title: string, skipTitle: string | null, onCreate: () => void | Promise<void>, onSkip: () => void) {
+	constructor(
+		app: App,
+		unit: string,
+		title: string,
+		skipTitle: string | null,
+		onCreate: () => void | Promise<void>,
+		onSkip: () => void,
+	) {
 		super(app);
+		this.unit = unit;
 		this.title = title;
 		this.skipTitle = skipTitle;
 		this.onCreate = onCreate;
@@ -12748,7 +13031,7 @@ class PlannerMissingDayModal extends Modal {
 
 	onOpen(): void {
 		const { contentEl } = this;
-		contentEl.createEl("h3", { text: "No card for that day" });
+		contentEl.createEl("h3", { text: `No card for that ${this.unit}` });
 		contentEl.createEl("p", { text: `This note has no “${this.title}” card.` });
 		const row = new Setting(contentEl);
 		row.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
@@ -12771,6 +13054,124 @@ class PlannerMissingDayModal extends Modal {
 			// Enter creates the card, Esc cancels.
 			b.buttonEl.focus();
 		});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/**
+ * Document setup: what each heading level of the note holds. One row per level with
+ * how many headings it has and a sample title, a role dropdown, and — for years,
+ * months, and weeks — the spelling. Detection fills the defaults; Save stores the rows
+ * per note, Reset to detected forgets them.
+ */
+class DocumentSetupModal extends Modal {
+	private readonly plugin: SectionCardsPlugin;
+	private readonly noteName: string;
+	private readonly lines: string[];
+	private readonly detected: DocumentLevels;
+	private readonly dated: boolean;
+	private readonly cardFormat: string;
+	private readonly onSave: (levels: DocumentLevels | null) => void;
+	private levels: DocumentLevels;
+
+	constructor(
+		plugin: SectionCardsPlugin,
+		noteName: string,
+		lines: string[],
+		saved: DocumentLevels | null,
+		detected: DocumentLevels,
+		dated: boolean,
+		cardFormat: string,
+		onSave: (levels: DocumentLevels | null) => void,
+	) {
+		super(plugin.app);
+		this.plugin = plugin;
+		this.noteName = noteName;
+		this.lines = lines;
+		this.detected = detected;
+		this.dated = dated;
+		this.cardFormat = cardFormat;
+		this.onSave = onSave;
+		this.levels = { ...detected, ...(saved ?? {}) };
+	}
+
+	onOpen(): void {
+		this.render();
+	}
+
+	private render(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.addClass("sfsc-docsetup");
+		contentEl.createEl("h3", { text: "Document setup" });
+		contentEl.createEl("p", {
+			cls: "sfsc-docsetup-intro",
+			text: `What each heading level of “${this.noteName}” holds. ${
+				this.dated
+					? "Dates is on for this note, so levels whose titles read as years, months, weeks, or days are detected as such; the Day Planner's arrows then step by that unit and offer to create a missing one."
+					: "Dates is off for this note (toolbar checkbox), so every level defaults to text; turn it on to map levels to years, months, weeks, or days."
+			}`,
+		});
+
+		const titles: string[][] = [[], [], [], [], [], [], []];
+		for (const h of parseAncestorHeadings(this.lines, 7)) titles[h.level].push(h.title);
+
+		for (let level = 1; level <= 6; level++) {
+			const key = String(level);
+			const setup = this.levels[key] ?? { role: "none" };
+			const count = titles[level].length;
+			const sample = titles[level][0];
+			const row = new Setting(contentEl)
+				.setName(`H${level}`)
+				.setDesc(count ? `${count} heading${count === 1 ? "" : "s"} — e.g. “${sample.length > 40 ? `${sample.slice(0, 39)}…` : sample}”` : "No headings at this level");
+			row.addDropdown((drop) => {
+				for (const [value, label] of LEVEL_ROLE_LABELS) drop.addOption(value, label);
+				drop.setValue(setup.role).onChange((value) => {
+					const role = value as LevelRole;
+					const next: LevelSetup = { role };
+					if (role === "year" || role === "month" || role === "week") {
+						next.format = this.detected[key]?.role === role && this.detected[key]?.format ? this.detected[key].format : PERIOD_FORMATS[role][0];
+					}
+					this.levels[key] = next;
+					this.render();
+				});
+			});
+			if (setup.role === "year" || setup.role === "month" || setup.role === "week") {
+				const role = setup.role;
+				row.addDropdown((drop) => {
+					for (const format of PERIOD_FORMATS[role]) {
+						drop.addOption(format, formatPeriod(role === "year" ? "2026" : role === "month" ? "2026-09" : format.includes("YYYY-MM-DD") ? "D:2026-09-14" : "2026-W38", role, format));
+					}
+					drop.setValue(setup.format ?? PERIOD_FORMATS[role][0]).onChange((value) => {
+						this.levels[key] = { role, format: value };
+					});
+				});
+			} else if (setup.role === "day") {
+				row.descEl.createDiv({ cls: "sfsc-docsetup-note", text: `Days use the note's new-card format: ${this.cardFormat}` });
+			}
+		}
+
+		new Setting(contentEl)
+			.addButton((b) =>
+				b.setButtonText("Reset to detected").onClick(() => {
+					this.levels = { ...this.detected };
+					this.close();
+					this.onSave(null);
+				}),
+			)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) =>
+				b
+					.setButtonText("Save")
+					.setCta()
+					.onClick(() => {
+						this.close();
+						this.onSave({ ...this.levels });
+					}),
+			);
 	}
 
 	onClose(): void {
@@ -14316,6 +14717,22 @@ export default class SectionCardsPlugin extends Plugin {
 		else delete current.hiddenLayouts;
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
+	}
+
+	/** The note's Document setup, or null when it has never been saved (detection applies). */
+	getDocumentLevels(path: string): DocumentLevels | null {
+		return this.settings.perFile?.[path]?.levels ?? null;
+	}
+
+	async setDocumentLevels(path: string, levels: DocumentLevels | null, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (levels) current.levels = levels;
+		else delete current.levels;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+		this.refreshAllViews();
 	}
 
 	getDateHide(path: string): { future: boolean; past: boolean } {
