@@ -5230,6 +5230,13 @@ export class SectionCardsView extends ItemView {
 		this.setRoloActive(visible[next]);
 	}
 
+	/** setIcon with a fallback name: Lucide renamed some icons (plus-square → square-plus),
+	 * and which one Obsidian's bundled set knows depends on its version. */
+	private static setIconOr(el: HTMLElement, icon: string, fallback: string): void {
+		setIcon(el, icon);
+		if (!el.querySelector("svg")) setIcon(el, fallback);
+	}
+
 	/** Rolodex or Day Planner: turn to a card, whichever of the two is showing. */
 	private setSingleCardActive(entry: CardEntry): void {
 		if (this.layout === "rolodex") this.setRoloActive(entry);
@@ -5459,19 +5466,16 @@ export class SectionCardsView extends ItemView {
 		const titleWrap = head.createDiv({ cls: "sfsc-planner-title-wrap" });
 		const titleEl = titleWrap.createDiv({ cls: "sfsc-planner-title", text: section.title || "(untitled)" });
 		titleEl.toggleClass("is-today", active.el.hasClass("is-today"));
-		// The card's color rides along on the title (the palette lives in
-		// --sfsc-color-<name> variables on the body, as the Rolodex tabs use it).
+		// The card's color paints the title bar (the per-color CSS variables key off the
+		// attribute, as on the cards).
 		const color = active.el.getAttribute("data-sfsc-color");
-		if (color) {
-			head.setAttr("data-sfsc-color", color);
-			head.setCssProps({ "--sfsc-c": `var(--sfsc-color-${color})` });
-		}
+		if (color) head.setAttr("data-sfsc-color", color);
 		// The card's action strip, always showing beneath the title: add a subsection,
 		// color, delete, and open in the note. (Big, pin, collapse, and flip have no meaning here.)
 		const actions = titleWrap.createDiv({ cls: "sfsc-planner-actions" });
 		const action = (cls: string, icon: string, label: string, onClick: (evt: MouseEvent) => void) => {
 			const btn = actions.createEl("button", { cls });
-			setIcon(btn, icon);
+			SectionCardsView.setIconOr(btn, icon, "plus-square");
 			btn.setAttr("aria-label", label);
 			btn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
@@ -5482,7 +5486,7 @@ export class SectionCardsView extends ItemView {
 		// card (or at the level its subcards already use), at the card's end — which shows
 		// up as a new subcard.
 		const subLevel = Math.min(6, cards.find((c) => c.kind === "sub")?.level ?? this.headingLevel + 1);
-		action("sfsc-planner-addsub", "list-tree", `Add a subsection (H${subLevel}) to this card`, () => {
+		action("sfsc-planner-addsub", "square-plus", `Add a subsection (H${subLevel}) to this card`, () => {
 			new TextInputModal(this.app, `New H${subLevel} subsection in “${section.title || "(untitled)"}”`, "", "Add", (title) => {
 				const text = title.trim();
 				if (!text) return;
@@ -5532,7 +5536,7 @@ export class SectionCardsView extends ItemView {
 		titleWrap.createDiv({ cls: "sfsc-planner-subtitle", text: "Every section the note does have, as cards" });
 		const actions = titleWrap.createDiv({ cls: "sfsc-planner-actions" });
 		const addBtn = actions.createEl("button", { cls: "sfsc-planner-addsub" });
-		setIcon(addBtn, "list-tree");
+		SectionCardsView.setIconOr(addBtn, "square-plus", "plus-square");
 		addBtn.setAttr("aria-label", `Add an H${level} section at the note's end`);
 		addBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
