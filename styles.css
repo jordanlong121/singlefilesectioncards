@@ -2088,6 +2088,11 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 	color: var(--text-normal);
 }
 
+/* The neighbouring day has no card yet: the arrow offers to create it. */
+.sfsc-planner-arrow.is-create {
+	border-style: dashed;
+}
+
 .sfsc-planner-arrow[disabled] {
 	opacity: 0.3;
 	cursor: default;

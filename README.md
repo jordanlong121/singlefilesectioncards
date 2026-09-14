@@ -128,7 +128,8 @@ tab to send it to that card.
 ### Day Planner
 
 One card at a time, as a planner page: its title in large type across the top, an arrow on
-either side to the previous and next card (or press `←` / `→`, `,` / `.`), and its contents as
+either side to the previous and next card (or press `←` / `→`, `,` / `.`) — in a note with date
+headings the arrows step a day at a time, and a day with no card yet offers to create it — and its contents as
 small cards in two columns. Each sub-heading (H4 under an H3 card, say) with everything beneath
 it is a subcard, titled by the heading, its tasks live inside; whatever sits above the first
 sub-heading is one more card, titled with the unfiled card's name. A card with no sub-headings

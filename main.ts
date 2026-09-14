@@ -5198,8 +5198,51 @@ export class SectionCardsView extends ItemView {
 		if (!visible.length) return;
 		const remembered = this.roloActive.get(this.filePath);
 		const at = visible.findIndex((e) => e.holder.section.headingRaw === remembered);
+		// A dated card in a dated note steps by day, offering to create a missing one.
+		const iso = at >= 0 ? this.plannerDayIso(visible[at].holder.section) : null;
+		if (iso) {
+			const target = this.plannerDayShift(iso, delta * this.plannerDayDirection(visible));
+			const entry = this.plannerDayEntry(target);
+			if (entry) this.setPlannerActive(entry);
+			else this.promptCreateDateCard(target);
+			return;
+		}
 		const next = Math.max(0, Math.min(visible.length - 1, (at < 0 ? 0 : at) + delta));
 		if (next !== at) this.setPlannerActive(visible[next]);
+	}
+
+	/** Day Planner: the ISO date a card's heading names, when the note uses dates. */
+	private plannerDayIso(section: Section): string | null {
+		if (!this.hasDateHeadings) return null;
+		return titleToIso(section.title, this.cardFormat(), this.plugin.settings.dateDetectFormat);
+	}
+
+	private plannerDayShift(iso: string, days: number): string {
+		const dt = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) + days);
+		const pad = (n: number) => String(n).padStart(2, "0");
+		return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+	}
+
+	/** Which way the days run across the wall as sorted: +1 when the next card is a later
+	 * day (so → is tomorrow), −1 for newest-first notes (→ is yesterday). */
+	private plannerDayDirection(visible: CardEntry[]): 1 | -1 {
+		const dated = visible.map((e) => this.plannerDayIso(e.holder.section)).filter((iso): iso is string => !!iso);
+		if (dated.length >= 2) return dated[0] < dated[dated.length - 1] ? 1 : -1;
+		return this.sortOrder === "desc" ? -1 : 1;
+	}
+
+	/** The card whose heading names this day, if the note has one (hidden or not — a
+	 * filtered-out day must still be found, or it would be offered for creation twice). */
+	private plannerDayEntry(iso: string): CardEntry | null {
+		const formatted = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
+		const detect = this.plugin.settings.dateDetectFormat;
+		return (
+			this.cardEntries.find((e) => isTodayTitle(e.holder.section.title, iso, formatted)) ??
+			(detect
+				? this.cardEntries.find((e) => titleToIso(e.holder.section.title, this.cardFormat(), detect) === iso)
+				: undefined) ??
+			null
+		);
 	}
 
 	/** Tear the planner down: its markdown scope, resize watcher, and DOM. */
@@ -5248,17 +5291,37 @@ export class SectionCardsView extends ItemView {
 		this.roloActive.set(this.filePath, section.headingRaw);
 		this.plannerHeading = section.headingRaw;
 		const at = visible.indexOf(active);
-		const prev = at > 0 ? visible[at - 1] : null;
-		const next = at < visible.length - 1 ? visible[at + 1] : null;
+		// In a dated note the arrows step by day — the neighbouring day's card, or an
+		// offer to create it; otherwise by card, as the wall is sorted.
+		const iso = this.plannerDayIso(section);
+		const dayDir = iso ? this.plannerDayDirection(visible) : 1;
+		const neighbourOf = (dir: "prev" | "next"): { entry: CardEntry | null; createIso: string | null } => {
+			if (iso) {
+				const day = this.plannerDayShift(iso, dir === "next" ? dayDir : -dayDir);
+				const entry = this.plannerDayEntry(day);
+				return { entry, createIso: entry ? null : day };
+			}
+			const index = dir === "prev" ? at - 1 : at + 1;
+			return { entry: visible[index] ?? null, createIso: null };
+		};
 
-		// Head: an arrow to each neighbour (as the wall is sorted) with the title between.
+		// Head: an arrow to each neighbour with the title between.
 		const head = root.createDiv({ cls: "sfsc-planner-head" });
-		const arrow = (neighbour: CardEntry | null, dir: "prev" | "next") => {
+		const arrow = (dir: "prev" | "next") => {
+			const { entry: neighbour, createIso } = neighbourOf(dir);
 			const btn = head.createEl("button", { cls: `sfsc-planner-arrow is-${dir}` });
 			setIcon(btn, dir === "prev" ? "chevron-left" : "chevron-right");
 			const word = dir === "prev" ? "Previous" : "Next";
+			const key = dir === "prev" ? "←" : "→";
+			if (createIso) {
+				const formatted = mo(createIso, "YYYY-MM-DD").format(this.cardFormat());
+				btn.setAttr("aria-label", `${word} day: ${formatted} — no card yet, click to create it (${key})`);
+				btn.addClass("is-create");
+				btn.addEventListener("click", () => this.promptCreateDateCard(createIso));
+				return;
+			}
 			const title = neighbour?.holder.section.title || "(untitled)";
-			btn.setAttr("aria-label", neighbour ? `${word} card: ${title} (${dir === "prev" ? "←" : "→"})` : `No ${word.toLowerCase()} card`);
+			btn.setAttr("aria-label", neighbour ? `${word} ${iso ? "day" : "card"}: ${title} (${key})` : `No ${word.toLowerCase()} card`);
 			btn.toggleAttribute("disabled", !neighbour);
 			if (!neighbour) return;
 			btn.addEventListener("click", () => this.setPlannerActive(neighbour));
@@ -5281,10 +5344,10 @@ export class SectionCardsView extends ItemView {
 				void this.sendPlannerCard(file, section, drag, neighbour.holder.section);
 			});
 		};
-		arrow(prev, "prev");
+		arrow("prev");
 		const titleEl = head.createDiv({ cls: "sfsc-planner-title", text: section.title || "(untitled)" });
 		titleEl.toggleClass("is-today", active.el.hasClass("is-today"));
-		arrow(next, "next");
+		arrow("next");
 
 		// Cards: lines above the first sub-heading, then one subcard per sub-heading.
 		const front = this.cardFaces(section.body).front.split("\n");
