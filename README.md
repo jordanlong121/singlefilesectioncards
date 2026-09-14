@@ -136,10 +136,11 @@ tab to send it to that card.
 One card at a time, as a planner page: its title in large type across the top, an arrow on
 either side to the previous and next card (or press `←` / `→`, `,` / `.`) — in a note with date
 headings the arrows step a day at a time, and a day with no card yet offers to create it — and its contents as
-small cards in two columns. Each sub-heading (H4 under an H3 card, say) with everything beneath
-it is a subcard, titled by the heading, its tasks live inside; whatever sits above the first
-sub-heading is one more card, titled with the unfiled card's name. A card with no sub-headings
-shows each task or paragraph as a line card of its own instead. Drag a card into the other
+small cards in two columns. Every heading beneath the card, at any level, is a subcard —
+titled by the heading, its tasks live inside — so a day card (H3) shows its H4 blocks, and a
+month card (H1) shows every day in it; whatever sits above the first heading is one more card,
+titled with the unfiled card's name. A card with no headings beneath it shows each task or
+paragraph as a line card of its own instead. Drag a card into the other
 column or to a new spot (which also moves the text in the note — subcards reorder among the
 subcards, lines among the lines), drag its bottom edge
 to give it more or less room, or drop it on an arrow to send it to the neighbouring card. The

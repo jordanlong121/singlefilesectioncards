@@ -2371,16 +2371,17 @@ export interface PlannerCard {
 	end: number;
 	/** Lines: the index among the section's movable blocks, which the block writers key on. */
 	blockIndex?: number;
-	/** Subcards: the heading's text without its #'s. */
+	/** Subcards: the heading's text without its #'s, and its level (1–6). */
 	title?: string;
+	level?: number;
 }
 
 /**
- * Split a card's body for the Day Planner. Sub-headings at the shallowest level the
- * body has (H4 under an H3 card — or H5 when there's no H4) each start a subcard that
- * runs to the next one; deeper headings are content. What's above the first sub-heading
- * is one "loose" card; with no sub-headings at all, every movable block is a card of its
- * own. Fenced code is never a heading.
+ * Split a card's body for the Day Planner. Every heading beneath the card — at any
+ * level, so a month card (H1) shows each day (H3) even with a stray H2 among them —
+ * starts a subcard that runs to the next heading. What's above the first heading is one
+ * "loose" card; with no headings at all, every movable block is a card of its own.
+ * Fenced code is never a heading.
  */
 export function plannerCards(body: string[]): PlannerCard[] {
 	const blocks = sectionBlocks(body);
@@ -2390,8 +2391,7 @@ export function plannerCards(body: string[]): PlannerCard[] {
 		const m = HEADING_RE.exec(body[b.start]);
 		if (m) headings.push({ line: b.start, level: m[1].length, title: m[2].trim() });
 	}
-	const subLevel = headings.length ? Math.min(...headings.map((h) => h.level)) : 0;
-	const subs = headings.filter((h) => h.level === subLevel);
+	const subs = headings;
 	const cards: PlannerCard[] = [];
 	if (!subs.length) {
 		blocks
@@ -2404,7 +2404,13 @@ export function plannerCards(body: string[]): PlannerCard[] {
 	while (looseStart < firstSub && body[looseStart].trim() === "") looseStart++;
 	if (looseStart < firstSub) cards.push({ kind: "loose", start: looseStart, end: firstSub });
 	subs.forEach((h, i) => {
-		cards.push({ kind: "sub", start: h.line, end: i + 1 < subs.length ? subs[i + 1].line : body.length, title: h.title });
+		cards.push({
+			kind: "sub",
+			start: h.line,
+			end: i + 1 < subs.length ? subs[i + 1].line : body.length,
+			title: h.title,
+			level: h.level,
+		});
 	});
 	return cards;
 }
