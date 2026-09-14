@@ -9670,7 +9670,7 @@ export class SectionCardsView extends ItemView {
 		const mins = this.canvasMins();
 		for (const { key, el } of this.canvasItems()) {
 			const stored = this.activePlacements()[key];
-			if (!stored || !el.hasClass("is-placed")) continue;
+			if (!stored || !el.hasClass("is-placed") || el === this.maximized?.card) continue;
 			const w = el.offsetWidth;
 			const h = el.offsetHeight;
 			if (Math.abs(w - stored.w) < 2 && Math.abs(h - stored.h) < 2) continue;
@@ -9693,6 +9693,9 @@ export class SectionCardsView extends ItemView {
 		for (const { key, el } of this.canvasItems()) {
 			const stored = placements[key];
 			if (!stored || !el.hasClass("is-placed")) continue;
+			// A maximized card fills the overlay, not its placement: measuring it here
+			// used to "restore" the stored size onto the big card, shrinking it in place.
+			if (el === this.maximized?.card) continue;
 			const w = el.offsetWidth;
 			const h = el.offsetHeight;
 			if (w === 0 && h === 0) continue; // individually hidden (e.g. mid-transition)
