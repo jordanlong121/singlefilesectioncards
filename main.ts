@@ -5223,10 +5223,11 @@ export class SectionCardsView extends ItemView {
 		if (!visible.length) return;
 		const remembered = this.roloActive.get(this.filePath);
 		const at = visible.findIndex((e) => e.holder.section.headingRaw === remembered);
-		// A dated card in a dated note steps by day, offering to create a missing one.
+		// A dated card in a dated note steps by day — → is always tomorrow, ← yesterday,
+		// whatever the sort — offering to create a missing one.
 		const iso = at >= 0 ? this.plannerDayIso(visible[at].holder.section) : null;
 		if (iso) {
-			const target = this.plannerDayShift(iso, delta * this.plannerDayDirection(visible));
+			const target = this.plannerDayShift(iso, delta);
 			const entry = this.plannerDayEntry(target);
 			if (entry) this.setPlannerActive(entry);
 			else this.promptCreateDateCard(target);
@@ -5246,14 +5247,6 @@ export class SectionCardsView extends ItemView {
 		const dt = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) + days);
 		const pad = (n: number) => String(n).padStart(2, "0");
 		return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
-	}
-
-	/** Which way the days run across the wall as sorted: +1 when the next card is a later
-	 * day (so → is tomorrow), −1 for newest-first notes (→ is yesterday). */
-	private plannerDayDirection(visible: CardEntry[]): 1 | -1 {
-		const dated = visible.map((e) => this.plannerDayIso(e.holder.section)).filter((iso): iso is string => !!iso);
-		if (dated.length >= 2) return dated[0] < dated[dated.length - 1] ? 1 : -1;
-		return this.sortOrder === "desc" ? -1 : 1;
 	}
 
 	/** The card whose heading names this day, if the note has one (hidden or not — a
@@ -5316,13 +5309,13 @@ export class SectionCardsView extends ItemView {
 		this.roloActive.set(this.filePath, section.headingRaw);
 		this.plannerHeading = section.headingRaw;
 		const at = visible.indexOf(active);
-		// In a dated note the arrows step by day — the neighbouring day's card, or an
-		// offer to create it; otherwise by card, as the wall is sorted.
+		// In a dated note the arrows step by day — ← is yesterday and → tomorrow whatever
+		// the sort: the neighbouring day's card, or an offer to create it. Otherwise by
+		// card, as the wall is sorted.
 		const iso = this.plannerDayIso(section);
-		const dayDir = iso ? this.plannerDayDirection(visible) : 1;
 		const neighbourOf = (dir: "prev" | "next"): { entry: CardEntry | null; createIso: string | null } => {
 			if (iso) {
-				const day = this.plannerDayShift(iso, dir === "next" ? dayDir : -dayDir);
+				const day = this.plannerDayShift(iso, dir === "next" ? 1 : -1);
 				const entry = this.plannerDayEntry(day);
 				return { entry, createIso: entry ? null : day };
 			}
