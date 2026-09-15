@@ -64,7 +64,7 @@ If this plugin is useful to you, you can support its development:
   that searches the vault as you type. Type a title that isn't a note yet and the last row
   offers to create it (`Shift+Enter`, or the footer's "Create new note…" button), in Obsidian's default new-note folder —
   or include a `folder/` to place it.
-- **Keyboard shortcuts.** `1`–`6` heading level, `L`/`Shift+L` layouts, `V` view modes, `D` deck,
+- **Keyboard shortcuts.** `1`–`6` heading level, `L`/`Shift+L` layouts, `V` view modes, `D` deck, `M` menu,
   `,`/`.` previous/next heading, `N` new card, `O` pick a note, `S` starred lines only,
   `F` flip the card under the pointer, `Shift+F` all cards face up, arrows move the card focus
   (Enter edits, Space selects), `Ctrl/⌘+A` select all, `Ctrl/⌘+F` filter, `Ctrl/⌘+T` a new task
