@@ -6,9 +6,7 @@ import { fileURLToPath } from "url";
 const SAMPLE_NOTE = fileURLToPath(new URL("../sample-vault/Daily Notes 2026.md", import.meta.url));
 import assert from "assert";
 
-let pass = 0, fail = 0;
-const t = (name, fn) => { try { fn(); pass++; console.log("ok   " + name); }
-  catch (e) { fail++; console.log("FAIL " + name + "\n     " + e.message); } };
+import { t } from "./harness.mjs";
 
 const L = (s) => s.split("\n");
 
@@ -2029,5 +2027,3 @@ t("plannerCardWeight: lines, wrapped long lines, a subcard title, or the saved h
   assert.equal(plannerCardWeight(lines, { kind: "sub", start: 1, end: 5, title: "Sub" }, 130), 5);
 });
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);

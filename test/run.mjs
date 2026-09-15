@@ -19,3 +19,6 @@ await esbuild.build({
 });
 
 await import(path.join(tmp, "..", "parse.cases.mjs"));
+await import(path.join(tmp, "..", "layouts.cases.mjs"));
+const { report } = await import(path.join(tmp, "..", "harness.mjs"));
+await report();
