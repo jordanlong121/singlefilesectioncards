@@ -2093,6 +2093,26 @@ export function dueTaskSummary(body: string, todayIso: string): { overdue: numbe
 	return { overdue, dueToday };
 }
 
+/**
+ * Which of a body's task lines (by position among taskLineIndexes, i.e. the nth
+ * rendered checkbox) the due badge should lead to: the first open task overdue as of
+ * `todayIso`, else the first due today. Null when none.
+ */
+export function firstDueTaskIndex(body: string, todayIso: string): number | null {
+	const lines = body.split("\n");
+	let dueToday: number | null = null;
+	const indexes = taskLineIndexes(lines);
+	for (let n = 0; n < indexes.length; n++) {
+		const m = TASK_RE.exec(lines[indexes[n]]);
+		if (!m || m[2] !== " ") continue;
+		const due = DUE_DATE_RE.exec(m[4])?.[1];
+		if (!due) continue;
+		if (due < todayIso) return n;
+		if (due === todayIso && dueToday === null) dueToday = n;
+	}
+	return dueToday;
+}
+
 export function taskLineIndexes(lines: string[]): number[] {
 	const out: number[] = [];
 	let inFence = false;
@@ -4703,6 +4723,28 @@ export class SectionCardsView extends ItemView {
 		const text = overdue > 0 ? `${overdue} overdue` : dueToday > 0 ? `${dueToday} due today` : "";
 		if (badge.textContent !== text) badge.setText(text);
 		badge.toggleClass("is-hidden", !text);
+	}
+
+	/** The due badge was clicked: bring the card's first overdue task (else its first
+	 * task due today) into view and flash it. A collapsed card opens; an owed body
+	 * render runs first. */
+	private async revealDueTask(card: HTMLElement, section: Section): Promise<void> {
+		const entry = this.cardEntries.find((e) => e.el === card);
+		if (entry?.renderBody) {
+			await this.runBodyRender(entry);
+			this.prepareBodies([entry]);
+		}
+		if (card.hasClass("is-collapsed")) this.setCollapsed(card, section.headingRaw, false);
+		const iso = this.todayKeys()?.iso ?? mo().format("YYYY-MM-DD");
+		const nth = firstDueTaskIndex(this.cardFaces(section.body).front, iso);
+		const bodyEl = card.querySelector<HTMLElement>(".section-card-body");
+		if (nth === null || !bodyEl) return;
+		const box = Array.from(bodyEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]"))[nth];
+		const line = box?.closest<HTMLElement>("li") ?? box;
+		if (!line) return;
+		line.scrollIntoView({ block: "center", inline: "nearest" });
+		line.addClass("sfsc-task-flash");
+		window.setTimeout(() => line.removeClass("sfsc-task-flash"), 1600);
 	}
 
 	/** The bottom status bar: which dated cards are hidden (Hide past / future dates), with
@@ -8803,7 +8845,13 @@ export class SectionCardsView extends ItemView {
 		// Tasks layout only (CSS hides it elsewhere): how many tasks the card is
 		// showing under the current filter — applyTaskFilter keeps it current.
 		header.createDiv({ cls: "sfsc-task-count" });
-		header.createDiv({ cls: "sfsc-due-badge" });
+		const dueBadge = header.createDiv({ cls: "sfsc-due-badge" });
+		dueBadge.setAttr("aria-label", "Go to the first overdue task");
+		dueBadge.addEventListener("click", (evt) => {
+			evt.preventDefault();
+			evt.stopPropagation();
+			void this.revealDueTask(card, holder.section);
+		});
 		this.applyDueMarks(card, section, today);
 
 		// The delete confirmation, shared by the hover strip's trash button and the

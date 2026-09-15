@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare, bareMonthIndex } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare, bareMonthIndex, firstDueTaskIndex } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -1997,6 +1997,15 @@ t("bareMonthIndex: a lone month name, long or short; anything else is 0", () => 
   assert.equal(bareMonthIndex("Sept."), 0, "only the three-letter short form");
   assert.equal(bareMonthIndex("August 2026"), 0);
   assert.equal(bareMonthIndex("Notes"), 0);
+});
+
+t("firstDueTaskIndex: the first open overdue task's checkbox position, else the first due today", () => {
+  const body = "- [ ] no date\n- [x] done late 📅 2026-09-01\n- [ ] due today 📅 2026-09-14\n\t- [ ] nested overdue 📅 2026-09-10\n- [ ] later 📅 2026-09-20";
+  assert.equal(firstDueTaskIndex(body, "2026-09-14"), 3, "the nested overdue task is the 4th checkbox");
+  assert.equal(firstDueTaskIndex("- [ ] a\n- [ ] due today 📅 2026-09-14\n- [ ] later 📅 2026-09-20", "2026-09-14"), 1, "nothing overdue: the first due today");
+  assert.equal(firstDueTaskIndex(body, "2026-09-09"), null, "nothing overdue or due today");
+  assert.equal(firstDueTaskIndex(body, "2026-08-01"), null);
+  assert.equal(firstDueTaskIndex("- [ ] x [due:: 2026-09-01]", "2026-09-14"), 0, "Dataview due fields count too");
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
