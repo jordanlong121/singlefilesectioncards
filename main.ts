@@ -106,7 +106,7 @@ const SORT_LABELS: Record<SortOrder, string> = {
 };
 
 /** [value, toolbar label, tooltip] */
-const LAYOUT_OPTIONS: [Layout, string, string][] = [
+export const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["grid", "Grid", "Masonry columns"],
 	["aligned", "Grid Aligned", "Uniform grid: every row starts at the same height"],
 	["tight", "Tight", "Denser, narrower masonry columns"],
@@ -1591,7 +1591,7 @@ function locateSection(sections: Section[], original: Section): Section | undefi
  * preamble is unique, so re-deriving it is more robust than content matching.
  * Everything else goes through locateSection's content matching as before.
  */
-function locateCard(lines: string[], level: number, original: Section): Section | undefined {
+export function locateCard(lines: string[], level: number, original: Section): Section | undefined {
 	if (original.properties) return propertiesSection(lines, original.title) ?? undefined;
 	if (original.whole) return wholeNoteSection(lines);
 	if (original.unfiled) return unfiledSection(lines, original.title) ?? undefined;
@@ -1964,7 +1964,7 @@ export function removeBlock(lines: string[], from: Section, blockIndex: number):
 }
 
 /** Delete a block at write time, re-locating the section and verifying the block's text. */
-async function deleteBlockInFile(
+export async function deleteBlockInFile(
 	app: App,
 	file: TFile,
 	level: number,
@@ -1996,7 +1996,7 @@ async function deleteBlockInFile(
 }
 
 /** Move a block at write time, re-locating both sections and verifying the block's text. */
-async function moveBlockInFile(
+export async function moveBlockInFile(
 	app: App,
 	file: TFile,
 	level: number,
@@ -2033,7 +2033,7 @@ async function moveBlockInFile(
 
 /** Star or unstar a block at write time, re-locating the section and verifying the
  * block's text the same way delete and move do. */
-async function toggleStarInFile(
+export async function toggleStarInFile(
 	app: App,
 	file: TFile,
 	level: number,
@@ -2163,7 +2163,7 @@ export function toggleTaskLine(line: string, todayISO: string, addDoneDate: bool
  * Toggle the nth task of a section, matching the nth checkbox rendered in its card.
  * Returns the new checked state, or null if the section or task couldn't be located.
  */
-async function toggleTaskInFile(
+export async function toggleTaskInFile(
 	app: App,
 	file: TFile,
 	level: number,
@@ -3075,7 +3075,7 @@ export function moveSection(
 }
 
 /** Reorder at write time, re-locating both sections like every other write. */
-async function moveSectionInFile(
+export async function moveSectionInFile(
 	app: App,
 	file: TFile,
 	level: number,
@@ -3126,7 +3126,7 @@ export function mergeSections(lines: string[], from: Section, into: Section): st
 }
 
 /** Calendar merge at write time, re-locating both sections like every other write. */
-async function mergeSectionsInFile(
+export async function mergeSectionsInFile(
 	app: App,
 	file: TFile,
 	level: number,
@@ -3151,7 +3151,7 @@ async function mergeSectionsInFile(
 }
 
 /** Rewrite a card's heading line (Calendar day move); the body stays byte-for-byte. */
-async function retitleSectionInFile(
+export async function retitleSectionInFile(
 	app: App,
 	file: TFile,
 	level: number,
@@ -3219,7 +3219,7 @@ export function insertIntoSection(
 }
 
 /** Quick Add's write: re-locates the section at write time like every other write. */
-async function quickAddToSection(
+export async function quickAddToSection(
 	app: App,
 	file: TFile,
 	level: number,
@@ -3266,7 +3266,7 @@ export function insertAfterBlock(lines: string[], section: Section, blockIndex: 
 
 /** Paste at a section's end: like Quick Add's bottom insert, but a pasted paragraph
  * gets a blank line above it so it doesn't merge into the last line of the body. */
-async function pasteAtSectionEnd(
+export async function pasteAtSectionEnd(
 	app: App,
 	file: TFile,
 	level: number,
@@ -3296,7 +3296,7 @@ async function pasteAtSectionEnd(
 
 /** Replace one movable block's lines at write time, re-locating the section and
  * verifying the block's text the same way delete and move do. */
-async function replaceBlockInFile(
+export async function replaceBlockInFile(
 	app: App,
 	file: TFile,
 	level: number,
@@ -3336,7 +3336,7 @@ async function replaceBlockInFile(
  * no-op. Blank lines are added at the seams where the join would otherwise merge
  * prose into a neighbour or butt a heading against the line above.
  */
-async function moveRangeInFile(
+export async function moveRangeInFile(
 	app: App,
 	file: TFile,
 	level: number,
@@ -3387,7 +3387,7 @@ async function moveRangeInFile(
 
 /** Day Planner: rewrite a run of a section's body lines (a subcard's text), verifying
  * the run first the way the block writers do. */
-async function replaceRangeInFile(
+export async function replaceRangeInFile(
 	app: App,
 	file: TFile,
 	level: number,
@@ -3420,7 +3420,7 @@ async function replaceRangeInFile(
 }
 
 /** Insert text right after a given movable block, verifying the block's text first. */
-async function insertAfterBlockInFile(
+export async function insertAfterBlockInFile(
 	app: App,
 	file: TFile,
 	level: number,
@@ -3453,7 +3453,7 @@ async function insertAfterBlockInFile(
 }
 
 /** Remove a section from the file, re-locating it at write time like every other write. */
-async function deleteSection(app: App, file: TFile, level: number, original: Section): Promise<boolean> {
+export async function deleteSection(app: App, file: TFile, level: number, original: Section): Promise<boolean> {
 	let ok = true;
 
 	await app.vault.process(file, (data) => {
@@ -3473,7 +3473,7 @@ async function deleteSection(app: App, file: TFile, level: number, original: Sec
 }
 
 /** Delete several sections in one write; each is re-located by content before its splice. */
-async function deleteSectionsInFile(app: App, file: TFile, level: number, targets: Section[]): Promise<number> {
+export async function deleteSectionsInFile(app: App, file: TFile, level: number, targets: Section[]): Promise<number> {
 	let removed = 0;
 	await app.vault.process(file, (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
@@ -3529,7 +3529,7 @@ async function moveSectionsInFile(
 }
 
 /** Insert a new section — empty, or with a template body — and return the heading level written. */
-async function insertSection(
+export async function insertSection(
 	app: App,
 	file: TFile,
 	headingRaw: string,
