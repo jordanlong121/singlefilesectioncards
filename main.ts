@@ -3733,6 +3733,8 @@ export class SectionCardsView extends ItemView {
 	private datesToggle: HTMLInputElement | null = null;
 	/** The toolbar's template button, so the hamburger menu can reuse its state styling. */
 	private templateBtn: HTMLElement | null = null;
+	/** The toolbar's ☰ button: the `M` shortcut opens the menu beneath it. */
+	private menuBtn: HTMLElement | null = null;
 	/** Opens the jump-to-date picker — stored so the hamburger menu can trigger it too. */
 	private openJumpPicker: (() => void) | null = null;
 	/** The Layout dropdown, so refresh can grey out Calendar in date-less notes. */
@@ -4426,6 +4428,13 @@ export class SectionCardsView extends ItemView {
 			void this.toggleDeck();
 			return false;
 		});
+		// M: the ☰ menu, dropped beneath its toolbar button (in the Deck too).
+		this.scope.register([], "M", (evt) => {
+			if (!this.plainShortcutOk(evt, true) || !this.menuBtn) return true;
+			evt.preventDefault();
+			this.openMainMenu(this.menuBtn);
+			return false;
+		});
 		// , and .: with the hierarchy columns showing, step the deepest column's
 		// selection; with the dividers showing, jump to the previous/next bar.
 		const stepGrouping = (evt: KeyboardEvent, delta: number): boolean => {
@@ -4951,6 +4960,15 @@ export class SectionCardsView extends ItemView {
 		if (to !== undefined && to !== toBack) return;
 		this.flipping.add(card);
 		try {
+			// The wall is hidden behind the Day Planner (Flip all cards over from the menu):
+			// nothing to slide, and the front measures 0 — a back pinned to that height
+			// would come up blank when the next layout reuses the card. Turn it outright.
+			if (!card.isShown()) {
+				if (toBack) await this.renderBack(backEl, holder, file, scope);
+				this.setFlipped(card, holder.section.headingRaw, toBack);
+				backEl.setCssStyles({ height: "" });
+				return;
+			}
 			// The card keeps its size through the turn: the back takes the front's exact
 			// height (scrolling if it's longer), measured now while the front still shows.
 			// It holds that height until it's hidden again (below), so the turn back
@@ -7171,8 +7189,9 @@ export class SectionCardsView extends ItemView {
 		// background live here as well as (for now) on their own toolbar controls.
 		const menuBtn = cluster.createEl("button", { cls: "section-cards-icon-btn section-cards-menu-btn" });
 		setIcon(menuBtn, "menu");
-		menuBtn.setAttr("aria-label", "Cards view menu");
+		menuBtn.setAttr("aria-label", "Cards view menu (M)");
 		menuBtn.addEventListener("click", (evt) => this.openMainMenu(evt));
+		this.menuBtn = menuBtn;
 
 		// The Deck toggle: a wall of note thumbnails instead of the cards. It sits before
 		// the note button: pick a note from thumbnails, or from the list.
@@ -7852,7 +7871,7 @@ export class SectionCardsView extends ItemView {
 	 * new-card options (still on the toolbar too, for now), plus the note's background
 	 * image — picked from the vault, or downloaded once into it.
 	 */
-	private openMainMenu(evt: MouseEvent): void {
+	private openMainMenu(evt: MouseEvent | HTMLElement): void {
 		const base: ViewSettings = this.viewSettings();
 		const menu = new Menu();
 
@@ -7974,7 +7993,17 @@ export class SectionCardsView extends ItemView {
 				.onClick(() => this.plugin.openSettingsTab()),
 		);
 
-		menu.showAtMouseEvent(evt);
+		SectionCardsView.showMenuAt(menu, evt);
+	}
+
+	/** Show a menu at the pointer, or — opened from the keyboard — beneath its button. */
+	private static showMenuAt(menu: Menu, at: MouseEvent | HTMLElement): void {
+		if (at instanceof MouseEvent) {
+			menu.showAtMouseEvent(at);
+			return;
+		}
+		const r = at.getBoundingClientRect();
+		menu.showAtPosition({ x: r.left, y: r.bottom + 4 });
 	}
 
 	/** A disabled heading row, the flat-menu fallback's group label. */
@@ -8280,7 +8309,7 @@ export class SectionCardsView extends ItemView {
 		}
 	}
 
-	private openTemplateMenu(evt: MouseEvent, btn: HTMLElement): void {
+	private openTemplateMenu(evt: MouseEvent | HTMLElement, btn: HTMLElement): void {
 		const base: ViewSettings = this.viewSettings();
 		const current = this.plugin.getTemplatePath(this.filePath);
 		const menu = new Menu();
@@ -8338,7 +8367,7 @@ export class SectionCardsView extends ItemView {
 					.onClick(() => void this.plugin.setNewCardFormat(this.filePath, null, base)),
 			);
 		}
-		menu.showAtMouseEvent(evt);
+		SectionCardsView.showMenuAt(menu, evt);
 	}
 
 	/** The color button's menu: one swatch per palette color, plus "No color". */
@@ -13204,6 +13233,7 @@ class ShortcutsModal extends Modal {
 			["L / Shift+L", "Cycle the layouts forwards / backwards"],
 			["V", "Cycle the view modes: default / hierarchy / dividers"],
 			["D", "Show or hide the Deck of notes"],
+			["M", "Open the ☰ menu"],
 			[", / .", "Previous / next heading in the Hierarchy and Dividers view modes, or card in the Rolodex"],
 			["S", "Show only starred lines / show everything"],
 			["↑ ↓ ← →", "Move the keyboard focus between cards (Shift extends the selection)"],
