@@ -3941,6 +3941,23 @@ body.is-mobile .section-card-actions button {
 	transform: translateX(-50%);
 }
 
+/* Hierarchy on: the pane is a grid whose first column sizes to the columns pane. An
+   unplaced bar would auto-flow into that column and widen it by its own width the
+   moment cards are selected — so it takes the cards pane's cell instead, sitting over
+   the pane's bottom edge. */
+.is-hier-on .sfsc-selection-bar {
+	grid-row: 3;
+	grid-column: 1 / -1;
+	align-self: end;
+	justify-self: center;
+	position: static;
+	transform: none;
+}
+
+.is-hier-on .section-cards-hier:not(:empty) ~ .sfsc-selection-bar {
+	grid-column: 2;
+}
+
 /* Hide past / future dates: a status bar across the pane's bottom. It sits on the leaf
    container (outside the scrolling pane), so cards scroll underneath; the pane pads its
    bottom by the bar's height so the last row can still scroll fully into view. */
