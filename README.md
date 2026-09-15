@@ -13,8 +13,16 @@
 [![One day at a time, its tasks laid out in two columns](screenshots/hero-planner.png)](#day-planner)
 
 An [Obsidian](https://obsidian.md) plugin that shows the sections of **one** note as a wall of
-cards — one card per heading — and lets you edit any section in place. With many layout and view options, it functions as as a home for ad hoc
-dashboards, sticky notes, flash cards, task management, brainstorming, and a diary or journal.
+cards — one card per heading — and lets you edit any section in place. With many layout and view
+options, it functions as a home for ad hoc dashboards, sticky notes, flash cards, task
+management, brainstorming, and a diary or journal.
+
+**Why one big note?** A single file has real advantages over a folder of small ones: an AI
+agent can read the whole context in one go, nothing about the structure is locked into a
+plugin, and any app that edits Markdown can edit it. The usual price is scrolling — hunting for
+today's section in a year-long note. This plugin removes that price: the note stays one plain
+Markdown file, and you work in the view that fits the job — a wall of cards, a calendar, a day
+planner, a canvas — landing on the section you want without scrolling for it.
 
 While this is a standalone plugin that works on any note, it pairs nicely with
 [Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes) as well as
