@@ -41,6 +41,12 @@ jobs:
       - run: npm test
       - run: npm run build
 
+      # The release ships a minified stylesheet. Minify here, before attesting, so the
+      # attested file is the one uploaded — a copy uploaded by hand afterwards would
+      # carry no attestation.
+      - name: Minify styles.css
+        run: npx esbuild styles.css --minify --outfile=styles.css --allow-overwrite
+
       - name: Manifest version must match the tag
         run: |
           V="$(node -p "require('./manifest.json').version")"
