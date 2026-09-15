@@ -171,11 +171,13 @@ t("planner: a month card shows every heading beneath it (weeks, days, an H4) as 
   contiguous(cs, body.length);
 });
 
-t("planner: a day with an H4 gives a loose card plus the subcard; the flip marker is content", () => {
+t("planner: a day with an H4 gives line cards above it plus the subcard; the flip marker is content", () => {
   const day = byTitle(cards(personal, 3), "2026-09-14");
   const cs = plannerCards(day.body.split("\n"));
-  // The loose card runs to the heading (blank separator included); the subcard to the end.
-  assert.deepEqual(cs.map((c) => [c.kind, c.title ?? null, c.start, c.end]), [["loose", null, 0, 5], ["sub", "Notes", 5, 10]]);
+  // Three line cards (the nested task rides with its parent), then the subcard to the end.
+  assert.deepEqual(cs.map((c) => [c.kind, c.title ?? null, c.start, c.end]), [
+    ["line", null, 0, 1], ["line", null, 1, 2], ["line", null, 2, 4], ["sub", "Notes", 5, 10],
+  ]);
 });
 
 t("planner: a day with no sub-headings is line cards; fenced text is not a card", () => {
@@ -211,7 +213,7 @@ t("planner: no cards at a level — the whole note below its properties, every s
   assert.equal(lines(senstar)[whole.startLine], "## September 2026");
   const cs = plannerCards(whole.body.split("\n"));
   assert.equal(cs.filter((c) => c.kind === "sub").length, 8, "2 months + 4 days + the Goal/Tasks H4s");
-  assert.ok(cs.every((c) => c.kind === "sub"), "nothing loose above the first month");
+  assert.ok(cs.every((c) => c.kind === "sub"), "no lines above the first month");
   assert.ok(locateCard(lines(senstar), 2, whole).whole, "the whole-note card re-locates by position");
 });
 

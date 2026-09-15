@@ -2412,9 +2412,10 @@ export function plannerBlockKey(blockText: string): string {
  * block) above the card's first sub-heading, or a subcard — a sub-heading with
  * everything beneath it. */
 export interface PlannerCard {
-	/** "line": one movable block (a card with no sub-headings); "loose": everything above
-	 * the first sub-heading, as one card; "sub": a sub-heading with what's beneath it. */
-	kind: "line" | "sub" | "loose";
+	/** "line": one movable block — a card with no sub-headings is all lines, and the lines
+	 * above a card's first sub-heading are lines too (the planner groups those under the
+	 * unfiled card's name); "sub": a sub-heading with what's beneath it. */
+	kind: "line" | "sub";
 	start: number;
 	end: number;
 	/** Lines: the index among the section's movable blocks, which the block writers key on. */
@@ -2427,8 +2428,8 @@ export interface PlannerCard {
 /**
  * Split a card's body for the Day Planner. Every heading beneath the card — at any
  * level, so a month card (H1) shows each day (H3) even with a stray H2 among them —
- * starts a subcard that runs to the next heading. What's above the first heading is one
- * "loose" card; with no headings at all, every movable block is a card of its own.
+ * starts a subcard that runs to the next heading. Every movable block above the first
+ * heading — or anywhere, when there are no headings — is a line card of its own.
  * Fenced code is never a heading.
  */
 export function plannerCards(body: string[]): PlannerCard[] {
@@ -2441,16 +2442,12 @@ export function plannerCards(body: string[]): PlannerCard[] {
 	}
 	const subs = headings;
 	const cards: PlannerCard[] = [];
-	if (!subs.length) {
-		blocks
-			.filter((b) => b.kind !== "other")
-			.forEach((b, blockIndex) => cards.push({ kind: "line", start: b.start, end: b.end, blockIndex }));
-		return cards;
-	}
-	const firstSub = subs[0].line;
-	let looseStart = 0;
-	while (looseStart < firstSub && body[looseStart].trim() === "") looseStart++;
-	if (looseStart < firstSub) cards.push({ kind: "loose", start: looseStart, end: firstSub });
+	const firstSub = subs.length ? subs[0].line : body.length;
+	blocks
+		.filter((b) => b.kind !== "other")
+		.forEach((b, blockIndex) => {
+			if (b.end <= firstSub) cards.push({ kind: "line", start: b.start, end: b.end, blockIndex });
+		});
 	subs.forEach((h, i) => {
 		cards.push({
 			kind: "sub",
@@ -6013,6 +6010,21 @@ export class SectionCardsView extends ItemView {
 				return { col: slot?.col, weight: plannerCardWeight(front, card, slot?.h) };
 			}),
 		);
+		// With subcards present, the lines above the first heading gather under the unfiled
+		// card's name in whichever columns hold them — one group per column, each line
+		// still its own card to drag, resize, and tick.
+		const grouped = cards.some((c) => c.kind === "sub");
+		const groups: (HTMLElement | null)[] = [null, null];
+		const hostFor = (card: PlannerCard, col: 0 | 1): HTMLElement => {
+			if (!grouped || card.kind !== "line") return cols[col];
+			let group = groups[col];
+			if (!group) {
+				group = cols[col].createDiv({ cls: "sfsc-planner-group" });
+				group.createDiv({ cls: "sfsc-planner-group-title", text: this.plannerLooseTitle() });
+				groups[col] = group;
+			}
+			return group;
+		};
 		this.plannerItems = cards.map((card, index) => {
 			// A subcard's editable text stops at its last non-blank line; the blank lines
 			// that separate it from the next heading stay put when it's rewritten.
@@ -6022,7 +6034,7 @@ export class SectionCardsView extends ItemView {
 			const key = keys[index];
 			const slot = slots[key];
 			const col = columns[index];
-			const item = cols[col].createDiv({ cls: `sfsc-planner-item markdown-rendered is-${card.kind}` });
+			const item = hostFor(card, col).createDiv({ cls: `sfsc-planner-item markdown-rendered is-${card.kind}` });
 			item.dataset.index = String(index);
 			item.dataset.key = key;
 			if (slot?.h) item.setCssStyles({ height: `${slot.h}px` });
@@ -6037,21 +6049,15 @@ export class SectionCardsView extends ItemView {
 				// Checkbox n of this card is task line (tasks before it + n) of the section.
 				tasksBefore: taskLines.filter((line) => line < card.start).length,
 			};
-			// Subcards are titled by their heading; the loose card by the unfiled card's name.
+			// Subcards are titled by their heading.
 			if (card.kind === "sub") {
 				item.createDiv({ cls: "sfsc-planner-item-title", text: card.title || "(untitled)" });
 				// In a dated note, today's subcard (a day under a month card, say) is lit
 				// the way today's card is on the wall.
 				if (today && isTodayTitle(card.title ?? "", today.iso, today.formatted)) item.addClass("is-today");
 			}
-			if (card.kind === "loose") item.createDiv({ cls: "sfsc-planner-item-title", text: this.plannerLooseTitle() });
 			const body = item.createDiv({ cls: "sfsc-planner-item-body" });
-			const markdown =
-				card.kind === "sub"
-					? front.slice(card.start + 1, editEnd).join("\n")
-					: card.kind === "loose"
-						? front.slice(card.start, editEnd).join("\n")
-						: text;
+			const markdown = card.kind === "sub" ? front.slice(card.start + 1, editEnd).join("\n") : text;
 			if (markdown.trim()) {
 				void MarkdownRenderer.render(this.app, bodyForRender(markdown), body, file.path, scope).then(() => {
 					// Rendered task checkboxes come back disabled, and disabled inputs never fire clicks.
@@ -6218,7 +6224,7 @@ export class SectionCardsView extends ItemView {
 			let target = itemAt(anchor);
 			let side: "before" | "after" = before ? "before" : "after";
 			if (!target) {
-				const inColumn = Array.from(colEl.querySelectorAll<HTMLElement>(":scope > .sfsc-planner-item"))
+				const inColumn = Array.from(colEl.querySelectorAll<HTMLElement>(".sfsc-planner-item"))
 					.map(itemAt)
 					.filter((it): it is PlannerItem => !!it && it !== drag && it.card.kind === drag.card.kind);
 				target = inColumn.pop() ?? null;
@@ -6297,7 +6303,7 @@ export class SectionCardsView extends ItemView {
 		stay();
 	}
 
-	/** The loose card's title: the unfiled card's name, its markdown emphasis stripped. */
+	/** The unfiled group's title: the unfiled card's name, its markdown emphasis stripped. */
 	private plannerLooseTitle(): string {
 		const raw = this.plugin.settings.unfiledTitle || DEFAULT_SETTINGS.unfiledTitle;
 		return raw.replace(/[*_`]/g, "").trim() || "Unfiled";

@@ -1894,11 +1894,12 @@ t("plannerCards: no sub-headings — one line card per movable block", () => {
   ]);
 });
 
-t("plannerCards: one loose card above the first heading, then a subcard per heading at any level", () => {
+t("plannerCards: line cards above the first heading, then a subcard per heading at any level", () => {
   const body = L("\n- [ ] loose\n- [ ] also loose\n\n#### Morning\n- [ ] run\n##### detail\ntext\n\n#### Afternoon\n- [ ] dentist");
   const cards = plannerCards(body);
-  assert.deepEqual(cards.map((c) => [c.kind, c.start, c.end, c.title, c.level]), [
-    ["loose", 1, 4, undefined, undefined],
+  assert.deepEqual(cards.map((c) => [c.kind, c.start, c.end, c.title ?? c.blockIndex, c.level]), [
+    ["line", 1, 2, 0, undefined],
+    ["line", 2, 3, 1, undefined],
     ["sub", 4, 6, "Morning", 4],
     ["sub", 6, 9, "detail", 5],
     ["sub", 9, 11, "Afternoon", 4],
@@ -1915,7 +1916,7 @@ t("plannerCards: a month card with a stray H2 among H1s still shows every H3 day
   ]);
 });
 
-t("plannerCards: nothing (or only blanks) above the first sub-heading — no loose card", () => {
+t("plannerCards: nothing (or only blanks) above the first sub-heading — no line cards", () => {
   assert.deepEqual(plannerCards(L("#### A\n- x")).map((c) => c.kind), ["sub"]);
   assert.deepEqual(plannerCards(L("\n\n#### A\n- x")).map((c) => c.kind), ["sub"]);
 });
