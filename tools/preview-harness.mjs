@@ -13,7 +13,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { parseCards, sortSections, parseAncestorHeadings, hierarchyColumnItems, groupByAncestor, HIER_GAP_KEY, openTaskCount, plannerCards } from "../test/.tmp/main.js";
+import { parseCards, sortSections, parseAncestorHeadings, hierarchyColumnItems, groupByAncestor, HIER_GAP_KEY, openTaskCount, plannerCards, plannerColumnSplit, plannerCardWeight } from "../test/.tmp/main.js";
 
 const OUT_DIR = process.argv[2] ?? "harness-out";
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -439,12 +439,14 @@ ${sections.map((s, i) => cardHtml(s).replace('class="section-card', `class="sect
 		if (!s) return `<div class="sfsc-planner"><div class="section-cards-empty">No cards to plan.</div></div>\n<div class="section-cards-grid"></div>`;
 		const lines = s.body.split("\n");
 		const cols = [[], []];
-		plannerCards(lines).forEach((c, i) => {
+		const cards = plannerCards(lines);
+		const columns = plannerColumnSplit(cards.map((c, i) => ({ weight: plannerCardWeight(lines, c, i === 2 ? 96 : undefined) })));
+		cards.forEach((c, i) => {
 			const style = i === 2 ? ' style="height: 96px"' : "";
 			const title = c.kind === "line" ? "" : `<div class="sfsc-planner-item-title">${esc(c.kind === "sub" ? c.title : "Unfiled")}</div>`;
 			const text = lines.slice(c.kind === "sub" ? c.start + 1 : c.start, c.end).join("\n");
 			const today = c.kind === "sub" && c.title.includes(TODAY) ? " is-today" : "";
-			cols[i % 2 ? 1 : 0].push(`<div class="sfsc-planner-item markdown-rendered is-${c.kind}${today}" draggable="true"${style}>${title}<div class="sfsc-planner-item-body">${text.trim() ? renderBody(text) : ""}</div></div>`);
+			cols[columns[i]].push(`<div class="sfsc-planner-item markdown-rendered is-${c.kind}${today}" draggable="true"${style}>${title}<div class="sfsc-planner-item-body">${text.trim() ? renderBody(text) : ""}</div></div>`);
 		});
 		const col = (items) => `<div class="sfsc-planner-col">${items.join("\n")}</div>`;
 		return `<div class="sfsc-planner">

@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare, bareMonthIndex, firstDueTaskIndex } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare, bareMonthIndex, firstDueTaskIndex, plannerColumnSplit, plannerCardWeight } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -2006,6 +2006,27 @@ t("firstDueTaskIndex: the first open overdue task's checkbox position, else the 
   assert.equal(firstDueTaskIndex(body, "2026-09-09"), null, "nothing overdue or due today");
   assert.equal(firstDueTaskIndex(body, "2026-08-01"), null);
   assert.equal(firstDueTaskIndex("- [ ] x [due:: 2026-09-01]", "2026-09-14"), 0, "Dataview due fields count too");
+});
+
+t("plannerColumnSplit: free cards flow left until about half the height, then right", () => {
+  assert.deepEqual(plannerColumnSplit([{ weight: 3 }, { weight: 3 }, { weight: 3 }, { weight: 3 }]), [0, 0, 1, 1]);
+  assert.deepEqual(plannerColumnSplit([{ weight: 5 }, { weight: 1 }, { weight: 1 }, { weight: 1 }]), [0, 1, 1, 1], "one tall card fills the left");
+  assert.deepEqual(plannerColumnSplit([{ weight: 1 }]), [0]);
+  assert.deepEqual(plannerColumnSplit([]), []);
+});
+
+t("plannerColumnSplit: placed cards keep their column and count toward it", () => {
+  // The first card is pinned right: the left has room for the next two before the split.
+  assert.deepEqual(plannerColumnSplit([{ col: 1, weight: 3 }, { weight: 3 }, { weight: 3 }, { weight: 3 }]), [1, 0, 0, 1]);
+  // A card pinned left already fills half: the free cards go right.
+  assert.deepEqual(plannerColumnSplit([{ weight: 2 }, { col: 0, weight: 6 }, { weight: 2 }, { weight: 2 }]), [1, 0, 1, 1]);
+});
+
+t("plannerCardWeight: lines, wrapped long lines, a subcard title, or the saved height", () => {
+  const lines = L("- [ ] short\n#### Sub\n- [ ] a\n\n" + "x".repeat(170));
+  assert.equal(plannerCardWeight(lines, { kind: "line", start: 0, end: 1 }), 1);
+  assert.equal(plannerCardWeight(lines, { kind: "sub", start: 1, end: 5, title: "Sub" }), 1 + 1 + 3);
+  assert.equal(plannerCardWeight(lines, { kind: "sub", start: 1, end: 5, title: "Sub" }, 130), 5);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
