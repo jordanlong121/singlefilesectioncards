@@ -4359,12 +4359,7 @@ export class SectionCardsView extends ItemView {
 				// would only be forced back (and churn the stored view) on refresh.
 				if (this.isDateLayout()) return true;
 				if (!this.levelOptionValues().includes(level)) return true;
-				if (this.headingLevel !== level) {
-					this.headingLevel = level;
-					this.rememberView();
-					this.populateLevelOptions();
-					void this.refresh().then(() => this.app.workspace.requestSaveLayout());
-				}
+				if (this.headingLevel !== level) void this.changeHeadingLevel(level);
 				return false;
 			});
 		}
@@ -5518,6 +5513,42 @@ export class SectionCardsView extends ItemView {
 	private static setIconOr(el: HTMLElement, icon: string, fallback: string): void {
 		setIcon(el, icon);
 		if (!el.querySelector("svg")) setIcon(el, fallback);
+	}
+
+	/**
+	 * The Card level changed (dropdown or 1–6). The Day Planner then turns to the card
+	 * at the new level holding today's date, else the one that contains what was
+	 * showing (going up a level) or the first card inside it (going down) — rather than
+	 * dropping to whatever happens to come first.
+	 */
+	private async changeHeadingLevel(level: number): Promise<void> {
+		const wasPlanner = this.layout === "planner";
+		const remembered = this.roloActive.get(this.filePath);
+		const prev = wasPlanner ? this.cardEntries.find((e) => this.plannerKey(e) === remembered)?.holder.section ?? null : null;
+		this.headingLevel = level;
+		this.rememberView();
+		this.populateLevelOptions();
+		await this.refresh();
+		if (wasPlanner && this.layout === "planner") this.plannerFollowLevelChange(prev);
+		this.app.workspace.requestSaveLayout();
+	}
+
+	private plannerFollowLevelChange(prev: Section | null): void {
+		const visible = this.roloVisible().filter((e) => !e.holder.section.unfiled);
+		if (!visible.length) return;
+		const contains = (s: Section, line: number) => line >= s.startLine && line < s.endLine;
+		// Today's heading, at whatever level the note writes its days.
+		const today = this.todayKeys();
+		const todayLine = today
+			? parseAncestorHeadings(this.noteLines, 7).find((h) => isTodayTitle(h.title, today.iso, today.formatted))?.line ?? -1
+			: -1;
+		let pick = todayLine >= 0 ? visible.find((e) => contains(e.holder.section, todayLine)) : undefined;
+		if (!pick && prev) {
+			pick =
+				visible.find((e) => contains(e.holder.section, prev.headingLine)) ??
+				visible.find((e) => contains(prev, e.holder.section.headingLine));
+		}
+		if (pick && this.plannerKey(pick) !== this.roloActive.get(this.filePath)) this.setPlannerActive(pick);
 	}
 
 	/** Rolodex or Day Planner: turn to a card, whichever of the two is showing. */
@@ -7165,11 +7196,7 @@ export class SectionCardsView extends ItemView {
 			levelWrap.setAttr("aria-label", hint);
 			levelSelect.setAttr("aria-label", hint);
 		}
-		levelSelect.addEventListener("change", () => {
-			this.headingLevel = Number(levelSelect.value);
-			this.rememberView();
-			void this.refresh().then(() => this.app.workspace.requestSaveLayout());
-		});
+		levelSelect.addEventListener("change", () => void this.changeHeadingLevel(Number(levelSelect.value)));
 
 		// Filter box: typing narrows the wall to cards containing the text; X clears.
 		const filterWrap = cluster.createDiv({ cls: "section-cards-control section-cards-filter" });
