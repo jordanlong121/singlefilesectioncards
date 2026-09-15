@@ -19,8 +19,8 @@ cards, task management, brainstorming, and a diary or journal.
 
 **Why one big note?** A single file has real advantages over a folder of small ones: an AI
 agent can read the whole context in one go, nothing about the structure is locked into a
-plugin, and any app that edits Markdown can edit it. The usual price is scrolling — hunting for
-today's section in a year-long note. This plugin removes that price: the note stays one plain
+plugin, and any app that edits Markdown can edit it. The usual price is scrolling — like hunting for
+today's section in a year-long note or finding a to-do item in a large project file. This plugin removes that price: the note stays one plain
 Markdown file, and you work in the view that fits the job — a wall of cards, a calendar, a day
 planner, a canvas — landing on the section you want without scrolling for it.
 
@@ -148,7 +148,10 @@ tomorrow, and its contents spread over two columns: each sub-heading is a card o
 its tasks inside, and the loose lines above them gather under **Unfiled**. Drag a card to the
 other column or into a new order, resize it, tick its tasks, or send it to the next day by
 dropping it on an arrow — the note changes underneath, and the arrangement is remembered per
-note. A day that doesn't exist yet can be created from the arrow.
+note. Cards you haven't placed flow into the two columns to balance them; a dragged card keeps
+its column until **Unpin from column** in its menu releases it. Stepping onto a day with no
+card offers to create it or to skip to the nearest day that has one. A card's color paints the
+title bar, and today's subcard wears the today ring.
 
 ![Day Planner](screenshots/planner.png)
 
@@ -421,8 +424,10 @@ With **Dates** on, two toggle buttons beside the toolbar's calendar button (and 
 the toolbar menu) offer **Hide future dates** and **Hide past dates**: dated
 cards after today, or before it, drop out of the wall (today's card and undated cards always
 show). A status bar along the pane's bottom says which are hidden, with a button to show them
-again; jumping to a hidden date turns the hide off. Remembered per note. The Calendar and Heatmap ignore them, since their grids place
-every day.
+again; jumping to a hidden date turns the hide off. Remembered per note. The Calendar, Heatmap,
+and Day Planner ignore them — the grids place every day, and the planner shows one day at a
+time and walks to the next with its arrows — so the toggles step aside on those layouts and
+come back, still set, when you return to a wall layout.
 
 ## Jump to a date
 
