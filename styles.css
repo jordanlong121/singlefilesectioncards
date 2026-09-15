@@ -3975,12 +3975,30 @@ body.is-mobile .section-card-actions button {
 	margin-left: auto;
 	padding: 1px 7px;
 	border-radius: 999px;
+	cursor: pointer;
 	font-size: var(--font-ui-smaller);
 	font-weight: 600;
 	line-height: 1.4;
 	white-space: nowrap;
 	color: var(--text-on-accent, #fff);
 	background: rgb(var(--color-orange-rgb, 233, 151, 63));
+}
+
+/* The task the due badge led to, lit briefly. */
+.section-card-body li.sfsc-task-flash,
+.section-card-body .sfsc-task-flash {
+	animation: sfsc-task-flash 1.6s ease-out;
+	border-radius: var(--radius-s, 4px);
+}
+
+@keyframes sfsc-task-flash {
+	0%,
+	40% {
+		background-color: rgba(var(--interactive-accent-rgb, 124, 77, 255), 0.35);
+	}
+	100% {
+		background-color: transparent;
+	}
 }
 
 .sfsc-due-badge.is-hidden {

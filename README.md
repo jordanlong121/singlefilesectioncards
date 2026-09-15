@@ -463,7 +463,7 @@ prompt offers to create it (template applied, default placement).
 | Show properties as a card / Properties card title | The note's properties (frontmatter) become the first card, as a table of names and values; editing the card edits the raw properties text. Display-only title (off by default) |
 | Jump to today's card | Scroll to today's card when a note opens in the view (on by default; needs the note's Dates checkbox) |
 | Keep pinned cards on screen | Pinned cards stay on screen while the rest scroll — below the toolbar, or left of the row in Vertical (on by default; not in Custom Grid) |
-| Mark cards with due tasks | Amber badge and edge for cards with an open task due today, red for overdue (Tasks 📅 or Dataview due fields) |
+| Mark cards with due tasks | Amber badge and edge for cards with an open task due today, red for overdue (Tasks 📅 or Dataview due fields); click the badge to jump to the first overdue task |
 | Card colors | Each of the nine card colors' RGB value and label, with preset palettes to apply in one pick |
 | Card Flip | Flip-over button on cards that hold the back-side marker line; the marker text itself (default `%% flip %%`) |
 | Default sort | A→Z, Z→A, or document order |
