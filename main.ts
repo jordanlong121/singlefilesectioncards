@@ -8781,8 +8781,17 @@ export class SectionCardsView extends ItemView {
 		// Re-apply an active filter to the fresh entries before anything is measured —
 		// starred-only counts, and so does clearing its leftover class after it turned
 		// itself off above.
+		// …and once more after a filter or date hide is switched OFF: the cards still
+		// wear the hidden class from the last pass (the Rolodex's tabs never came back).
 		const dateHide = this.plugin.getDateHide(file.path);
-		if (this.filterQuery.trim() || this.starredOnly || this.contentEl.hasClass("is-starred-only") || dateHide.future || dateHide.past) {
+		if (
+			this.filterQuery.trim() ||
+			this.starredOnly ||
+			this.contentEl.hasClass("is-starred-only") ||
+			dateHide.future ||
+			dateHide.past ||
+			this.cardEntries.some((entry) => entry.el.hasClass("is-filtered-out"))
+		) {
 			this.applyFilter();
 		}
 		this.applyTaskFilter(); // marks task-empty cards before the pack measures
