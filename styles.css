@@ -553,9 +553,12 @@ body.sfsc-flat-cards .section-cards-view {
 	box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
-/* The Day Planner shows one day and walks to the next: the hide toggles don't apply
-   there (the view ignores the setting), so the buttons step aside. */
-.is-layout-planner .section-cards-datehide-btn {
+/* Hide future / past dates doesn't apply on the Day Planner (one day at a time, the
+   arrows walk to the next), the Calendar, or the Heatmap (their grids place every
+   day): the view ignores the setting there, so the toggles step aside. */
+.is-layout-planner .section-cards-datehide-btn,
+.is-layout-calendar .section-cards-datehide-btn,
+.is-layout-heatmap .section-cards-datehide-btn {
 	display: none;
 }
 
