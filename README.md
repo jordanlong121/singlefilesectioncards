@@ -10,6 +10,8 @@
 
 [![Flash cards: a question on the front, the answer on the back](screenshots/hero-flashcards.png)](#card-flip)
 
+[![One day at a time, its tasks laid out in two columns](screenshots/hero-planner.png)](#day-planner)
+
 An [Obsidian](https://obsidian.md) plugin that shows the sections of **one** note as a wall of
 cards — one card per heading — and lets you edit any section in place. With many layout and view options, it functions as as a home for ad hoc
 dashboards, sticky notes, flash cards, task management, brainstorming, and a diary or journal.
@@ -133,29 +135,14 @@ tab to send it to that card.
 
 ### Day Planner
 
-One card at a time, as a planner page: its title in large type across the top, an arrow on
-either side to the previous and next card in the note's own order (or press `←` / `→`, `,` / `.`)
-— in a note with date headings the arrows step a day at a time, → to tomorrow and ← to yesterday
-whatever the sort, and a day with no card yet asks whether to create it or skip on to the nearest
-day that has one — and its contents as
-small cards in two columns. Every heading beneath the card, at any level, is a subcard —
-titled by the heading, its tasks live inside — so a day card (H3) shows its H4 blocks, and a
-month card (H1) shows every day in it; the lines above the first heading gather under the
-unfiled card's name in whichever column holds them, each line still its own card to drag,
-resize, or tick. A card with no headings beneath it shows each task or paragraph as a line card
-of its own. Cards flow into the two columns in order so the
-columns come out about even; one you drag stays where you put it (either side), and the rest
-re-flow around it — **Unpin from column** in its menu lets it flow again. Pick a level the note has no headings at (H2 in a
-note of H1 months and H3 days) and the planner says so, offers a button that adds the first
-one, and shows every section the note does have as cards beneath. Drag a card into the other
-column or to a new spot (which also moves the text in the note — subcards reorder among the
-subcards, lines among the lines), drag its bottom edge
-to give it more or less room, or drop it on an arrow to send it to the neighbouring card. The
-column and height of each card are remembered per note. Right-click a card for the usual line
-menu (or **Edit text…** on a subcard) plus **Move to right/left column** and **Reset height**;
-double-click it to edit. Beneath the title sit the card's color, delete, and open-in-note
-buttons, and an **Add a subsection** button that appends a new heading one level below the card
-(a new subcard) after asking for its title.
+One day on one page. The card's title sits across the top with arrows to yesterday and
+tomorrow, and its contents spread over two columns: each sub-heading is a card of its own with
+its tasks inside, and the loose lines above them gather under **Unfiled**. Drag a card to the
+other column or into a new order, resize it, tick its tasks, or send it to the next day by
+dropping it on an arrow — the note changes underneath, and the arrangement is remembered per
+note. A day that doesn't exist yet can be created from the arrow.
+
+![Day Planner](screenshots/planner.png)
 
 #### Document setup
 
