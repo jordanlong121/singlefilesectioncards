@@ -2382,6 +2382,11 @@ export function computeTabEdit(text: string, selStart: number, selEnd: number, o
 	return { start: lineStart, end: regionEnd, insert, selStart: lineStart, selEnd: lineStart + insert.length };
 }
 
+/** A note's folder prefix ("Senstar/" or "" at the vault root), for sibling paths. */
+function noteFolderOf(file: TFile): string {
+	return file.parent && file.parent.path !== "/" ? `${file.parent.path}/` : "";
+}
+
 /** A line's place on the Day Planner: which column, and a height when it was resized. */
 export interface PlannerSlot {
 	/** The column the user put the card in — left included, so a card dragged left
@@ -7717,6 +7722,15 @@ export class SectionCardsView extends ItemView {
 				evt.preventDefault();
 				evt.stopPropagation();
 				const menu = new Menu();
+				// Obsidian's own file menu doesn't offer Rename to other plugins' menus:
+				// the plugin's rename (links update; the remembered view follows) goes first.
+				menu.addItem((item) =>
+					item
+						.setTitle("Rename note…")
+						.setIcon("pencil")
+						.onClick(() => this.plugin.promptRenameNote(entry.path, () => void this.refresh())),
+				);
+				menu.addSeparator();
 				this.app.workspace.trigger("file-menu", menu, file, "file-explorer");
 				menu.showAtMouseEvent(evt);
 			});
@@ -12979,27 +12993,13 @@ class NoteLibraryModal extends Modal {
 		}
 	}
 
-	/** The note's folder prefix, for building sibling paths in rename/duplicate. */
+	/** The note's folder prefix, for building sibling paths in duplicate. */
 	private folderOf(file: TFile): string {
-		return file.parent && file.parent.path !== "/" ? `${file.parent.path}/` : "";
+		return noteFolderOf(file);
 	}
 
 	private renameNote(path: string): void {
-		const file = this.app.vault.getFileByPath(path);
-		if (!file) return;
-		new TextInputModal(this.app, "Rename note", file.basename, "Rename", (value) => {
-			const name = value.trim();
-			if (!name || name === file.basename) return;
-			void (async () => {
-				try {
-					// fileManager (not vault) so links to the note update everywhere.
-					await this.app.fileManager.renameFile(file, normalizePath(`${this.folderOf(file)}${name}.md`));
-				} catch {
-					new Notice("Couldn't rename — is the name free?");
-				}
-				this.renderList();
-			})();
-		}).open();
+		this.plugin.promptRenameNote(path, () => this.renderList());
 	}
 
 	private duplicateNote(path: string): void {
@@ -15231,6 +15231,27 @@ export default class SectionCardsPlugin extends Plugin {
 			if (at >= 0) list.splice(at, 1);
 		}
 		await this.saveSettings();
+	}
+
+	/** Ask for a new name and rename the note in its folder (Manage notes, the Deck's
+	 * tile menu). Through fileManager, not vault, so links to the note update; the
+	 * vault's rename event then carries the remembered view and deck entry along.
+	 * `done` runs after the attempt, renamed or not, to redraw the caller's list. */
+	promptRenameNote(path: string, done?: () => void): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		new TextInputModal(this.app, "Rename note", file.basename, "Rename", (value) => {
+			const name = value.trim();
+			if (!name || name === file.basename) return;
+			void (async () => {
+				try {
+					await this.app.fileManager.renameFile(file, normalizePath(`${noteFolderOf(file)}${name}.${file.extension}`));
+				} catch {
+					new Notice("Couldn't rename — is the name free?");
+				}
+				done?.();
+			})();
+		}).open();
 	}
 
 	/** A duplicated note starts with a copy of the original's remembered view —
