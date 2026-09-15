@@ -5563,8 +5563,29 @@ export class SectionCardsView extends ItemView {
 
 	// ---------- Day Planner: one card, its lines as cards in two columns ----------
 
-	/** Day Planner: turn to a card (an arrow, ← / →, or `,` / `.`). */
+	/**
+	 * Day Planner: turn to a card (an arrow, ← / →, or `,` / `.`). A card that Hide
+	 * future / past dates has hidden is still what the arrow asked for — a note with
+	 * its days written ahead would otherwise look stuck on today, offering neither the
+	 * card nor to create it — so the hide comes off first, as a date jump does. A card
+	 * the text filter hides stays put, with a word about why.
+	 */
 	private setPlannerActive(entry: CardEntry): void {
+		if (entry.el.hasClass("is-filtered-out")) {
+			const hiddenAs = this.dateHiddenAs(entry.holder.section, this.dateGate());
+			if (!hiddenAs) {
+				new Notice(`“${entry.holder.section.title || "(untitled)"}” is hidden by the filter.`);
+				return;
+			}
+			this.roloActive.set(this.filePath, this.plannerKey(entry));
+			void (async () => {
+				const patch = hiddenAs === "future" ? { future: false } : { past: false };
+				await this.plugin.setDateHide(this.filePath, patch, this.viewSettings(), false);
+				await this.refresh();
+				new Notice(`Showing ${hiddenAs} dates again.`);
+			})();
+			return;
+		}
 		this.roloActive.set(this.filePath, this.plannerKey(entry));
 		this.layoutPlanner();
 	}
