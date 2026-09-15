@@ -2384,7 +2384,9 @@ export function computeTabEdit(text: string, selStart: number, selEnd: number, o
 
 /** A line's place on the Day Planner: which column, and a height when it was resized. */
 export interface PlannerSlot {
-	col: 0 | 1;
+	/** The column the user put the card in — left included, so a card dragged left
+	 * stays left rather than re-flowing. Unset: the card flows to balance the columns. */
+	col?: 0 | 1;
 	h?: number;
 }
 
@@ -3621,6 +3623,8 @@ interface PlannerItem {
 	col: 0 | 1;
 	/** Task lines of the section above this card, so its nth checkbox maps to a task line. */
 	tasksBefore: number;
+	/** The saved slot, if any (an explicit column pin and/or a resized height). */
+	slot?: PlannerSlot;
 }
 
 interface CardsViewState {
@@ -6079,6 +6083,7 @@ export class SectionCardsView extends ItemView {
 				col,
 				// Checkbox n of this card is task line (tasks before it + n) of the section.
 				tasksBefore: taskLines.filter((line) => line < card.start).length,
+				slot,
 			};
 			// Subcards are titled by their heading.
 			if (card.kind === "sub") {
@@ -6112,7 +6117,7 @@ export class SectionCardsView extends ItemView {
 
 	/** Drag, checkbox, double-click edit, and right-click menu for one planner card. */
 	private wirePlannerItem(item: HTMLElement, body: HTMLElement, file: TFile, section: Section, ctx: PlannerItem): void {
-		const { card, text, key, col } = ctx;
+		const { card, text, key, col, slot } = ctx;
 		item.draggable = true;
 		item.addEventListener("dragstart", (evt) => {
 			const target = evt.target as HTMLElement | null;
@@ -6180,6 +6185,14 @@ export class SectionCardsView extends ItemView {
 						.setTitle("Reset height")
 						.setIcon("unfold-vertical")
 						.onClick(() => void this.updatePlannerSlot(section.headingRaw, key, ({ col: c }) => ({ col: c }))),
+				);
+			}
+			if (slot?.col !== undefined) {
+				menu.addItem((mi) =>
+					mi
+						.setTitle("Unpin from column")
+						.setIcon("pin-off")
+						.onClick(() => void this.updatePlannerSlot(section.headingRaw, key, ({ h }) => ({ h }))),
 				);
 			}
 			menu.addSeparator();
@@ -6368,8 +6381,8 @@ export class SectionCardsView extends ItemView {
 		await this.refresh();
 	}
 
-	/** Change one line's remembered column/height on one card and save; a slot back at
-	 * the defaults (left column, natural height) is dropped rather than stored. */
+	/** Change one card's remembered column/height and save; a slot with neither left
+	 * (unpinned, natural height) is dropped rather than stored. */
 	private async updatePlannerSlot(
 		headingRaw: string,
 		key: string,
@@ -6378,8 +6391,8 @@ export class SectionCardsView extends ItemView {
 	): Promise<void> {
 		const all = { ...this.plugin.getPlanner(this.filePath) };
 		const slots = { ...(all[headingRaw] ?? {}) };
-		const next = change(slots[key] ?? { col: 0 });
-		if (next.col === 0 && next.h === undefined) delete slots[key];
+		const next = change(slots[key] ?? {});
+		if (next.col === undefined && next.h === undefined) delete slots[key];
 		else slots[key] = next;
 		if (Object.keys(slots).length) all[headingRaw] = slots;
 		else delete all[headingRaw];
@@ -6402,7 +6415,7 @@ export class SectionCardsView extends ItemView {
 				if (!key || !item.style.height) continue; // never resized: natural height
 				const h = Math.round(item.offsetHeight);
 				if (!h || Math.abs(h - (slots[key]?.h ?? 0)) < 2) continue;
-				slots[key] = { ...(slots[key] ?? { col: 0 }), h };
+				slots[key] = { ...(slots[key] ?? {}), h };
 				changed = true;
 			}
 			if (!changed) return;

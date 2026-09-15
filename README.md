@@ -144,7 +144,8 @@ month card (H1) shows every day in it; the lines above the first heading gather 
 unfiled card's name in whichever column holds them, each line still its own card to drag,
 resize, or tick. A card with no headings beneath it shows each task or paragraph as a line card
 of its own. Cards flow into the two columns in order so the
-columns come out about even; one you drag stays where you put it, and the rest re-flow around it. Pick a level the note has no headings at (H2 in a
+columns come out about even; one you drag stays where you put it (either side), and the rest
+re-flow around it — **Unpin from column** in its menu lets it flow again. Pick a level the note has no headings at (H2 in a
 note of H1 months and H3 days) and the planner says so, offers a button that adds the first
 one, and shows every section the note does have as cards beneath. Drag a card into the other
 column or to a new spot (which also moves the text in the note — subcards reorder among the
