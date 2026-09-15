@@ -440,11 +440,13 @@ ${sections.map((s, i) => cardHtml(s).replace('class="section-card', `class="sect
 		const lines = s.body.split("\n");
 		const cols = [[], []];
 		const cards = plannerCards(lines);
-		const columns = plannerColumnSplit(cards.map((c, i) => ({ weight: plannerCardWeight(lines, c, i === 2 ? 96 : undefined) })));
+		// PLANNER_RESIZE=1 stages the third card at a fixed height, to show the resize grip.
+		const resized = (i) => (process.env.PLANNER_RESIZE && i === 2 ? 96 : undefined);
+		const columns = plannerColumnSplit(cards.map((c, i) => ({ weight: plannerCardWeight(lines, c, resized(i)) })));
 		const grouped = cards.some((c) => c.kind === "sub");
 		const groups = [[], []];
 		cards.forEach((c, i) => {
-			const style = i === 2 ? ' style="height: 96px"' : "";
+			const style = resized(i) ? ` style="height: ${resized(i)}px"` : "";
 			const title = c.kind === "sub" ? `<div class="sfsc-planner-item-title">${esc(c.title)}</div>` : "";
 			const text = lines.slice(c.kind === "sub" ? c.start + 1 : c.start, c.end).join("\n");
 			const today = c.kind === "sub" && c.title.includes(TODAY) ? " is-today" : "";

@@ -133,6 +133,22 @@ banner(
     "hero-images.png",
 )
 
+# The Day Planner banner uses screenshots/planner-full.png, staged from tools/planner-hero-note.md
+# (copied in as "Daily Notes 2026.md"):
+#   NOTE=<outdir>/Daily\ Notes\ 2026.md LEVEL=3 TODAY=2026-08-06 ROLO_ACTIVE=2026-08-06 node tools/preview-harness.mjs <outdir>
+#   chrome --headless=new --screenshot=planner-full.png --window-size=1280,760 <outdir>/planner.html
+banner(
+    "planner-full.png",
+    [
+        [("The best of", WHITE)],
+        [("a day planner", ORANGE)],
+        [("and ", WHITE), ("your notes", BLUE), (".", WHITE)],
+        [("One file, no complexity.", WHITE)],
+    ],
+    "One day at a time, its tasks laid out in two columns.",
+    "hero-planner.png",
+)
+
 # The flash-card banner uses screenshots/flashcards-full.png, staged from tools/flashcards-hero-note.md
 # (copied in as "Study Deck.md") with a few cards shown flipped:
 #   NOTE=<outdir>/Study\ Deck.md SORT=doc FLIPPED="mitochondrion,Ohm,gato,Krebs" node tools/preview-harness.mjs <outdir>
