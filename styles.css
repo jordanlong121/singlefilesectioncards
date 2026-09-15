@@ -3860,7 +3860,7 @@ body.is-mobile .section-card-actions button {
 	margin: 0 auto 10px;
 	padding: 6px 10px;
 	border: 1px solid var(--sc-line);
-	border-radius: 999px;
+	border-radius: var(--radius-m, 8px);
 	background: var(--background-primary);
 	box-shadow: var(--sc-shadow-hover);
 }
@@ -3883,7 +3883,7 @@ body.is-mobile .section-card-actions button {
 	height: auto;
 	padding: 4px 10px;
 	font-size: var(--font-ui-smaller);
-	border-radius: 999px;
+	border-radius: var(--radius-s, 4px);
 	box-shadow: none;
 }
 
