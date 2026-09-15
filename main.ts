@@ -1125,8 +1125,11 @@ function cardDateIso(section: Section, format: string, detect: string): string |
 	const fromTitle = titleToIso(section.title, format, detect);
 	if (fromTitle) return fromTitle;
 	let latest: string | null = null;
-	for (const m of section.body.matchAll(ISO_ANYWHERE_RE)) {
-		if (validIsoDate(m[1]) && (!latest || m[1] > latest)) latest = m[1];
+	// An exec loop rather than matchAll: the latter is ES2020, past this project's lib.
+	ISO_ANYWHERE_RE.lastIndex = 0;
+	for (let m = ISO_ANYWHERE_RE.exec(section.body); m; m = ISO_ANYWHERE_RE.exec(section.body)) {
+		const found = m[1];
+		if (validIsoDate(found) && (!latest || found > latest)) latest = found;
 	}
 	return latest;
 }
@@ -14701,7 +14704,9 @@ export default class SectionCardsPlugin extends Plugin {
 				await this.saveSettings();
 			}
 		}
-		const now = moment();
+		// Through the typed `mo` wrapper: obsidian's `moment` export types as `any`
+		// wherever moment's own types aren't installed, and the linter flags every use.
+		const now = mo();
 		const title = now.format(this.getNewCardFormat(file.path));
 		const headingRaw = `${"#".repeat(level)} ${title}`;
 
