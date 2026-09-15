@@ -728,6 +728,7 @@ const BG_PALETTES = {
 	"bg-dunes": { base: ["#2a2016", "#4d3a24", "#7a5a33"], glowA: "#e8c07d", glowB: "#ff9f68" },
 	"bg-plum": { base: ["#241b2f", "#45305c", "#6d4a86"], glowA: "#c69df2", glowB: "#f29dc4" },
 	"bg-meadow": { base: ["#17261a", "#35502c", "#5c7a3a"], glowA: "#b9e769", glowB: "#7dd8c0" },
+	"bg-twilight": { base: ["#1b1f3a", "#3b2d5c", "#7a4a6d"], glowA: "#ffb37a", glowB: "#7fc8ff" },
 };
 
 function backgroundSvg({ base, glowA, glowB }) {
@@ -750,12 +751,14 @@ const PAGE_BACKGROUNDS = {
 	tight: "bg-ocean",
 	horizontal: "bg-dunes",
 	vertical: "bg-aurora",
+	rolodex: "bg-plum",
 	custom: "bg-plum",
 	images: null, // the previews are the pictures — a photo background would fight them
 	links: null, // same story: the page frames are the content
 	calendar: "bg-meadow",
 	heatmap: "bg-ocean",
 	tasks: "bg-forest",
+	planner: "bg-twilight",
 	hierarchy: "bg-aurora",
 	dividers: "bg-dunes",
 	"context-menu": null,
@@ -841,7 +844,7 @@ ${MOBILE ? mobileChromeCss() : ""}
 </head>
 <body class="${MOBILE ? "theme-dark mod-ios is-mobile is-phone is-ios" : "theme-dark mod-windows"} is-focused preset-default bg-auto no-animation disable-splash-screen">
 ${MOBILE ? phoneShell : desktopShell}
-${withMenu ? menuHtml() : ""}
+${withMenu ? `<style>/* The menu is the subject: the app behind it goes soft. */.app-container { filter: blur(3px); }</style>${menuHtml()}` : ""}
 ${PACK_SCRIPT.replace("<script>", `<script data-layout="${layout}">`)}
 ${process.env.BENCH ? BENCH_SCRIPT : ""}
 ${process.env.BENCH_CSS ? `<style>${process.env.BENCH_CSS}</style>` : ""}

@@ -132,26 +132,21 @@ One card per row, full pane width.
 
 ### Rolodex
 
-One card at a time, filling the pane, with every card's title as a tab across the top. A lone
-title spans the strip, two take half each, and so on; when a row can't hold them the strip grows
-to a second row, up to four, and past that it scrolls sideways — edge chevrons show where tabs
-are cut off, and the wheel over the strip scrolls it, while the wheel over the card scrolls its
-body. The `+` / `−` buttons at the strip's left edge force more or fewer rows. Click a tab (or
-press `,` / `.`) to turn to that card; drag a tab onto another to move its section there in the
-note (in document order, like dragging a card). Drag a paragraph or task from the card onto a
-tab to send it to that card.
+One card at a time, filling the pane, with every card's title as a tab across the top — the
+strip grows to more rows as titles pile up, and past four it scrolls sideways. Click a tab (or
+press `,` / `.`) to turn to that card, drag a tab onto another to move its section there in the
+note, or drag a paragraph or task from the card onto a tab to send it to that card.
+
+![Rolodex](screenshots/rolodex.png)
 
 ### Day Planner
 
-One day on one page. The card's title sits across the top with arrows to yesterday and
-tomorrow, and its contents spread over two columns: each sub-heading is a card of its own with
-its tasks inside, and the loose lines above them gather under **Unfiled**. Drag a card to the
-other column or into a new order, resize it, tick its tasks, or send it to the next day by
-dropping it on an arrow — the note changes underneath, and the arrangement is remembered per
-note. Cards you haven't placed flow into the two columns to balance them; a dragged card keeps
-its column until **Unpin from column** in its menu releases it. Stepping onto a day with no
-card offers to create it or to skip to the nearest day that has one. A card's color paints the
-title bar, and today's subcard wears the today ring.
+One day on one page: the card's title sits across the top with arrows to yesterday and
+tomorrow, and each sub-heading beneath it is a card of its own in one of two columns, its tasks
+inside. Drag a card to the other column or into a new order, resize it, tick its tasks, or send
+it to the next day by dropping it on an arrow — the note changes underneath, and the
+arrangement is remembered per note. Stepping onto a day with no card offers to create it or to
+skip to the nearest day that has one.
 
 ![Day Planner](screenshots/planner.png)
 
