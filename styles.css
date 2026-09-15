@@ -553,6 +553,12 @@ body.sfsc-flat-cards .section-cards-view {
 	box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
+/* The Day Planner shows one day and walks to the next: the hide toggles don't apply
+   there (the view ignores the setting), so the buttons step aside. */
+.is-layout-planner .section-cards-datehide-btn {
+	display: none;
+}
+
 /* The extra selector weight out-ranks theme input[type=…] rules: the input must
    never take flow space, or it opens a phantom gap beside the button. */
 .section-cards-jump-date input.section-cards-jump-input {

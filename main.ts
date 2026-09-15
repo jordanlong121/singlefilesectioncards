@@ -4030,6 +4030,14 @@ export class SectionCardsView extends ItemView {
 		return this.layout === "calendar" || this.layout === "heatmap";
 	}
 
+	/** Where Hide future / past dates applies: the wall layouts. Not the Calendar and
+	 * Heatmap, whose grids place every day, and not the Day Planner, which shows one
+	 * day at a time and walks to the next with its arrows — hiding the days ahead
+	 * would leave the arrows nowhere to go. */
+	private dateHideApplies(): boolean {
+		return !this.isDateLayout() && this.layout !== "planner";
+	}
+
 	/** The freeform canvases — Custom Grid (section cards) and Images (previews) —
 	 * share the tray, zoom, pointer-drag, and snap machinery. These helpers pick the
 	 * active canvas's state so that machinery never has to know which one it serves. */
@@ -4795,7 +4803,7 @@ export class SectionCardsView extends ItemView {
 		const bar = this.dateBarEl;
 		if (!bar) return;
 		const hide = this.plugin.getDateHide(this.filePath);
-		const show = (hide.future || hide.past) && this.containsDates && !this.isDateLayout() && !this.deckMode;
+		const show = (hide.future || hide.past) && this.containsDates && this.dateHideApplies() && !this.deckMode;
 		bar.toggleClass("is-hidden", !show);
 		this.contentEl.toggleClass("has-datebar", show);
 		if (!show) return;
@@ -4876,7 +4884,7 @@ export class SectionCardsView extends ItemView {
 
 	/** The hide-future / hide-past gate, or null when nothing is hidden by date here. */
 	private dateGate(hide = this.plugin.getDateHide(this.filePath)): DateGate | null {
-		return (hide.future || hide.past) && this.containsDates && !this.isDateLayout()
+		return (hide.future || hide.past) && this.containsDates && this.dateHideApplies()
 			? {
 					past: hide.past,
 					future: hide.future,
@@ -5563,27 +5571,12 @@ export class SectionCardsView extends ItemView {
 
 	// ---------- Day Planner: one card, its lines as cards in two columns ----------
 
-	/**
-	 * Day Planner: turn to a card (an arrow, ← / →, or `,` / `.`). A card that Hide
-	 * future / past dates has hidden is still what the arrow asked for — a note with
-	 * its days written ahead would otherwise look stuck on today, offering neither the
-	 * card nor to create it — so the hide comes off first, as a date jump does. A card
-	 * the text filter hides stays put, with a word about why.
-	 */
+	/** Day Planner: turn to a card (an arrow, ← / →, or `,` / `.`). A card the filter
+	 * box hides stays put, with a word about why — the planner would otherwise fall
+	 * back to today and look stuck. (Hide future / past dates doesn't apply here.) */
 	private setPlannerActive(entry: CardEntry): void {
 		if (entry.el.hasClass("is-filtered-out")) {
-			const hiddenAs = this.dateHiddenAs(entry.holder.section, this.dateGate());
-			if (!hiddenAs) {
-				new Notice(`“${entry.holder.section.title || "(untitled)"}” is hidden by the filter.`);
-				return;
-			}
-			this.roloActive.set(this.filePath, this.plannerKey(entry));
-			void (async () => {
-				const patch = hiddenAs === "future" ? { future: false } : { past: false };
-				await this.plugin.setDateHide(this.filePath, patch, this.viewSettings(), false);
-				await this.refresh();
-				new Notice(`Showing ${hiddenAs} dates again.`);
-			})();
+			new Notice(`“${entry.holder.section.title || "(untitled)"}” is hidden by the filter.`);
 			return;
 		}
 		this.roloActive.set(this.filePath, this.plannerKey(entry));
@@ -7922,9 +7915,9 @@ export class SectionCardsView extends ItemView {
 					.onClick(() => this.openJumpPicker?.()),
 			);
 		}
-		if (this.containsDates) {
+		if (this.containsDates && this.dateHideApplies()) {
 			// Relative to today; today's own card always shows, undated cards too. Not on
-			// the Calendar/Heatmap, whose grids place every day.
+			// the Calendar/Heatmap, whose grids place every day, nor the Day Planner.
 			const hide = this.plugin.getDateHide(this.filePath);
 			menu.addItem((item) =>
 				item
