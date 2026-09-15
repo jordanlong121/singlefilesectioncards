@@ -14,8 +14,8 @@
 
 An [Obsidian](https://obsidian.md) plugin that shows the sections of **one** note as a wall of
 cards — one card per heading — and lets you edit any section in place. With many layout and view
-options, it functions as a home for ad hoc dashboards, sticky notes, flash cards, task
-management, brainstorming, and a diary or journal.
+options, it functions as a home for ad hoc dashboards, a day planner, sticky notes, flash
+cards, task management, brainstorming, and a diary or journal.
 
 **Why one big note?** A single file has real advantages over a folder of small ones: an AI
 agent can read the whole context in one go, nothing about the structure is locked into a
