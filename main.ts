@@ -2648,6 +2648,50 @@ export function detectLevelSetup(lines: string[], cardFormat: string, detect: st
 	return out;
 }
 
+/**
+ * Day Planner: which column each card goes in. Cards the user has placed (a saved
+ * column) stay put; the rest flow in order, newspaper-style — the left column takes
+ * cards until it holds about half the total height, the right column the remainder —
+ * so the two columns come out as even as document order allows. `weight` is a rough
+ * height (lines); a card with a saved column still counts toward that column.
+ */
+export function plannerColumnSplit(items: { col?: 0 | 1; weight: number }[]): (0 | 1)[] {
+	const total = items.reduce((sum, item) => sum + item.weight, 0);
+	const half = total / 2;
+	let left = items.filter((item) => item.col === 0).reduce((sum, item) => sum + item.weight, 0);
+	const out: (0 | 1)[] = [];
+	let wentRight = false;
+	for (const item of items) {
+		if (item.col !== undefined) {
+			out.push(item.col);
+			continue;
+		}
+		// Left while it lands closer to the halfway mark than stopping would; once a
+		// card goes right, the rest follow (order stays readable top-down, then across).
+		if (!wentRight && Math.abs(left + item.weight - half) <= Math.abs(left - half)) {
+			left += item.weight;
+			out.push(0);
+		} else {
+			wentRight = true;
+			out.push(1);
+		}
+	}
+	return out;
+}
+
+/** A rough height for a planner card, in lines: its non-blank lines, long ones
+ * counted as wrapped, plus one for a subcard's title. Resized cards use their height. */
+export function plannerCardWeight(lines: string[], card: PlannerCard, savedHeight?: number): number {
+	if (savedHeight) return Math.max(1, Math.round(savedHeight / 26));
+	let weight = card.kind === "line" ? 0 : 1;
+	const start = card.kind === "sub" ? card.start + 1 : card.start;
+	for (let i = start; i < card.end; i++) {
+		const line = lines[i].trim();
+		if (line) weight += Math.max(1, Math.ceil(line.length / 80));
+	}
+	return Math.max(1, weight);
+}
+
 /** Natural ordering for the alphanumeric-sort role: "Week 2" before "Week 10". */
 export function alphanumericCompare(a: string, b: string): number {
 	return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
@@ -5960,15 +6004,24 @@ export class SectionCardsView extends ItemView {
 			this.wirePlannerColumn(el, col, file, section);
 			return el;
 		});
+		// Columns: placed cards keep theirs; the rest flow to balance the two columns.
+		const texts = cards.map((card) => front.slice(card.start, card.end).join("\n"));
+		const keys = texts.map((text) => plannerBlockKey(text));
+		const columns = plannerColumnSplit(
+			cards.map((card, i) => {
+				const slot = slots[keys[i]];
+				return { col: slot?.col, weight: plannerCardWeight(front, card, slot?.h) };
+			}),
+		);
 		this.plannerItems = cards.map((card, index) => {
 			// A subcard's editable text stops at its last non-blank line; the blank lines
 			// that separate it from the next heading stay put when it's rewritten.
 			let editEnd = card.end;
 			while (editEnd > card.start + 1 && front[editEnd - 1].trim() === "") editEnd--;
-			const text = front.slice(card.start, card.end).join("\n");
-			const key = plannerBlockKey(text);
+			const text = texts[index];
+			const key = keys[index];
 			const slot = slots[key];
-			const col: 0 | 1 = slot?.col === 1 ? 1 : 0;
+			const col = columns[index];
 			const item = cols[col].createDiv({ cls: `sfsc-planner-item markdown-rendered is-${card.kind}` });
 			item.dataset.index = String(index);
 			item.dataset.key = key;
