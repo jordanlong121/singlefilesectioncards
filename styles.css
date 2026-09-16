@@ -3958,6 +3958,13 @@ body.is-mobile .section-card-actions button {
 	grid-column: 2;
 }
 
+/* The view header ("Show tab title bar" in Appearance) would repeat the tab's title
+   above the toolbar, which already names the note in its picker button: hidden on
+   desktop. Mobile keeps it — there it carries the back button and the view menu. */
+body:not(.is-mobile) .workspace-leaf-content[data-type="section-cards-view"] > .view-header {
+	display: none;
+}
+
 /* Hide past / future dates: a status bar across the pane's bottom. It sits on the leaf
    container (outside the scrolling pane), so cards scroll underneath; the pane pads its
    bottom by the bar's height so the last row can still scroll fully into view. */
