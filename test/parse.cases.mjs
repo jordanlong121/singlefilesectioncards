@@ -1894,26 +1894,30 @@ t("plannerCards: no sub-headings — one line card per movable block", () => {
   ]);
 });
 
-t("plannerCards: line cards above the first heading, then a subcard per heading at any level", () => {
+t("plannerCards: line cards above the first heading, then a subcard per heading; deeper headings stay inside", () => {
   const body = L("\n- [ ] loose\n- [ ] also loose\n\n#### Morning\n- [ ] run\n##### detail\ntext\n\n#### Afternoon\n- [ ] dentist");
   const cards = plannerCards(body);
   assert.deepEqual(cards.map((c) => [c.kind, c.start, c.end, c.title ?? c.blockIndex, c.level]), [
     ["line", 1, 2, 0, undefined],
     ["line", 2, 3, 1, undefined],
-    ["sub", 4, 6, "Morning", 4],
-    ["sub", 6, 9, "detail", 5],
+    ["sub", 4, 9, "Morning", 4],
     ["sub", 9, 11, "Afternoon", 4],
   ]);
 });
 
-t("plannerCards: a month card with a stray H2 among H1s still shows every H3 day", () => {
+t("plannerCards: days above the first week heading are cards; days under a week nest inside it", () => {
   const body = L("### 2026-09-02\n- [ ] a\n\n### 2026-09-01\n- [ ] b\n\n## August 2026\n### 2026-08-31\n- [ ] c");
   assert.deepEqual(plannerCards(body).map((c) => [c.kind, c.title, c.level]), [
     ["sub", "2026-09-02", 3],
     ["sub", "2026-09-01", 3],
     ["sub", "August 2026", 2],
-    ["sub", "2026-08-31", 3],
   ]);
+  assert.equal(plannerCards(body)[2].end, body.length, "the week runs to the end, its day inside");
+});
+
+t("plannerCards: a shallower heading after nested ones opens a new card", () => {
+  const body = L("## Week 1\n### Mon\n- a\n### Tue\n- b\n## Week 2\n### Wed\n- c");
+  assert.deepEqual(plannerCards(body).map((c) => [c.title, c.start, c.end]), [["Week 1", 0, 5], ["Week 2", 5, 8]]);
 });
 
 t("plannerCards: nothing (or only blanks) above the first sub-heading — no line cards", () => {
@@ -1940,7 +1944,7 @@ t("wholeNoteSection: the note below its properties, headless, spanning to the en
   assert.equal(s.endLine, lines.length);
   assert.ok(s.unfiled && s.whole);
   assert.equal(s.body.split("\n")[0], "# Sept");
-  assert.deepEqual(plannerCards(s.body.split("\n")).map((c) => c.title), ["Sept", "2026-09-14", "Aug", "2026-08-31"]);
+  assert.deepEqual(plannerCards(s.body.split("\n")).map((c) => c.title), ["Sept", "Aug"], "each month a card, its day inside");
 });
 
 t("parsePeriod: years, months, and weeks in each supported spelling", () => {
