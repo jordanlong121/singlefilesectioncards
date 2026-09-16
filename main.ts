@@ -2423,10 +2423,10 @@ export function plannerBlockKey(blockText: string): string {
  * block) above the card's first sub-heading, or a subcard — a sub-heading with
  * everything beneath it. */
 export interface PlannerCard {
-	/** "line": one movable block — a card with no sub-headings is all lines, and the lines
-	 * above a card's first sub-heading are lines too (the planner groups those under the
-	 * unfiled card's name); "sub": a sub-heading with what's beneath it. */
-	kind: "line" | "sub";
+	/** "line": one movable block (a card with no sub-headings is all lines); "loose": the
+	 * lines above a card's first sub-heading, as one card named after the unfiled card;
+	 * "sub": a sub-heading with what's beneath it. */
+	kind: "line" | "sub" | "loose";
 	start: number;
 	end: number;
 	/** Lines: the index among the section's movable blocks, which the block writers key on. */
@@ -2441,8 +2441,8 @@ export interface PlannerCard {
  * that runs to the next subcard's heading — unless it sits under an open subcard with a
  * shallower heading, in which case it stays inside: a month card (H1) shows each week
  * (H2) as a card with its days (H3) inside, while a day written above the first week
- * heading is a card of its own. Every movable block above the first heading — or
- * anywhere, when there are no headings — is a line card of its own. Fenced code is
+ * heading is a card of its own. What sits above the first heading is one "loose" card;
+ * with no headings at all, every movable block is a line card of its own. Fenced code is
  * never a heading.
  */
 export function plannerCards(body: string[]): PlannerCard[] {
@@ -2459,12 +2459,16 @@ export function plannerCards(body: string[]): PlannerCard[] {
 		openLevel = level;
 	}
 	const cards: PlannerCard[] = [];
-	const firstSub = subs.length ? subs[0].line : body.length;
-	blocks
-		.filter((b) => b.kind !== "other")
-		.forEach((b, blockIndex) => {
-			if (b.end <= firstSub) cards.push({ kind: "line", start: b.start, end: b.end, blockIndex });
-		});
+	if (!subs.length) {
+		blocks
+			.filter((b) => b.kind !== "other")
+			.forEach((b, blockIndex) => cards.push({ kind: "line", start: b.start, end: b.end, blockIndex }));
+		return cards;
+	}
+	const firstSub = subs[0].line;
+	let looseStart = 0;
+	while (looseStart < firstSub && body[looseStart].trim() === "") looseStart++;
+	if (looseStart < firstSub) cards.push({ kind: "loose", start: looseStart, end: firstSub });
 	subs.forEach((h, i) => {
 		cards.push({
 			kind: "sub",
@@ -6091,21 +6095,6 @@ export class SectionCardsView extends ItemView {
 				return { col: slot?.col, weight: plannerCardWeight(front, card, slot?.h) };
 			}),
 		);
-		// With subcards present, the lines above the first heading gather under the unfiled
-		// card's name in whichever columns hold them — one group per column, each line
-		// still its own card to drag, resize, and tick.
-		const grouped = cards.some((c) => c.kind === "sub");
-		const groups: (HTMLElement | null)[] = [null, null];
-		const hostFor = (card: PlannerCard, col: 0 | 1): HTMLElement => {
-			if (!grouped || card.kind !== "line") return cols[col];
-			let group = groups[col];
-			if (!group) {
-				group = cols[col].createDiv({ cls: "sfsc-planner-group" });
-				group.createDiv({ cls: "sfsc-planner-group-title", text: this.plannerLooseTitle() });
-				groups[col] = group;
-			}
-			return group;
-		};
 		this.plannerItems = cards.map((card, index) => {
 			// A subcard's editable text stops at its last non-blank line; the blank lines
 			// that separate it from the next heading stay put when it's rewritten.
@@ -6115,7 +6104,7 @@ export class SectionCardsView extends ItemView {
 			const key = keys[index];
 			const slot = slots[key];
 			const col = columns[index];
-			const item = hostFor(card, col).createDiv({ cls: `sfsc-planner-item markdown-rendered is-${card.kind}` });
+			const item = cols[col].createDiv({ cls: `sfsc-planner-item markdown-rendered is-${card.kind}` });
 			item.dataset.index = String(index);
 			item.dataset.key = key;
 			if (slot?.h) item.setCssStyles({ height: `${slot.h}px` });
@@ -6131,7 +6120,8 @@ export class SectionCardsView extends ItemView {
 				tasksBefore: taskLines.filter((line) => line < card.start).length,
 				slot,
 			};
-			// Subcards are titled by their heading.
+			// Subcards are titled by their heading; the loose card by the unfiled card's name.
+			if (card.kind === "loose") item.createDiv({ cls: "sfsc-planner-item-title", text: this.plannerLooseTitle() });
 			if (card.kind === "sub") {
 				item.createDiv({ cls: "sfsc-planner-item-title", text: card.title || "(untitled)" });
 				// In a dated note, today's subcard (a day under a month card, say) is lit
@@ -6146,7 +6136,12 @@ export class SectionCardsView extends ItemView {
 				if (holdsToday) item.addClass("is-today");
 			}
 			const body = item.createDiv({ cls: "sfsc-planner-item-body" });
-			const markdown = card.kind === "sub" ? front.slice(card.start + 1, editEnd).join("\n") : text;
+			const markdown =
+				card.kind === "sub"
+					? front.slice(card.start + 1, editEnd).join("\n")
+					: card.kind === "loose"
+						? front.slice(card.start, editEnd).join("\n")
+						: text;
 			if (markdown.trim()) {
 				void MarkdownRenderer.render(this.app, bodyForRender(markdown), body, file.path, scope).then(() => {
 					// Rendered task checkboxes come back disabled, and disabled inputs never fire clicks.
@@ -6400,7 +6395,7 @@ export class SectionCardsView extends ItemView {
 		stay();
 	}
 
-	/** The unfiled group's title: the unfiled card's name, its markdown emphasis stripped. */
+	/** The loose card's title: the unfiled card's name, its markdown emphasis stripped. */
 	private plannerLooseTitle(): string {
 		const raw = this.plugin.settings.unfiledTitle || DEFAULT_SETTINGS.unfiledTitle;
 		return raw.replace(/[*_`]/g, "").trim() || "Unfiled";
