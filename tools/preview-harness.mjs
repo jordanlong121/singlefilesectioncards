@@ -443,20 +443,15 @@ ${sections.map((s, i) => cardHtml(s).replace('class="section-card', `class="sect
 		// PLANNER_RESIZE=1 stages the third card at a fixed height, to show the resize grip.
 		const resized = (i) => (process.env.PLANNER_RESIZE && i === 2 ? 96 : undefined);
 		const columns = plannerColumnSplit(cards.map((c, i) => ({ weight: plannerCardWeight(lines, c, resized(i)) })));
-		const grouped = cards.some((c) => c.kind === "sub");
-		const groups = [[], []];
 		cards.forEach((c, i) => {
 			const style = resized(i) ? ` style="height: ${resized(i)}px"` : "";
-			const title = c.kind === "sub" ? `<div class="sfsc-planner-item-title">${esc(c.title)}</div>` : "";
+			// Subcards are titled by their heading; the loose card by the unfiled card's name.
+			const title = c.kind === "line" ? "" : `<div class="sfsc-planner-item-title">${esc(c.kind === "sub" ? c.title : "Unfiled")}</div>`;
 			const text = lines.slice(c.kind === "sub" ? c.start + 1 : c.start, c.end).join("\n");
 			const today = c.kind === "sub" && c.title.includes(TODAY) ? " is-today" : "";
-			const item = `<div class="sfsc-planner-item markdown-rendered is-${c.kind}${today}" draggable="true"${style}>${title}<div class="sfsc-planner-item-body">${text.trim() ? renderBody(text) : ""}</div></div>`;
-			(grouped && c.kind === "line" ? groups : cols)[columns[i]].push(item);
+			cols[columns[i]].push(`<div class="sfsc-planner-item markdown-rendered is-${c.kind}${today}" draggable="true"${style}>${title}<div class="sfsc-planner-item-body">${text.trim() ? renderBody(text) : ""}</div></div>`);
 		});
-		const col = (n) => {
-			const group = groups[n].length ? `<div class="sfsc-planner-group"><div class="sfsc-planner-group-title">Unfiled</div>${groups[n].join("\n")}</div>` : "";
-			return `<div class="sfsc-planner-col">${group}${cols[n].join("\n")}</div>`;
-		};
+		const col = (n) => `<div class="sfsc-planner-col">${cols[n].join("\n")}</div>`;
 		return `<div class="sfsc-planner">
 <div class="sfsc-planner-head"><button class="sfsc-planner-arrow is-prev"${activeAt === 0 ? " disabled" : ""}>${CHEVRON_LEFT}</button><div class="sfsc-planner-title-wrap"><div class="sfsc-planner-title${s.title.includes(TODAY) ? " is-today" : ""}">${esc(s.title)}</div><div class="sfsc-planner-actions"><button><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-square-plus"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8"/><path d="M12 8v8"/></svg></button><button><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-palette"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></button><button><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg></button><button><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-external-link"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></button></div></div><button class="sfsc-planner-arrow is-next"${activeAt === sections.length - 1 ? " disabled" : ""}>${CHEVRON_RIGHT}</button></div>
 <div class="sfsc-planner-cols">${col(0)}${col(1)}</div>

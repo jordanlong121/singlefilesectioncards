@@ -28,7 +28,7 @@ the file-write operations behind every action, against a fake vault.
 | Tasks layout | open counts, due summaries (📅 and `[due::]`), first overdue task index, task sort keeps the set |
 | Calendar / Heatmap | every dated title resolves to an ISO day; heatmap tallies per day; streaks; date level detection; day retitle keeps the weekday |
 | Custom Grid | snapping to the grid and minimums; free-spot search avoids obstacles |
-| Day Planner | split into line cards above the first heading + subcards at every level; line cards when no headings; flip marker respected only without subcards; column balancing invariants; slot key stable across task completion; whole-note fallback; period parse/shift/format round trips; level setup detection per fixture |
+| Day Planner | split into one loose card above the first heading + a subcard per heading (deeper headings nest inside); line cards when no headings; flip marker respected only without subcards; column balancing invariants; slot key stable across task completion; whole-note fallback; period parse/shift/format round trips; level setup detection per fixture |
 | Rolodex | duplicate headings are distinct cards (the view keys them by occurrence) |
 | Deck | excerpt skips frontmatter |
 | Writes (every action) | insert (top/bottom/logical, duplicate flag), delete, rename, quick add (top/bottom, above a flip marker), paste at end, toggle task (nth mapping, done date), move/delete/replace/insert-after block, move/replace line range (planner), move section, merge sections — each re-parsed afterwards; CRLF preserved |
