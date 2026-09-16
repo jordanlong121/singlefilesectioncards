@@ -2295,9 +2295,11 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 /* A subcard's heading is its title; the text beneath renders as the card body. */
 .sfsc-planner-item-title {
 	font-weight: 600;
-	font-size: calc(var(--font-ui-medium, var(--font-ui-small)) * var(--sfsc-font-scale, 1));
+	/* A step above the UI's medium size: the subcard's name should read as a heading
+	   over its lines, not as one more line among them. */
+	font-size: calc(var(--font-ui-medium, var(--font-ui-small)) * 1.2 * var(--sfsc-font-scale, 1));
 	line-height: 1.3;
-	margin-bottom: 4px;
+	margin-bottom: 6px;
 	color: var(--text-normal);
 }
 
