@@ -3312,6 +3312,53 @@ export async function pasteAtSectionEnd(
 	return ok;
 }
 
+/**
+ * Paste above a section's first sub-heading — into the Day Planner's loose card — so
+ * new body text doesn't fall under the last subcard; at the section's end when it has
+ * no sub-headings. Paragraph content gets a blank line from a non-blank line above,
+ * and the sub-heading keeps a blank line before it.
+ */
+export async function pasteAboveSubheadings(
+	app: App,
+	file: TFile,
+	level: number,
+	original: Section,
+	text: string,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, original);
+		if (!target) {
+			ok = false;
+			return data;
+		}
+		const bodyStart = bodyStartLine(target);
+		const body = lines.slice(bodyStart, target.endLine);
+		const firstSub = plannerCards(body).find((c) => c.kind === "sub");
+		const ins = text.replace(/\s+$/, "").split(/\r?\n/);
+		let at: number;
+		if (firstSub) {
+			// Above the heading, closing up the blank lines that separate it from the loose
+			// text, then restoring one below what's inserted.
+			let end = firstSub.start;
+			while (end > 0 && body[end - 1].trim() === "") end--;
+			at = bodyStart + end;
+			ins.push("");
+		} else {
+			at = target.endLine;
+		}
+		if (sectionBlocks(ins)[0]?.kind === "paragraph" && at > 0 && lines[at - 1].trim() !== "") ins.unshift("");
+		const out = lines.slice();
+		out.splice(at, 0, ...ins);
+		return out.join(eol);
+	});
+
+	return ok;
+}
+
 /** Replace one movable block's lines at write time, re-locating the section and
  * verifying the block's text the same way delete and move do. */
 export async function replaceBlockInFile(
@@ -5997,16 +6044,29 @@ export class SectionCardsView extends ItemView {
 		// card (or at the level its subcards already use), at the card's end — which shows
 		// up as a new subcard.
 		const subLevel = Math.min(6, cards.find((c) => c.kind === "sub")?.level ?? this.headingLevel + 1);
-		action("sfsc-planner-addsub", "square-plus", `Add a subsection (H${subLevel}) to this card`, () => {
-			new TextInputModal(this.app, `New H${subLevel} subsection in “${section.title || "(untitled)"}”`, "", "Add", (title) => {
-				const text = title.trim();
-				if (!text) return;
-				void (async () => {
-					const ok = await pasteAtSectionEnd(this.app, file, this.headingLevel, section, `${"#".repeat(subLevel)} ${text}`);
-					if (!ok) new Notice("Couldn't find that section — the file changed on disk.");
-					await this.refresh();
-				})();
-			}).open();
+		// The box opens with the sub-heading's #'s in place: keep them and a subsection is
+		// appended to the card's end; delete them and the text lands above the first
+		// sub-heading, among the card's loose lines.
+		action("sfsc-planner-addsub", "square-plus", `Add text or a subsection (H${subLevel}) to this card`, () => {
+			const hashes = `${"#".repeat(subLevel)} `;
+			new TextInputModal(
+				this.app,
+				`New text or subsection in “${section.title || "(untitled)"}”`,
+				hashes,
+				"Add",
+				(value) => {
+					const text = value.trim();
+					if (!text || /^#+$/.test(text)) return;
+					void (async () => {
+						const ok = HEADING_RE.test(text)
+							? await pasteAtSectionEnd(this.app, file, this.headingLevel, section, text)
+							: await pasteAboveSubheadings(this.app, file, this.headingLevel, section, text);
+						if (!ok) new Notice("Couldn't find that section — the file changed on disk.");
+						await this.refresh();
+					})();
+				},
+				false,
+			).open();
 		});
 		action("section-card-color", "palette", "Set this card's color", (evt) => this.openColorMenu(evt, file, section.headingRaw));
 		action("section-card-delete", "trash-2", "Delete this card", () => {
@@ -12835,13 +12895,16 @@ class TextInputModal extends Modal {
 	private readonly initial: string;
 	private readonly cta: string;
 	private readonly onSubmit: (value: string) => void;
+	/** Select the initial text (typing replaces it), or leave the caret after it. */
+	private readonly selectInitial: boolean;
 
-	constructor(app: App, title: string, initial: string, cta: string, onSubmit: (value: string) => void) {
+	constructor(app: App, title: string, initial: string, cta: string, onSubmit: (value: string) => void, selectInitial = true) {
 		super(app);
 		this.title = title;
 		this.initial = initial;
 		this.cta = cta;
 		this.onSubmit = onSubmit;
+		this.selectInitial = selectInitial;
 	}
 
 	onOpen(): void {
@@ -12865,7 +12928,8 @@ class TextInputModal extends Modal {
 			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
 			.addButton((b) => b.setButtonText(this.cta).setCta().onClick(submit));
 		input.focus();
-		input.select();
+		if (this.selectInitial) input.select();
+		else input.setSelectionRange(input.value.length, input.value.length);
 	}
 
 	onClose(): void {

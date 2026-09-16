@@ -7,7 +7,7 @@ import {
   snapRect, findFreeSpot, rectsCollide, plannerCards, plannerColumnSplit, plannerCardWeight,
   plannerBlockKey, wholeNoteSection, splitCardFaces, parsePeriod, shiftPeriod, formatPeriod,
   detectLevelSetup, movableBlocks, deckExcerpt, LAYOUT_OPTIONS, locateCard,
-  insertSection, deleteSection, retitleSectionInFile, quickAddToSection, pasteAtSectionEnd,
+  insertSection, deleteSection, retitleSectionInFile, quickAddToSection, pasteAtSectionEnd, pasteAboveSubheadings,
   toggleTaskInFile, moveBlockInFile, deleteBlockInFile, replaceBlockInFile, insertAfterBlockInFile,
   moveRangeInFile, replaceRangeInFile, moveSectionInFile, mergeSectionsInFile,
 } from "./.tmp/main.js";
@@ -369,6 +369,33 @@ ta("write: planner ranges — reorder subcards within a card, a no-op drop, a mo
   assert.equal(await moveRangeInFile(v.app, v.file, 1, aug, day.start, day.end, augBody.slice(day.start, day.end).join("\n"), sept, sept.endLine - sept.startLine - 1), true);
   assert.ok(!byTitle(cards(v.text, 1), "August").body.includes("###"));
   assert.ok(byTitle(cards(v.text, 1), "September 2026").body.includes("### 2026-08-31, Monday"));
+});
+
+ta("write: planner add box — plain text lands above the first sub-heading, a heading at the end", async () => {
+  const v = fakeApp(personal);
+  let day = byTitle(cards(v.text, 3), "2026-09-14");
+  assert.equal(await pasteAboveSubheadings(v.app, v.file, 3, day, "- [ ] added task"), true);
+  day = byTitle(cards(v.text, 3), "2026-09-14");
+  let body = day.body.split("\n");
+  const notes = plannerCards(body).find((c) => c.kind === "sub");
+  const added = body.indexOf("- [ ] added task");
+  assert.ok(added >= 0 && added < notes.start, "the task sits above #### Notes");
+  assert.equal(body[notes.start - 1].trim(), "", "a blank line still precedes the heading");
+  assert.equal(await pasteAboveSubheadings(v.app, v.file, 3, day, "A thought."), true);
+  day = byTitle(cards(v.text, 3), "2026-09-14");
+  body = day.body.split("\n");
+  const para = body.indexOf("A thought.");
+  assert.ok(para > added && body[para - 1].trim() === "", "a paragraph gets a blank line above it");
+  // A heading goes to the card's end, as a new subcard.
+  assert.equal(await pasteAtSectionEnd(v.app, v.file, 3, day, "#### Evening"), true);
+  day = byTitle(cards(v.text, 3), "2026-09-14");
+  const cs = plannerCards(day.body.split("\n"));
+  assert.deepEqual(cs.map((c) => c.kind === "sub" ? c.title : c.kind), ["loose", "Notes", "Evening"]);
+  // No sub-headings: plain text lands at the end.
+  let plain = byTitle(cards(v.text, 3), "2026-09-13");
+  assert.equal(await pasteAboveSubheadings(v.app, v.file, 3, plain, "- [ ] at the end"), true);
+  plain = byTitle(cards(v.text, 3), "2026-09-13");
+  assert.ok(plain.body.trimEnd().endsWith("- [ ] at the end"));
 });
 
 ta("write: replace a subcard's text; a stale range is refused", async () => {
