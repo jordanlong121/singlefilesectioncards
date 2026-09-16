@@ -7,7 +7,7 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
     "test": "node test/run.mjs",
-    "lint": "eslint main.ts editor-embed.ts"
+    "lint": "eslint main.ts editor-embed.ts src"
   },
   "keywords": [
     "obsidian-plugin"
