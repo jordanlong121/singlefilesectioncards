@@ -29,6 +29,7 @@ import {
 	prepareFuzzySearch,
 	requestUrl,
 	type SearchResult,
+	type ViewStateResult,
 } from "obsidian";
 import { createEmbeddedEditor, type EmbeddedEditor } from "./editor-embed";
 
@@ -3590,7 +3591,7 @@ async function writeSection(
 	});
 
 	if (!ok) {
-		new Notice("Single File Section Cards: couldn't find that section — the file changed on disk. Edit not saved.");
+		new Notice("couldn't find that section — the file changed on disk. Edit not saved.");
 	}
 	return ok;
 }
@@ -3965,10 +3966,9 @@ export class SectionCardsView extends ItemView {
 		};
 	}
 
-	async setState(state: CardsViewState, result: unknown): Promise<void> {
+	async setState(state: CardsViewState, result: ViewStateResult): Promise<void> {
 		if (state?.filePath) this.filePath = state.filePath;
 		this.deckMode = !!state?.deck;
-		// @ts-ignore — base signature varies across API versions
 		await super.setState(state, result);
 		this.applyStoredView({
 			layout: state?.layout,
@@ -5275,7 +5275,7 @@ export class SectionCardsView extends ItemView {
 
 	private async completeDragMany(file: TFile, moved: Section[], target: Section, before: boolean): Promise<void> {
 		const ok = await moveSectionsInFile(this.app, file, this.headingLevel, moved, target, before);
-		if (!ok) new Notice("Single File Section Cards: couldn't reorder — the file changed on disk.");
+		if (!ok) new Notice("couldn't reorder — the file changed on disk.");
 		await this.refresh();
 	}
 
@@ -5792,7 +5792,7 @@ export class SectionCardsView extends ItemView {
 				const newHeading = `${hashes} ${title}`;
 				const ok = await retitleSectionInFile(this.app, file, this.headingLevel, section, newHeading);
 				if (!ok) {
-					new Notice("Single File Section Cards: couldn't find that card — the file changed on disk.");
+					new Notice("couldn't find that card — the file changed on disk.");
 					await this.refresh();
 					return;
 				}
@@ -5993,7 +5993,7 @@ export class SectionCardsView extends ItemView {
 				if (!text) return;
 				void (async () => {
 					const ok = await pasteAtSectionEnd(this.app, file, this.headingLevel, section, `${"#".repeat(subLevel)} ${text}`);
-					if (!ok) new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+					if (!ok) new Notice("couldn't find that section — the file changed on disk.");
 					await this.refresh();
 				})();
 			}).open();
@@ -6003,7 +6003,7 @@ export class SectionCardsView extends ItemView {
 			new ConfirmDeleteModal(this.app, section.title || "(untitled)", async () => {
 				const ok = await deleteSection(this.app, file, this.headingLevel, section);
 				if (ok) new Notice(`Deleted “${section.title || "(untitled)"}” from ${file.basename}`);
-				else new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+				else new Notice("couldn't find that section — the file changed on disk.");
 				await this.refresh();
 			}).open();
 		});
@@ -6046,7 +6046,7 @@ export class SectionCardsView extends ItemView {
 				if (!text) return;
 				void (async () => {
 					const ok = await pasteAtSectionEnd(this.app, file, level, section, `${"#".repeat(level)} ${text}`);
-					if (!ok) new Notice("Single File Section Cards: couldn't write to the note.");
+					if (!ok) new Notice("couldn't write to the note.");
 					await this.refresh();
 				})();
 			}).open();
@@ -6200,7 +6200,7 @@ export class SectionCardsView extends ItemView {
 			}
 			new EditBlockModal(this.plugin, ctx.editText, async (newText) => {
 				const ok = await replaceRangeInFile(this.app, file, this.headingLevel, section, card.start, ctx.editEnd, ctx.editText, newText);
-				if (!ok) new Notice("Single File Section Cards: couldn't find that text — the file changed on disk.");
+				if (!ok) new Notice("couldn't find that text — the file changed on disk.");
 				await this.refresh();
 			}).open();
 		};
@@ -6380,7 +6380,7 @@ export class SectionCardsView extends ItemView {
 			const insertAt = side === "before" ? a.start : a.end;
 			if (insertAt === d.start || insertAt === d.end) return stay();
 			const ok = await moveRangeInFile(this.app, file, this.headingLevel, section, d.start, d.end, drag.text, section, insertAt);
-			if (!ok) new Notice("Single File Section Cards: couldn't move that text — the file changed on disk.");
+			if (!ok) new Notice("couldn't move that text — the file changed on disk.");
 			await this.refresh();
 			return;
 		}
@@ -6417,7 +6417,7 @@ export class SectionCardsView extends ItemView {
 			target,
 			at,
 		);
-		if (!ok) new Notice("Single File Section Cards: couldn't move that text — the file changed on disk.");
+		if (!ok) new Notice("couldn't move that text — the file changed on disk.");
 		await this.refresh();
 	}
 
@@ -7848,7 +7848,7 @@ export class SectionCardsView extends ItemView {
 	private async createDateCard(iso: string): Promise<void> {
 		const file = this.getFile();
 		if (!file) {
-			new Notice(`Single File Section Cards: can't find "${this.filePath}".`);
+			new Notice(`can't find "${this.filePath}".`);
 			return;
 		}
 		// A level with no date headings (H2 in a note of H1 months and H3 days) mustn't
@@ -8412,7 +8412,7 @@ export class SectionCardsView extends ItemView {
 		if (this.deckMode) return;
 		const file = this.getFile();
 		if (!file) {
-			new Notice(`Single File Section Cards: can't find "${this.filePath}".`);
+			new Notice(`can't find "${this.filePath}".`);
 			return;
 		}
 
@@ -9041,7 +9041,7 @@ export class SectionCardsView extends ItemView {
 				if (ok) {
 					new Notice(`Deleted “${target.title || "(untitled)"}” from ${file.basename}`);
 				} else {
-					new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+					new Notice("couldn't find that section — the file changed on disk.");
 				}
 				await this.refresh();
 			}).open();
@@ -9190,7 +9190,7 @@ export class SectionCardsView extends ItemView {
 			new QuickAddModal(this.plugin, target.title || "(untitled)", hasBack, async (text, where) => {
 				const ok = await quickAddToSection(this.app, file, this.headingLevel, target, text, where, this.flipMarker());
 				if (!ok) {
-					new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+					new Notice("couldn't find that section — the file changed on disk.");
 				}
 				await this.refresh();
 			}).open();
@@ -9432,7 +9432,7 @@ export class SectionCardsView extends ItemView {
 							const ok = await pasteAtSectionEnd(this.app, file, this.headingLevel, holder.section, text);
 							if (!ok) {
 								new Notice(
-									"Single File Section Cards: couldn't find that section — the file changed on disk.",
+									"Couldn't find that section — the file changed on disk.",
 								);
 							}
 							await this.refresh();
@@ -9611,7 +9611,7 @@ export class SectionCardsView extends ItemView {
 				new MergeCardsModal(this.app, moved.title, holder.section.title, async () => {
 					const ok = await mergeSectionsInFile(this.app, file, this.headingLevel, moved, holder.section);
 					if (!ok) {
-						new Notice("Single File Section Cards: couldn't merge — the file changed on disk.");
+						new Notice("couldn't merge — the file changed on disk.");
 					}
 					await this.refresh();
 				}).open();
@@ -11425,7 +11425,7 @@ export class SectionCardsView extends ItemView {
 		new EditBlockModal(this.plugin, blockText, async (text) => {
 			const ok = await replaceBlockInFile(this.app, file, this.headingLevel, section, blockIndex, blockText, text);
 			if (!ok) {
-				new Notice("Single File Section Cards: couldn't find that line — the file changed on disk.");
+				new Notice("couldn't find that line — the file changed on disk.");
 			}
 			await this.refresh();
 		}).open();
@@ -11578,7 +11578,7 @@ export class SectionCardsView extends ItemView {
 						blockText,
 					);
 					if (!ok) {
-						new Notice("Single File Section Cards: couldn't find that line — the file changed on disk.");
+						new Notice("couldn't find that line — the file changed on disk.");
 					}
 					await this.refresh();
 				}),
@@ -11609,7 +11609,7 @@ export class SectionCardsView extends ItemView {
 						text,
 					);
 					if (!ok) {
-						new Notice("Single File Section Cards: couldn't find that line — the file changed on disk.");
+						new Notice("couldn't find that line — the file changed on disk.");
 					}
 					await this.refresh();
 				}),
@@ -11635,7 +11635,7 @@ export class SectionCardsView extends ItemView {
 						emoji,
 					);
 					if (!ok) {
-						new Notice("Single File Section Cards: couldn't find that line — the file changed on disk.");
+						new Notice("couldn't find that line — the file changed on disk.");
 					}
 					await this.refresh();
 				}),
@@ -11648,7 +11648,7 @@ export class SectionCardsView extends ItemView {
 				.onClick(async () => {
 					const ok = await deleteBlockInFile(this.app, file, this.headingLevel, section, blockIndex, blockText);
 					if (!ok) {
-						new Notice("Single File Section Cards: couldn't find that line — the file changed on disk.");
+						new Notice("couldn't find that line — the file changed on disk.");
 					}
 					await this.refresh();
 				}),
@@ -11683,7 +11683,7 @@ export class SectionCardsView extends ItemView {
 				? await quickAddToSection(this.app, file, this.headingLevel, section, line, "bottom", this.flipMarker())
 				: await insertAfterBlockInFile(this.app, file, this.headingLevel, section, blockIndex, blockText, line);
 		if (!ok) {
-			new Notice("Single File Section Cards: couldn't find that section — the file changed on disk.");
+			new Notice("couldn't find that section — the file changed on disk.");
 		}
 		await this.refresh();
 	}
@@ -11705,7 +11705,7 @@ export class SectionCardsView extends ItemView {
 		const body = target ? lines.slice(bodyStartLine(target), target.endLine) : null;
 		const block = body ? movableBlocks(body)[blockIndex] : null;
 		if (!target || !body || !block || body.slice(block.start, block.end).join("\n") !== blockText) {
-			new Notice("Single File Section Cards: couldn't find that line — the file changed on disk.");
+			new Notice("couldn't find that line — the file changed on disk.");
 			await this.refresh();
 			return;
 		}
@@ -11748,7 +11748,7 @@ export class SectionCardsView extends ItemView {
 			anchorSide,
 		);
 		if (!ok) {
-			new Notice("Single File Section Cards: couldn't move that block — the file changed on disk.");
+			new Notice("couldn't move that block — the file changed on disk.");
 		}
 		await this.refresh();
 	}
@@ -11798,7 +11798,7 @@ export class SectionCardsView extends ItemView {
 				delete this.customPlacements[moved.headingRaw];
 			}
 		} else {
-			new Notice("Single File Section Cards: couldn't move that card — the file changed on disk.");
+			new Notice("couldn't move that card — the file changed on disk.");
 		}
 		await this.refresh();
 	}
@@ -11806,7 +11806,7 @@ export class SectionCardsView extends ItemView {
 	private async completeDrag(file: TFile, moved: Section, target: Section, before: boolean): Promise<void> {
 		const ok = await moveSectionInFile(this.app, file, this.headingLevel, moved, target, before);
 		if (!ok) {
-			new Notice("Single File Section Cards: couldn't reorder — the file changed on disk.");
+			new Notice("couldn't reorder — the file changed on disk.");
 		}
 		await this.refresh();
 	}
@@ -11850,7 +11850,7 @@ export class SectionCardsView extends ItemView {
 				);
 
 		if (checked === null) {
-			new Notice("Single File Section Cards: couldn't find that task in the file — reloading.");
+			new Notice("couldn't find that task in the file — reloading.");
 			await this.refresh();
 			return;
 		}
@@ -14335,7 +14335,7 @@ export default class SectionCardsPlugin extends Plugin {
 
 		this.registerView(VIEW_TYPE_SECTION_CARDS, (leaf) => new SectionCardsView(leaf, this));
 
-		this.addRibbonIcon(DECK_ICON, "Single File Section Cards (new tab)", () => {
+		this.addRibbonIcon(DECK_ICON, "Open section cards in a new tab", () => {
 			// Every click opens its own tab, even when one already shows the note.
 			void this.openCardsView(undefined, undefined, "new");
 		});
@@ -14695,7 +14695,7 @@ export default class SectionCardsPlugin extends Plugin {
 		const path = normalizePath(this.settings.filePath ?? "");
 		const file = path ? this.app.vault.getAbstractFileByPath(path) : null;
 		if (!(file instanceof TFile)) {
-			new Notice(`Single File Section Cards: can't find "${path || "(no default note)"}" — set the default note in settings.`);
+			new Notice(`can't find "${path || "(no default note)"}" — set the default note in settings.`);
 			return;
 		}
 		const content = await this.app.vault.cachedRead(file);
