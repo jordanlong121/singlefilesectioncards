@@ -8988,8 +8988,18 @@ export class SectionCardsView extends ItemView {
 			}
 		}
 
-		// Keep the tab title in sync with the note being shown (undocumented but stable API).
+		this.syncLeafTitle();
+	}
+
+	/**
+	 * Keep the leaf's titles in sync with the note being shown. updateHeader (undocumented
+	 * but stable) redraws the tab; the view header's own title — the row Obsidian shows
+	 * with "Show tab title bar" on — isn't redrawn by it, and kept naming the note the
+	 * tab opened on after a switch through the note picker or the Deck.
+	 */
+	private syncLeafTitle(): void {
 		(this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
+		this.containerEl.querySelector<HTMLElement>(".view-header-title")?.setText(this.getDisplayText());
 	}
 
 	private renderCard(file: TFile, section: Section, today: { iso: string; formatted: string } | null): CardEntry {
@@ -10281,7 +10291,7 @@ export class SectionCardsView extends ItemView {
 		this.applyImagesLayout();
 		this.observeCards(); // native-resize snapping rides the same observer as cards
 		this.rememberView();
-		(this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
+		this.syncLeafTitle();
 	}
 
 	/** One image or video preview on the canvas: the picture, a hover name bar, the
@@ -10813,7 +10823,7 @@ export class SectionCardsView extends ItemView {
 		this.applyLinksLayout();
 		this.observeCards();
 		this.rememberView();
-		(this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
+		this.syncLeafTitle();
 	}
 
 	/** One page preview on the canvas: a title bar naming the page, the live iframe
@@ -11123,7 +11133,7 @@ export class SectionCardsView extends ItemView {
 		scroll.scrollLeft = scroll.scrollWidth;
 
 		this.rememberView();
-		(this.leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.();
+		this.syncLeafTitle();
 	}
 
 	/** Apply the zoom factor: cards, extent marker, preview and dots all ride the var. */
