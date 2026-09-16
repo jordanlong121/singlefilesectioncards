@@ -160,14 +160,13 @@ const contiguous = (cs, end) => {
   if (cs.length) assert.equal(cs[cs.length - 1].end, end, "last range runs to the end");
 };
 
-t("planner: a month card shows every heading beneath it (weeks, days, an H4) as subcards", () => {
+t("planner: a month card shows each week as a subcard, its days (and their H4s) inside", () => {
   const sept = byTitle(cards(personal, 1), "September 2026");
   const body = sept.body.split("\n");
   const cs = plannerCards(body);
-  assert.deepEqual(cs.map((c) => [c.kind, c.title]), [
-    ["sub", "Week 40 (Sep 28–Oct 4)"], ["sub", "2026-09-29, Tuesday"], ["sub", "2026-09-28, Monday"],
-    ["sub", "Week 38 (Sep 14–20)"], ["sub", "2026-09-14, Monday"], ["sub", "Notes"], ["sub", "2026-09-13, Sunday"],
-  ]);
+  assert.deepEqual(cs.map((c) => [c.kind, c.title]), [["sub", "Week 40 (Sep 28–Oct 4)"], ["sub", "Week 38 (Sep 14–20)"]]);
+  const week38 = body.slice(cs[1].start, cs[1].end).join("\n");
+  assert.ok(week38.includes("### 2026-09-14, Monday") && week38.includes("#### Notes") && week38.includes("### 2026-09-13, Sunday"));
   contiguous(cs, body.length);
 });
 
@@ -212,7 +211,7 @@ t("planner: no cards at a level — the whole note below its properties, every s
   const whole = wholeNoteSection(lines(senstar));
   assert.equal(lines(senstar)[whole.startLine], "## September 2026");
   const cs = plannerCards(whole.body.split("\n"));
-  assert.equal(cs.filter((c) => c.kind === "sub").length, 8, "2 months + 4 days + the Goal/Tasks H4s");
+  assert.equal(cs.filter((c) => c.kind === "sub").length, 2, "2 months — the days and their H4s nest inside");
   assert.ok(cs.every((c) => c.kind === "sub"), "no lines above the first month");
   assert.ok(locateCard(lines(senstar), 2, whole).whole, "the whole-note card re-locates by position");
 });

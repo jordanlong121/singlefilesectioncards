@@ -2437,21 +2437,27 @@ export interface PlannerCard {
 }
 
 /**
- * Split a card's body for the Day Planner. Every heading beneath the card — at any
- * level, so a month card (H1) shows each day (H3) even with a stray H2 among them —
- * starts a subcard that runs to the next heading. Every movable block above the first
- * heading — or anywhere, when there are no headings — is a line card of its own.
- * Fenced code is never a heading.
+ * Split a card's body for the Day Planner. A heading beneath the card starts a subcard
+ * that runs to the next subcard's heading — unless it sits under an open subcard with a
+ * shallower heading, in which case it stays inside: a month card (H1) shows each week
+ * (H2) as a card with its days (H3) inside, while a day written above the first week
+ * heading is a card of its own. Every movable block above the first heading — or
+ * anywhere, when there are no headings — is a line card of its own. Fenced code is
+ * never a heading.
  */
 export function plannerCards(body: string[]): PlannerCard[] {
 	const blocks = sectionBlocks(body);
-	const headings: { line: number; level: number; title: string }[] = [];
+	const subs: { line: number; level: number; title: string }[] = [];
+	let openLevel: number | null = null;
 	for (const b of blocks) {
 		if (b.kind !== "other" || b.end - b.start !== 1) continue;
 		const m = HEADING_RE.exec(body[b.start]);
-		if (m) headings.push({ line: b.start, level: m[1].length, title: m[2].trim() });
+		if (!m) continue;
+		const level = m[1].length;
+		if (openLevel !== null && level > openLevel) continue; // nested: part of the open subcard
+		subs.push({ line: b.start, level, title: m[2].trim() });
+		openLevel = level;
 	}
-	const subs = headings;
 	const cards: PlannerCard[] = [];
 	const firstSub = subs.length ? subs[0].line : body.length;
 	blocks
@@ -6129,8 +6135,15 @@ export class SectionCardsView extends ItemView {
 			if (card.kind === "sub") {
 				item.createDiv({ cls: "sfsc-planner-item-title", text: card.title || "(untitled)" });
 				// In a dated note, today's subcard (a day under a month card, say) is lit
-				// the way today's card is on the wall.
-				if (today && isTodayTitle(card.title ?? "", today.iso, today.formatted)) item.addClass("is-today");
+				// the way today's card is on the wall — as is the week card holding today.
+				const namesToday = (line: string) => !!today && isTodayTitle(line, today.iso, today.formatted);
+				const holdsToday =
+					namesToday(card.title ?? "") ||
+					front.slice(card.start + 1, card.end).some((line) => {
+						const m = HEADING_RE.exec(line);
+						return !!m && namesToday(m[2].trim());
+					});
+				if (holdsToday) item.addClass("is-today");
 			}
 			const body = item.createDiv({ cls: "sfsc-planner-item-body" });
 			const markdown = card.kind === "sub" ? front.slice(card.start + 1, editEnd).join("\n") : text;

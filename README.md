@@ -142,11 +142,12 @@ note, or drag a paragraph or task from the card onto a tab to send it to that ca
 ### Day Planner
 
 One day on one page: the card's title sits across the top with arrows to yesterday and
-tomorrow, and each sub-heading beneath it is a card of its own in one of two columns, its tasks
-inside. Drag a card to the other column or into a new order, resize it, tick its tasks, or send
-it to the next day by dropping it on an arrow — the note changes underneath, and the
-arrangement is remembered per note. Stepping onto a day with no card offers to create it or to
-skip to the nearest day that has one.
+tomorrow, and each sub-heading directly beneath it is a card of its own in one of two columns,
+its tasks and any deeper headings inside (a month shows its weeks, each week its days). Drag a
+card to the other column or into a new order, resize it, tick its tasks, or send it to the next
+day by dropping it on an arrow — the note changes underneath, and the arrangement is remembered
+per note. Stepping onto a day with no card offers to create it or to skip to the nearest day
+that has one.
 
 ![Day Planner](screenshots/planner.png)
 
