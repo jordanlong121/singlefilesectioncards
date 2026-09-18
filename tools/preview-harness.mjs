@@ -754,6 +754,7 @@ const PAGE_BACKGROUNDS = {
 	heatmap: "bg-ocean",
 	tasks: "bg-forest",
 	planner: "bg-twilight",
+	sticky: "bg-sunset",
 	hierarchy: "bg-aurora",
 	dividers: "bg-dunes",
 	"context-menu": null,
@@ -792,10 +793,24 @@ function mobileChromeCss() {
 const BACK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`;
 const MORE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>`;
 
+/** A sticky's strip (mirrors syncStickyHead): note name, the note's cards, open in note,
+ * keep-on-top (shown on), close. */
+const lucide = (paths) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon">${paths}</svg>`;
+const STICKY_ICON = lucide('<path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/>');
+function stickyHeadHtml() {
+	const btn = (svg, cls = "") => `<button class="sfsc-sticky-btn${cls}">${svg}</button>`;
+	return `<div class="sfsc-sticky-head"><span class="sfsc-sticky-icon">${STICKY_ICON}</span><span class="sfsc-sticky-note">${esc(path.basename(notePath, ".md"))}</span>${btn(DECK_ICON)}${btn(lucide('<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'))}${btn(lucide('<rect x="8" y="8" width="8" height="8" rx="2"/><path d="M4 10a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2"/><path d="M14 20a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2"/>'), " sfsc-sticky-ontop is-active")}${btn(lucide('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'))}</div>`;
+}
+
 function pageHtml(layout, { withMenu = false, mode = "default", background = null } = {}) {
+	// A sticky: the Rolodex's one-card shape, is-sticky hiding the toolbar and tab strip.
+	const sticky = mode === "sticky";
+	const activeAt = Math.max(0, sections.findIndex((s) => process.env.ROLO_ACTIVE && s.title.includes(process.env.ROLO_ACTIVE)));
+	const tabTitle = sticky ? `Sticky: ${sections[activeAt]?.title ?? ""}` : `Cards: ${path.basename(notePath, ".md")}`;
 	const view = `<div class="workspace-leaf-content" data-type="section-cards-view">
-<div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}${background ? " has-sfsc-bg" : ""}"${background ? ` style="--sfsc-bg-image: url('${background}.svg')"` : ""}>
+<div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}${sticky ? " is-sticky" : ""}${background ? " has-sfsc-bg" : ""}"${background ? ` style="--sfsc-bg-image: url('${background}.svg')"` : ""}>
 ${toolbarHtml(layout, mode)}
+${sticky ? stickyHeadHtml() : ""}
 ${gridHtml(layout, mode)}
 </div>
 </div>`;
@@ -805,8 +820,8 @@ ${gridHtml(layout, mode)}
 	<div class="workspace-tab-header-container-inner">
 		<div class="workspace-tab-header tappable is-active mod-active">
 			<div class="workspace-tab-header-inner">
-				<div class="workspace-tab-header-inner-icon">${DECK_ICON}</div>
-				<div class="workspace-tab-header-inner-title">Cards: ${esc(path.basename(notePath, ".md"))}</div>
+				<div class="workspace-tab-header-inner-icon">${sticky ? STICKY_ICON : DECK_ICON}</div>
+				<div class="workspace-tab-header-inner-title">${esc(tabTitle)}</div>
 			</div>
 		</div>
 	</div>
@@ -870,5 +885,7 @@ fs.writeFileSync(
 	path.join(OUT_DIR, "context-menu.html"),
 	pageHtml("grid", { withMenu: true, background: pageBackground("context-menu") }),
 );
+// A sticky: one card in its own window (shoot at the popout's 440×600).
+fs.writeFileSync(path.join(OUT_DIR, "sticky.html"), pageHtml("rolodex", { mode: "sticky", background: pageBackground("sticky") }));
 fs.writeFileSync(path.join(OUT_DIR, "deck.html"), deckPageHtml());
-console.log("wrote", Object.keys(LAYOUT_LABELS).length + 4, "pages to", OUT_DIR, "with", sections.length, "cards");
+console.log("wrote", Object.keys(LAYOUT_LABELS).length + 5, "pages to", OUT_DIR, "with", sections.length, "cards");

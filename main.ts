@@ -1,4 +1,4 @@
-import { addIcon, MarkdownView, Notice, Platform, Plugin, TFile, debounce, normalizePath } from "obsidian";
+import { addIcon, MarkdownView, Notice, Platform, Plugin, WorkspaceLeaf, TFile, debounce, normalizePath } from "obsidian";
 import {
 	VIEW_TYPE_SECTION_CARDS,
 	DECK_ICON,
@@ -424,7 +424,7 @@ export default class SectionCardsPlugin extends Plugin {
 			}
 		}
 
-		const leaf = this.app.workspace.getLeaf("tab");
+		const leaf = this.mainWindowTab();
 		await leaf.setViewState({
 			type: VIEW_TYPE_SECTION_CARDS,
 			active: true,
@@ -1173,9 +1173,22 @@ export default class SectionCardsPlugin extends Plugin {
 	private skipAutoOpen: { path: string; until: number } | null = null;
 
 	/** Open the note in an editor with the cursor parked on the given heading line. */
+	/**
+	 * A new tab in the main window. getLeaf("tab") opens beside the active leaf — from a
+	 * sticky that's the popout, and the note would open inside the sticky's window.
+	 * Activating the main window's most recent leaf first (without focusing it) steers
+	 * the new tab there; in the main window itself this changes nothing.
+	 */
+	private mainWindowTab(): WorkspaceLeaf {
+		const ws = this.app.workspace;
+		const recent = ws.getMostRecentLeaf(ws.rootSplit);
+		if (recent) ws.setActiveLeaf(recent, { focus: false });
+		return ws.getLeaf("tab");
+	}
+
 	async revealSection(file: TFile, line: number): Promise<void> {
 		this.skipAutoOpen = { path: file.path, until: Date.now() + 2000 };
-		const leaf = this.app.workspace.getLeaf("tab");
+		const leaf = this.mainWindowTab();
 		await leaf.openFile(file, { active: true, state: { mode: "source" } });
 		const view = leaf.view;
 		if (view instanceof MarkdownView) {
