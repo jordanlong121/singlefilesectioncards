@@ -4267,30 +4267,30 @@ body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
 	tab-size: 4;
 }
 
-/* Live-preview editor host: Obsidian's embedded markdown editor mounts inside.
-   Styled like the textarea so the two modes feel like the same control. */
+/* Live-preview editor host: Obsidian's embedded markdown editor mounts inside. It
+   sits on the card surface like the rendered body — no box of its own, the text at
+   the body's own size and position — so opening a card to edit changes as little as
+   possible; the card's accent ring (.is-editing) is what says "editing". */
 .section-card-editor-embed {
 	/* The editor renders at the card body's size, not the note font size, so
 	   entering edit mode doesn't visibly zoom the text. Headings and everything
 	   else derived from --font-text-size scale down with it. */
 	--font-text-size: var(--font-ui-small);
+	/* Lists indent by the card's nested-list step rather than the editor's wider one. */
+	--list-indent: 1.4em;
 	font-size: calc(var(--font-ui-small) * var(--sfsc-font-scale, 1));
 	line-height: 1.5;
 	display: flex;
 	flex-direction: column;
 	width: 100%;
-	min-height: 140px;
+	/* Room for a few lines in an empty section; a short card no longer jumps to a
+	   tall field. */
+	min-height: 4.5em;
 	/* Roughly the textarea's 30-row cap; the editor scrolls internally past it. */
 	max-height: 34em;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--input-radius, 5px);
-	background: var(--background-primary);
+	background: transparent;
 	cursor: text;
 	overflow: hidden;
-}
-
-.section-card-editor-embed:focus-within {
-	border-color: var(--background-modifier-border-focus, var(--interactive-accent));
 }
 
 /* Tight's cards render smaller still; the editor follows suit. */
@@ -4306,34 +4306,68 @@ body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
 	width: 100%;
 }
 
-/* The embed arrives dressed as a full note view; trim it down to a field.
+/* The embed arrives dressed as a full note view; trim it down to the card's text.
    Themes commonly style .cm-content directly with a fixed reading font size,
-   width, and padding (bypassing --font-text-size), so these out-rank them:
-   edit mode must keep the card's own text size and box. */
+   width, padding, and background (bypassing --font-text-size), so these out-rank
+   them: edit mode must keep the card's own text size and box. */
 .section-card-editor-embed .markdown-source-view,
 .section-card-editor-embed .markdown-source-view.mod-cm6 .cm-scroller,
 .section-card-editor-embed .markdown-source-view.mod-cm6 .cm-content {
 	font-size: calc(var(--font-text-size) * var(--sfsc-font-scale, 1));
 	line-height: inherit;
+	background: transparent;
 }
 
-.section-card-editor-embed .markdown-source-view {
+.section-card-editor-embed .markdown-source-view,
+.section-card-editor-embed .cm-editor {
 	padding: 0;
+	background: transparent;
 }
 
+/* No padding of its own: the text starts where the rendered body's text starts. */
 .section-card-editor-embed .markdown-source-view.mod-cm6 .cm-content,
 .section-card-editor-embed .cm-content {
 	max-width: none;
 	margin-left: 0;
 	margin-right: 0;
-	padding: 8px 10px;
+	padding: 0;
+}
+
+/* Headings inside a card render as small caps in a muted color (see .section-card-body
+   h1–h6); the editor's lines match, instead of jumping to note-sized headings. */
+.section-card-editor-embed .cm-line.HyperMD-header {
+	padding-top: 0.7em;
+	padding-bottom: 0.2em;
+	font-size: calc(var(--font-ui-smaller) * var(--sfsc-font-scale, 1));
+	line-height: 1.3;
+}
+
+.section-card-editor-embed .cm-line.HyperMD-header .cm-header {
+	font-size: inherit;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.section-card-editor-embed .cm-line.HyperMD-header .cm-formatting-header {
+	text-transform: none;
+	letter-spacing: 0;
+}
+
+/* Paragraph lines keep the rendered body's tight spacing (p margins are 0.3em). */
+.section-card-editor-embed .cm-line:not(.HyperMD-list-line):not(.HyperMD-header) {
+	padding-top: 0.15em;
+	padding-bottom: 0.15em;
 }
 
 .section-card-footer {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	margin-top: 8px;
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid var(--sc-line);
 }
 
 .section-card-hint {
