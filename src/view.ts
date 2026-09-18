@@ -276,6 +276,8 @@ export interface CardsViewState {
 	deck?: boolean;
 	/** Stickies: the heading line of the one card this view shows. */
 	sticky?: string;
+	/** Stickies: keep the sticky's window above other windows (re-applied on restore). */
+	stickyOnTop?: boolean;
 }
 
 export class SectionCardsView extends ItemView {
@@ -347,6 +349,8 @@ export class SectionCardsView extends ItemView {
 	sticky: string | null = null;
 	/** The strip above a sticky's card (note name, ways out). */
 	private stickyHeadEl: HTMLElement | null = null;
+	/** Stickies: the window is kept above other windows (Electron's always-on-top). */
+	private stickyOnTop = false;
 	/** Day Planner: the pane below the toolbar (title, arrows, two columns of lines). */
 	private plannerEl: HTMLElement | null = null;
 	/** Owns the planner's rendered markdown; replaced on every rebuild. */
@@ -599,6 +603,7 @@ export class SectionCardsView extends ItemView {
 			groupBy: this.groupBy,
 			deck: this.deckMode,
 			sticky: this.sticky ?? undefined,
+			stickyOnTop: this.stickyOnTop || undefined,
 		};
 	}
 
@@ -606,6 +611,7 @@ export class SectionCardsView extends ItemView {
 		if (state?.filePath) this.filePath = state.filePath;
 		this.deckMode = !!state?.deck;
 		this.sticky = typeof state?.sticky === "string" && state.sticky ? state.sticky : null;
+		this.stickyOnTop = !!this.sticky && !!state?.stickyOnTop;
 		await super.setState(state, result);
 		this.applyStoredView({
 			layout: state?.layout,
@@ -2668,6 +2674,9 @@ export class SectionCardsView extends ItemView {
 				await this.refresh();
 			}).open();
 		});
+		if (this.stickyOffered(section)) {
+			action("sfsc-planner-sticky", "sticky-note", "Open in a sticky window", () => void this.plugin.openSticky(file.path, section.headingRaw));
+		}
 		action("section-card-open", "external-link", "Open this section in the note", () => {
 			void this.plugin.revealSection(file, section.headingLine);
 		});
@@ -5217,27 +5226,65 @@ export class SectionCardsView extends ItemView {
 		};
 		button("Open the note's cards", DECK_ICON, () => void this.plugin.openCardsView(file.path, section?.headingRaw));
 		if (section) button("Open this section in the note", "external-link", () => void this.plugin.revealSection(file, section.headingLine));
+		if (this.stickyWindow()) {
+			const onTop = head.createEl("button", { cls: "sfsc-sticky-btn sfsc-sticky-ontop" });
+			SectionCardsView.setIconOr(onTop, "bring-to-front", "arrow-up-to-line");
+			const label = () => {
+				onTop.toggleClass("is-active", this.stickyOnTop);
+				onTop.setAttr("aria-label", this.stickyOnTop ? "Stop keeping this window on top" : "Keep this window on top");
+			};
+			label();
+			onTop.addEventListener("click", () => {
+				this.stickyOnTop = !this.stickyOnTop;
+				this.applyStickyOnTop();
+				this.app.workspace.requestSaveLayout();
+				label();
+			});
+		}
 		button("Close this sticky", "x", () => this.leaf.detach());
 	}
 
-	/** Stickies: open this card on its own, in a sidebar tab or (desktop) a new window. */
+	/**
+	 * The popout window's Electron handle, as Obsidian attaches it to every window it
+	 * opens (its own "Toggle always on top" command reads the same property). Null in
+	 * the main window, on mobile, or should the property ever go — then the on-top
+	 * button simply doesn't appear.
+	 */
+	private stickyWindow(): { isAlwaysOnTop(): boolean; setAlwaysOnTop(flag: boolean): void } | null {
+		if (!Platform.isDesktopApp) return null;
+		const win = this.containerEl.win as Window & { electronWindow?: unknown };
+		if (win === window) return null;
+		const ew = win.electronWindow as { isAlwaysOnTop?: unknown; setAlwaysOnTop?: unknown } | undefined;
+		if (!ew || typeof ew.isAlwaysOnTop !== "function" || typeof ew.setAlwaysOnTop !== "function") return null;
+		return ew as { isAlwaysOnTop(): boolean; setAlwaysOnTop(flag: boolean): void };
+	}
+
+	/** Make the window match the remembered on-top flag (a restored popout starts off). */
+	private applyStickyOnTop(): void {
+		const w = this.stickyWindow();
+		if (!w) return;
+		try {
+			if (w.isAlwaysOnTop() !== this.stickyOnTop) w.setAlwaysOnTop(this.stickyOnTop);
+		} catch {
+			/* a window mid-close; nothing to do */
+		}
+	}
+
+	/** Whether this card can be opened as a sticky: a real section, from a full view, on desktop. */
+	private stickyOffered(section: Section): boolean {
+		return !this.sticky && !Platform.isMobile && !section.unfiled && !section.properties;
+	}
+
+	/** Stickies: open this card on its own in a new window. */
 	private addStickyItems(menu: Menu, file: TFile, section: Section): void {
-		if (this.sticky || section.unfiled || section.properties) return;
+		if (!this.stickyOffered(section)) return;
 		menu.addSeparator();
 		menu.addItem((item) =>
 			item
-				.setTitle("Sticky in the sidebar")
+				.setTitle("Open in a sticky window")
 				.setIcon("sticky-note")
-				.onClick(() => void this.plugin.openSticky(file.path, section.headingRaw, "sidebar")),
+				.onClick(() => void this.plugin.openSticky(file.path, section.headingRaw)),
 		);
-		if (!Platform.isMobile) {
-			menu.addItem((item) =>
-				item
-					.setTitle("Sticky in a new window")
-					.setIcon("app-window")
-					.onClick(() => void this.plugin.openSticky(file.path, section.headingRaw, "window")),
-			);
-		}
 	}
 
 	/** Clear the wall (cards and hierarchy columns) and show a two-line message instead. */
@@ -5364,7 +5411,10 @@ export class SectionCardsView extends ItemView {
 		const parsed = parseCards(lines, this.headingLevel, this.plugin.unfiledTitle(), this.plugin.propertiesTitle());
 		// A sticky shows one section — the card it was opened from — and says so above it.
 		const stickySection = this.sticky ? this.stickySection(parsed) : null;
-		if (this.sticky) this.syncStickyHead(file, stickySection);
+		if (this.sticky) {
+			this.syncStickyHead(file, stickySection);
+			this.applyStickyOnTop();
+		}
 		const sections = this.sticky ? (stickySection ? [stickySection] : []) : parsed;
 
 		// Does this note deal in dates? The checkbox rules when the user has set it;
@@ -5970,6 +6020,16 @@ export class SectionCardsView extends ItemView {
 			evt.stopPropagation();
 			this.toggleMaximized(card);
 		});
+
+		if (this.stickyOffered(section)) {
+			const stickyBtn = actions.createEl("button", { cls: "section-card-sticky" });
+			setIcon(stickyBtn, "sticky-note");
+			stickyBtn.setAttr("aria-label", "Open in a sticky window");
+			stickyBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				void this.plugin.openSticky(file.path, section.headingRaw);
+			});
+		}
 
 		const openBtn = actions.createEl("button", { cls: "section-card-open" });
 		setIcon(openBtn, "external-link");

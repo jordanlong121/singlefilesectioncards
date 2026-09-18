@@ -4703,3 +4703,10 @@ body.is-phone .section-cards-label {
 	width: 14px;
 	height: 14px;
 }
+
+/* Keep-on-top, while on: the accent, like the toolbar's active toggles. */
+.sfsc-sticky-btn.is-active,
+.sfsc-sticky-btn.is-active:hover {
+	color: var(--text-on-accent, #fff);
+	background-color: var(--interactive-accent);
+}
