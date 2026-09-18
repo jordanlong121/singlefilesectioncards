@@ -5157,7 +5157,7 @@ export class SectionCardsView extends ItemView {
 
 	// ---------- Stickies: one card in a sidebar tab or its own window ----------
 
-	/** The section a sticky follows: its heading line, exact or bar spacing and case. (A rename
+	/** The section a sticky follows: its heading line, exact or equal bar spacing and case. (A rename
 	 * through the plugin moves the sticky along — see renameSticky.) */
 	private stickySection(sections: Section[]): Section | null {
 		const raw = this.sticky;
