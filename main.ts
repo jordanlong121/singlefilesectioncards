@@ -1,4 +1,4 @@
-import { addIcon, MarkdownView, Notice, Plugin, TFile, debounce, normalizePath } from "obsidian";
+import { addIcon, MarkdownView, Notice, Platform, Plugin, TFile, debounce, normalizePath } from "obsidian";
 import {
 	VIEW_TYPE_SECTION_CARDS,
 	DECK_ICON,
@@ -373,13 +373,50 @@ export default class SectionCardsPlugin extends Plugin {
 	 * another tab, so any number of cards tabs — including several of the same note — can
 	 * be open at once. (Obsidian's native "Duplicate tab" also works on cards tabs.)
 	 */
+	/**
+	 * Stickies: one card on its own, in a right-sidebar tab or (desktop) a popout window,
+	 * so it stays at hand while other notes are worked on. The view carries the card's
+	 * heading in its state, so the workspace restores it. An open sticky on the same card
+	 * is revealed rather than doubled.
+	 */
+	async openSticky(path: string, headingRaw: string, where: "sidebar" | "window"): Promise<void> {
+		const open = this.app.workspace
+			.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)
+			.find((leaf) => (leaf.view as SectionCardsView).filePath === path && (leaf.view as SectionCardsView).sticky === headingRaw);
+		if (open) {
+			await this.app.workspace.revealLeaf(open);
+			return;
+		}
+		const leaf =
+			where === "window" && !Platform.isMobile
+				? this.app.workspace.openPopoutLeaf({ size: { width: 440, height: 600 } })
+				: this.app.workspace.getRightLeaf(false);
+		if (!leaf) {
+			new Notice("Couldn't open a sidebar tab for the sticky.");
+			return;
+		}
+		await leaf.setViewState({
+			type: VIEW_TYPE_SECTION_CARDS,
+			active: true,
+			state: {
+				filePath: path,
+				headingLevel: /^#+/.exec(headingRaw)?.[0].length ?? this.settings.headingLevel,
+				sortOrder: "doc",
+				layout: "rolodex",
+				sticky: headingRaw,
+			},
+		});
+		await this.app.workspace.revealLeaf(leaf);
+	}
+
 	async openCardsView(filePath?: string, revealHeading?: string, mode: "reuse" | "new" = "reuse"): Promise<void> {
 		const path = filePath ?? this.settings.filePath;
 
 		if (mode === "reuse") {
+			// A sticky on this note isn't the note's cards view; look past it.
 			const existing = this.app.workspace
 				.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)
-				.find((leaf) => (leaf.view as SectionCardsView).filePath === path);
+				.find((leaf) => (leaf.view as SectionCardsView).filePath === path && !(leaf.view as SectionCardsView).sticky);
 
 			if (existing) {
 				await this.app.workspace.revealLeaf(existing);
@@ -579,8 +616,13 @@ export default class SectionCardsPlugin extends Plugin {
 	 * Grid placements are keyed by the heading line, so carry them to the new key.
 	 */
 	async renameCardKey(path: string, oldRaw: string, newRaw: string): Promise<void> {
+		if (oldRaw === newRaw) return;
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
+			const view = leaf.view;
+			if (view instanceof SectionCardsView && view.filePath === path) view.renameSticky(oldRaw, newRaw);
+		}
 		const entry = this.settings.perFile?.[path];
-		if (!entry || oldRaw === newRaw) return;
+		if (!entry) return;
 		let changed = false;
 		const at = entry.pinned?.indexOf(oldRaw) ?? -1;
 		if (entry.pinned && at >= 0) {

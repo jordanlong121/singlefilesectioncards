@@ -304,6 +304,17 @@ The toolbar's filter box (`Ctrl/⌘+F`) narrows the wall to cards containing the
 the star emoji is written into the note as plain text, and the toolbar's star toggle (key
 `S`) then shows only the starred lines.
 
+## Stickies
+
+Right-click a card's title bar (or the Day Planner's title) and choose **Sticky in the
+sidebar** or **Sticky in a new window**: that one card opens on its own — filling a tab in
+the right sidebar, or a floating window of its own — and stays at hand while you work on
+other notes in the main pane. It's the full card: tick tasks, drag lines, edit, flip, and
+it writes to the note and follows the note's changes like any other view. A slim strip
+above it names the note and offers the note's full cards view, the section in the editor,
+and a close button. Stickies are part of the workspace, so they come back after a restart;
+renaming the card through the plugin carries them along. The window option is desktop only.
+
 ## The Deck
 
 The toolbar's deck button (or `D`) flips the view to thumbnails of your card notes —
