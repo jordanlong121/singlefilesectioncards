@@ -374,12 +374,12 @@ export default class SectionCardsPlugin extends Plugin {
 	 * be open at once. (Obsidian's native "Duplicate tab" also works on cards tabs.)
 	 */
 	/**
-	 * Stickies: one card on its own, in a right-sidebar tab or (desktop) a popout window,
-	 * so it stays at hand while other notes are worked on. The view carries the card's
-	 * heading in its state, so the workspace restores it. An open sticky on the same card
-	 * is revealed rather than doubled.
+	 * Stickies: one card on its own in a popout window, so it stays at hand while other
+	 * notes are worked on. The view carries the card's heading in its state, so the
+	 * workspace restores it. An open sticky on the same card is revealed rather than
+	 * doubled. Desktop only — mobile has no windows to pop out.
 	 */
-	async openSticky(path: string, headingRaw: string, where: "sidebar" | "window"): Promise<void> {
+	async openSticky(path: string, headingRaw: string): Promise<void> {
 		const open = this.app.workspace
 			.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)
 			.find((leaf) => (leaf.view as SectionCardsView).filePath === path && (leaf.view as SectionCardsView).sticky === headingRaw);
@@ -387,14 +387,11 @@ export default class SectionCardsPlugin extends Plugin {
 			await this.app.workspace.revealLeaf(open);
 			return;
 		}
-		const leaf =
-			where === "window" && !Platform.isMobile
-				? this.app.workspace.openPopoutLeaf({ size: { width: 440, height: 600 } })
-				: this.app.workspace.getRightLeaf(false);
-		if (!leaf) {
-			new Notice("Couldn't open a sidebar tab for the sticky.");
+		if (Platform.isMobile) {
+			new Notice("Stickies open in their own window, which needs the desktop app.");
 			return;
 		}
+		const leaf = this.app.workspace.openPopoutLeaf({ size: { width: 440, height: 600 } });
 		await leaf.setViewState({
 			type: VIEW_TYPE_SECTION_CARDS,
 			active: true,

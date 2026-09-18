@@ -306,14 +306,15 @@ the star emoji is written into the note as plain text, and the toolbar's star to
 
 ## Stickies
 
-Right-click a card's title bar (or the Day Planner's title) and choose **Sticky in the
-sidebar** or **Sticky in a new window**: that one card opens on its own — filling a tab in
-the right sidebar, or a floating window of its own — and stays at hand while you work on
-other notes in the main pane. It's the full card: tick tasks, drag lines, edit, flip, and
-it writes to the note and follows the note's changes like any other view. A slim strip
-above it names the note and offers the note's full cards view, the section in the editor,
-and a close button. Stickies are part of the workspace, so they come back after a restart;
-renaming the card through the plugin carries them along. The window option is desktop only.
+Click the sticky-note button in a card's action strip (or the Day Planner's title strip), or
+choose **Open in a sticky window** from the title bar's right-click menu: that one card opens
+in a floating window of its own and stays at hand while you work on other notes. It's the
+full card — tick tasks, drag lines, edit, flip — writing to the note and following the note's
+changes like any other view. A slim strip above it names the note and offers the note's full
+cards view, the section in the editor, **Keep this window on top** (the window floats over
+every other window, Obsidian's included, until you turn it off), and a close button. Stickies
+are part of the workspace, so they come back after a restart, on top again if they were;
+renaming the card through the plugin carries them along. Desktop only.
 
 ## The Deck
 
