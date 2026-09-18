@@ -274,6 +274,8 @@ export interface CardsViewState {
 	taskFilter?: TaskFilter;
 	groupBy?: GroupBy;
 	deck?: boolean;
+	/** Stickies: the heading line of the one card this view shows. */
+	sticky?: string;
 }
 
 export class SectionCardsView extends ItemView {
@@ -340,6 +342,11 @@ export class SectionCardsView extends ItemView {
 	private roloZoomBtns: { fewer: HTMLButtonElement; more: HTMLButtonElement } | null = null;
 	/** Rolodex: which card each note was showing (heading line), for the view's lifetime. */
 	private roloActive = new Map<string, string>();
+	/** Stickies: the heading line of the one card this view shows — a sidebar tab or a
+	 * popout window opened from a card's menu; null for a full cards view. */
+	sticky: string | null = null;
+	/** The strip above a sticky's card (note name, ways out). */
+	private stickyHeadEl: HTMLElement | null = null;
 	/** Day Planner: the pane below the toolbar (title, arrows, two columns of lines). */
 	private plannerEl: HTMLElement | null = null;
 	/** Owns the planner's rendered markdown; replaced on every rebuild. */
@@ -570,12 +577,13 @@ export class SectionCardsView extends ItemView {
 	}
 
 	getDisplayText(): string {
+		if (this.sticky) return `Sticky: ${this.sticky.replace(/^#+\s*/, "") || "(untitled)"}`;
 		const base = this.filePath.split("/").pop() ?? this.filePath;
 		return `Cards: ${base.replace(/\.md$/, "")}`;
 	}
 
 	getIcon(): string {
-		return DECK_ICON;
+		return this.sticky ? "sticky-note" : DECK_ICON;
 	}
 
 	getState(): Record<string, unknown> {
@@ -590,12 +598,14 @@ export class SectionCardsView extends ItemView {
 			taskFilter: this.taskFilter,
 			groupBy: this.groupBy,
 			deck: this.deckMode,
+			sticky: this.sticky ?? undefined,
 		};
 	}
 
 	async setState(state: CardsViewState, result: ViewStateResult): Promise<void> {
 		if (state?.filePath) this.filePath = state.filePath;
 		this.deckMode = !!state?.deck;
+		this.sticky = typeof state?.sticky === "string" && state.sticky ? state.sticky : null;
 		await super.setState(state, result);
 		this.applyStoredView({
 			layout: state?.layout,
@@ -607,6 +617,7 @@ export class SectionCardsView extends ItemView {
 			taskFilter: state?.taskFilter,
 			groupBy: state?.groupBy,
 		});
+		this.applyStickyMode();
 		await this.syncView();
 	}
 
@@ -672,7 +683,7 @@ export class SectionCardsView extends ItemView {
 	 * day at a time and walks to the next with its arrows — hiding the days ahead
 	 * would leave the arrows nowhere to go. */
 	private dateHideApplies(): boolean {
-		return !this.isDateLayout() && this.layout !== "planner";
+		return !this.isDateLayout() && this.layout !== "planner" && !this.sticky;
 	}
 
 	/** The freeform canvases — Custom Grid (section cards) and Images (previews) —
@@ -719,6 +730,7 @@ export class SectionCardsView extends ItemView {
 	 * active layout always stays selectable). Shared by the dropdown and the L cycle. */
 	/** Switch layouts — the dropdown, the L cycle, and the wall's right-click menu. */
 	private setLayout(next: Layout): void {
+		if (this.sticky) return;
 		this.layout = next;
 		this.rememberView();
 		this.applyLayoutClass();
@@ -780,6 +792,7 @@ export class SectionCardsView extends ItemView {
 
 	/** Remember the current view for the current note (in the plugin's data, not the note). */
 	private rememberView(): void {
+		if (this.sticky) return; // a sticky's shape is its own, not the note's remembered view
 		void this.plugin.storeView(this.currentPath(), this.viewSettings());
 	}
 
@@ -1007,6 +1020,7 @@ export class SectionCardsView extends ItemView {
 				// The Calendar follows the note's date-heading level; a manual level
 				// would only be forced back (and churn the stored view) on refresh.
 				if (this.isDateLayout()) return true;
+				if (this.sticky) return true;
 				if (!this.levelOptionValues().includes(level)) return true;
 				if (this.headingLevel !== level) void this.changeHeadingLevel(level);
 				return false;
@@ -1015,6 +1029,7 @@ export class SectionCardsView extends ItemView {
 		// L: cycle through the layouts, in the dropdown's order; Shift+L goes backwards.
 		const cycleLayout = (evt: KeyboardEvent, delta: 1 | -1): boolean => {
 			if (!this.plainShortcutOk(evt)) return true;
+			if (this.sticky) return true;
 			const values = LAYOUT_OPTIONS.map(([value]) => value);
 			const step = (from: Layout) => values[(values.indexOf(from) + delta + values.length) % values.length];
 			let next = step(this.layout);
@@ -1036,6 +1051,7 @@ export class SectionCardsView extends ItemView {
 		// everything themselves, where the modes don't apply.
 		this.scope.register([], "V", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
+			if (this.sticky) return true; // a sticky is one card: nothing to switch
 			if (this.layoutOwnsPlacement()) return true;
 			if (this.hierarchyOn) {
 				this.hierarchyOn = false;
@@ -1055,12 +1071,14 @@ export class SectionCardsView extends ItemView {
 		// or the key that opened it couldn't close it.
 		this.scope.register([], "D", (evt) => {
 			if (!this.plainShortcutOk(evt, true)) return true;
+			if (this.sticky) return true; // a sticky is one card: nothing to switch
 			void this.toggleDeck();
 			return false;
 		});
 		// M: the ☰ menu, dropped beneath its toolbar button (in the Deck too).
 		this.scope.register([], "M", (evt) => {
 			if (!this.plainShortcutOk(evt, true) || !this.menuBtn) return true;
+			if (this.sticky) return true; // a sticky is one card: nothing to switch
 			evt.preventDefault();
 			this.openMainMenu(this.menuBtn);
 			return false;
@@ -1092,6 +1110,7 @@ export class SectionCardsView extends ItemView {
 		// N: create a new card, same as the "+ New card" button.
 		this.scope.register([], "N", (evt) => {
 			if (!this.plainShortcutOk(evt)) return true;
+			if (this.sticky) return true; // a sticky is one card: nothing to switch
 			this.promptNewCard();
 			return false;
 		});
@@ -1099,6 +1118,7 @@ export class SectionCardsView extends ItemView {
 		// Allowed in the Deck too — it's another way of picking a note.
 		this.scope.register([], "O", (evt) => {
 			if (!this.plainShortcutOk(evt, true)) return true;
+			if (this.sticky) return true; // a sticky is one card: nothing to switch
 			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path), true).open();
 			return false;
 		});
@@ -2591,6 +2611,7 @@ export class SectionCardsView extends ItemView {
 				evt.stopPropagation();
 				const menu = new Menu();
 				menu.addItem((item) => item.setTitle("Rename card…").setIcon("pencil").onClick(() => this.promptRenameCard(section)));
+				this.addStickyItems(menu, file, section);
 				menu.showAtMouseEvent(evt);
 			});
 		}
@@ -5134,6 +5155,91 @@ export class SectionCardsView extends ItemView {
 		return resolved ?? null;
 	}
 
+	// ---------- Stickies: one card in a sidebar tab or its own window ----------
+
+	/** The section a sticky follows: its heading line, exact or bar spacing and case. (A rename
+	 * through the plugin moves the sticky along — see renameSticky.) */
+	private stickySection(sections: Section[]): Section | null {
+		const raw = this.sticky;
+		if (!raw) return null;
+		const fold = (h: string) => h.trim().replace(/\s+/g, " ").toLowerCase();
+		return sections.find((s) => s.headingRaw === raw) ?? sections.find((s) => fold(s.headingRaw) === fold(raw)) ?? null;
+	}
+
+	/** A card renamed through the plugin: a sticky on it follows the new heading. */
+	renameSticky(oldRaw: string, newRaw: string): void {
+		if (this.sticky !== oldRaw) return;
+		this.sticky = newRaw;
+		this.app.workspace.requestSaveLayout();
+		this.syncLeafTitle();
+	}
+
+	/** Sticky mode: one card fills the pane (the Rolodex's shape, its tab strip hidden by
+	 * CSS), the toolbar hidden, none of the view's other state in play — and none of it
+	 * remembered for the note (rememberView). The card's level is read off its heading. */
+	private applyStickyMode(): void {
+		this.contentEl.toggleClass("is-sticky", !!this.sticky);
+		if (!this.sticky) return;
+		this.layout = "rolodex";
+		this.headingLevel = /^#+/.exec(this.sticky)?.[0].length ?? this.headingLevel;
+		this.preCalendarLevel = null;
+		this.hierarchyOn = false;
+		this.sectionsOn = false;
+		this.starredOnly = false;
+		this.taskFilter = "all";
+		this.groupBy = "none";
+		this.deckMode = false;
+	}
+
+	/** The strip above a sticky's card: the note it belongs to (or that the section is
+	 * gone), and the ways out — the note's full cards view, the section in the editor,
+	 * or closing the sticky. */
+	private syncStickyHead(file: TFile, section: Section | null): void {
+		if (!this.stickyHeadEl) {
+			this.stickyHeadEl = createDiv({ cls: "sfsc-sticky-head" });
+			this.toolbarEl.insertAdjacentElement("afterend", this.stickyHeadEl);
+		}
+		const head = this.stickyHeadEl;
+		head.empty();
+		head.toggleClass("is-missing", !section);
+		setIcon(head.createSpan({ cls: "sfsc-sticky-icon" }), "sticky-note");
+		const title = (this.sticky ?? "").replace(/^#+\s*/, "") || "(untitled)";
+		head.createSpan({
+			cls: "sfsc-sticky-note",
+			text: section ? file.basename : `“${title}” isn't in ${file.basename} any more.`,
+			attr: { title: section ? file.path : "" },
+		});
+		const button = (label: string, icon: string, onClick: () => void) => {
+			const btn = head.createEl("button", { cls: "sfsc-sticky-btn" });
+			setIcon(btn, icon);
+			btn.setAttr("aria-label", label);
+			btn.addEventListener("click", onClick);
+		};
+		button("Open the note's cards", DECK_ICON, () => void this.plugin.openCardsView(file.path, section?.headingRaw));
+		if (section) button("Open this section in the note", "external-link", () => void this.plugin.revealSection(file, section.headingLine));
+		button("Close this sticky", "x", () => this.leaf.detach());
+	}
+
+	/** Stickies: open this card on its own, in a sidebar tab or (desktop) a new window. */
+	private addStickyItems(menu: Menu, file: TFile, section: Section): void {
+		if (this.sticky || section.unfiled || section.properties) return;
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle("Sticky in the sidebar")
+				.setIcon("sticky-note")
+				.onClick(() => void this.plugin.openSticky(file.path, section.headingRaw, "sidebar")),
+		);
+		if (!Platform.isMobile) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Sticky in a new window")
+					.setIcon("app-window")
+					.onClick(() => void this.plugin.openSticky(file.path, section.headingRaw, "window")),
+			);
+		}
+	}
+
 	/** Clear the wall (cards and hierarchy columns) and show a two-line message instead. */
 	private showEmpty(line1: string, line2: string): void {
 		this.clearAllCards();
@@ -5255,7 +5361,11 @@ export class SectionCardsView extends ItemView {
 		this.clearPreviewTiles("images");
 		this.clearPreviewTiles("links");
 
-		const sections = parseCards(lines, this.headingLevel, this.plugin.unfiledTitle(), this.plugin.propertiesTitle());
+		const parsed = parseCards(lines, this.headingLevel, this.plugin.unfiledTitle(), this.plugin.propertiesTitle());
+		// A sticky shows one section — the card it was opened from — and says so above it.
+		const stickySection = this.sticky ? this.stickySection(parsed) : null;
+		if (this.sticky) this.syncStickyHead(file, stickySection);
+		const sections = this.sticky ? (stickySection ? [stickySection] : []) : parsed;
 
 		// Does this note deal in dates? The checkbox rules when the user has set it;
 		// until then the note decides for itself (the tally above already looked at
@@ -5712,6 +5822,7 @@ export class SectionCardsView extends ItemView {
 				);
 			}
 			menu.addItem((item) => item.setTitle("Delete card").setIcon("trash-2").onClick(confirmDeleteCard));
+			this.addStickyItems(menu, file, holder.section);
 			// The Rolodex card already fills the pane, so "big" has nothing to do there.
 			if (this.layout !== "rolodex") {
 				const big = card.hasClass("is-maximized");
