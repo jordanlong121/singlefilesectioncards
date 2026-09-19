@@ -4577,7 +4577,9 @@ export class SectionCardsView extends ItemView {
 			);
 		};
 
-		addHeading("Cards");
+		// Two groups: what acts on this note's cards, then what acts on the note (and the
+		// notes) — templates for each side sit with their side.
+		addHeading("Card");
 		// Greyed out in the Deck: no note is showing, so it's unclear which one the
 		// card would land in.
 		menu.addItem((item) =>
@@ -4587,31 +4589,36 @@ export class SectionCardsView extends ItemView {
 				.setDisabled(this.deckMode)
 				.onClick(() => this.promptNewCard()),
 		);
-		// Templates: the card template this note's new cards start from, and new notes
-		// made from a built-in structure or a copy of a vault note.
-		const templateItems = (m: Menu) => {
-			m.addItem((item) =>
+		menu.addItem((item) =>
+			item
+				.setTitle("Card template for this note…")
+				.setIcon("file-plus-2")
+				.setDisabled(this.deckMode)
+				.onClick(() => this.openTemplateMenu(evt, this.templateBtn ?? this.toolbarEl)),
+		);
+		if (this.anyFlippable()) {
+			menu.addItem((item) =>
 				item
-					.setTitle("Card template for this note…")
-					.setIcon("file-plus-2")
-					.onClick(() => this.openTemplateMenu(evt, this.templateBtn ?? this.toolbarEl)),
+					.setTitle("Flip all cards over")
+					.setIcon(FLIP_ICON)
+					.onClick(() => this.flipAll(true)),
 			);
-			m.addItem((item) =>
+			menu.addItem((item) =>
 				item
-					.setTitle("New note from template…")
-					.setIcon("layout-template")
-					.onClick(() => this.plugin.promptStructuredNote()),
+					.setTitle("Flip all cards back")
+					.setIcon(FLIP_ICON)
+					.onClick(() => this.flipAll(false)),
 			);
-		};
-		if (SectionCardsView.submenuSupported()) {
-			menu.addItem((item) => {
-				item.setTitle("Templates").setIcon("layout-template");
-				templateItems((item as MenuItem & { setSubmenu: () => Menu }).setSubmenu());
-			});
-		} else {
-			SectionCardsView.addMenuHeading(menu, "Templates");
-			templateItems(menu);
 		}
+
+		menu.addSeparator();
+		addHeading("Note");
+		menu.addItem((item) =>
+			item
+				.setTitle("New note from template…")
+				.setIcon("layout-template")
+				.onClick(() => this.plugin.promptStructuredNote()),
+		);
 		menu.addItem((item) =>
 			item
 				.setTitle("Manage notes…")
@@ -4678,21 +4685,6 @@ export class SectionCardsView extends ItemView {
 					.onClick(() => void this.plugin.setDateHide(this.filePath, { past: !hide.past }, base)),
 			);
 		}
-		if (this.anyFlippable()) {
-			menu.addItem((item) =>
-				item
-					.setTitle("Flip all cards over")
-					.setIcon(FLIP_ICON)
-					.onClick(() => this.flipAll(true)),
-			);
-			menu.addItem((item) =>
-				item
-					.setTitle("Flip all cards back")
-					.setIcon(FLIP_ICON)
-					.onClick(() => this.flipAll(false)),
-			);
-		}
-
 		menu.addSeparator();
 		this.addBackgroundItems(menu, base);
 
