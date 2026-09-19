@@ -2515,7 +2515,56 @@ body.is-phone .sfsc-planner-title {
 }
 
 .section-cards-tray-actions {
+	display: flex;
+	gap: 4px;
 	margin-bottom: 6px;
+}
+
+/* Fold / open the tray: a chevron beside Clear layout; alone, at the top of the strip. */
+.section-cards-tray-toggle {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	padding: 0;
+	color: var(--text-muted);
+	box-shadow: none;
+}
+
+.section-cards-tray-toggle:hover {
+	color: var(--text-normal);
+}
+
+.section-cards-tray-toggle svg {
+	width: 16px;
+	height: 16px;
+}
+
+/* Collapsed: the tray column is a slim strip holding the open button and the count of
+   what isn't on the canvas; the canvas takes the width. Remembered per note. */
+.is-tray-collapsed.is-layout-custom,
+.is-tray-collapsed.is-layout-images,
+.is-tray-collapsed.is-layout-links {
+	grid-template-columns: 1fr 36px;
+}
+
+.is-tray-collapsed .section-cards-tray {
+	padding: 6px 4px;
+	overflow: hidden;
+}
+
+.is-tray-collapsed .section-cards-tray-toggle {
+	width: 28px;
+	height: 28px;
+}
+
+.section-cards-tray-count {
+	margin-top: 6px;
+	text-align: center;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-muted);
 }
 
 .section-cards-tray-clear {

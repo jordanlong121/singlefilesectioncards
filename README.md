@@ -87,7 +87,9 @@ Full-height cards side by side.
 ### Custom Grid
 
 A freeform canvas: drag sections on from the tray, then place, move, and resize them.
-The arrangement is remembered per note in the plugin's data — never in your notes.
+The arrangement is remembered per note in the plugin's data — never in your notes. The
+chevron beside **Clear layout** folds the tray to a slim strip (with a count of what's
+still off the canvas) and opens it again; the Images and Links canvases fold the same way.
 
 ![Custom Grid](screenshots/custom.png)
 
