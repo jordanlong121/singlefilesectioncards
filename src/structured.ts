@@ -181,6 +181,8 @@ export interface StructuredSpec {
 	preset?: StructuredFormatDef;
 	/** One of the template note's saved Custom Grid layouts to apply to the new note. */
 	savedLayout?: string;
+	/** The layout the new note opens in; unset, the template's own (or the default). */
+	layout?: Layout;
 	level: number;
 	sections: string[];
 	intro: boolean;
@@ -325,7 +327,20 @@ export class StructuredNoteModal extends Modal {
 		let templateRow!: Setting;
 		let savedRow!: Setting;
 		let savedDropdown!: { selectEl: HTMLSelectElement; addOption: (v: string, l: string) => unknown; setValue: (v: string) => unknown };
+		let layoutDropdown!: { setValue: (v: string) => unknown };
+		let layoutTouched = false;
 		let presets: StructuredFormatDef[] = [];
+
+		// The layout the new note opens in: the template's own until the user picks one.
+		const templateLayout = (): Layout => {
+			if (spec.format === "note" && spec.templatePath) return this.plugin.getStoredView(spec.templatePath)?.layout ?? this.plugin.settings.layout;
+			return specFormat(spec)?.layout ?? this.plugin.settings.layout;
+		};
+		const syncLayoutDefault = () => {
+			if (layoutTouched) return;
+			spec.layout = templateLayout();
+			layoutDropdown.setValue(spec.layout);
+		};
 
 		// The template note's saved Custom Grid layouts, offered for the new note.
 		const syncSavedLayouts = () => {
@@ -338,6 +353,7 @@ export class StructuredNoteModal extends Modal {
 			for (const n of names) savedDropdown.addOption(n, n);
 			savedDropdown.setValue("");
 			savedRow.settingEl.toggleClass("is-hidden", names.length === 0);
+			syncLayoutDefault();
 		};
 
 		// The rows that only make sense for one kind of template.
@@ -463,7 +479,26 @@ export class StructuredNoteModal extends Modal {
 			.addDropdown((dd) => {
 				savedDropdown = dd;
 				dd.addOption("", "As arranged now");
-				dd.onChange((value) => (spec.savedLayout = value || undefined));
+				dd.onChange((value) => {
+					spec.savedLayout = value || undefined;
+					// A saved layout is a Custom Grid arrangement: open there to see it.
+					if (value) {
+						spec.layout = "custom";
+						layoutDropdown.setValue("custom");
+					}
+				});
+			});
+
+		new Setting(contentEl)
+			.setName("Layout")
+			.setDesc("The layout the note opens in — the template's own unless you choose another.")
+			.addDropdown((dd) => {
+				for (const [value, label] of LAYOUT_OPTIONS) dd.addOption(value, label);
+				layoutDropdown = dd;
+				dd.setValue(templateLayout()).onChange((value) => {
+					spec.layout = value as Layout;
+					layoutTouched = true;
+				});
 			});
 
 		new Setting(contentEl)
