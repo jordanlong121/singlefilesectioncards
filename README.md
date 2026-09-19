@@ -474,8 +474,8 @@ creating the card `2026-08-20, Thursday` produces:
 
 ☰ → Note → **New note…** (also a command) creates a note: blank by default (**None**), or with
 a well-known shape — a **Kanban board**, a **SWOT analysis**, an **Eisenhower matrix**, or a
-**GTD** system — or on **the headings of a note in the vault**: its headings become the
-sections and its text stays behind, so any note you write can serve as a template. Pick the template, name the note, choose the heading level (a vault note's is read from its headings),
+**GTD** system — or on an **existing note (headings only)**: its headings become the sections
+and its text stays behind, so any note you write can serve as a template. Pick the template, name the note, choose the heading level (a vault note's is read from its headings),
 edit the section names, and switch on an **Introduction** section, an **Additional notes**
 section, and a one-line hint under each heading. The placeholders above are filled — `{{title}}`
 is the note's name. The note opens as cards in the layout that suits it: columns side by side
