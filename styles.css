@@ -256,13 +256,14 @@ body.sfsc-flat-cards .section-cards-view {
 	font-style: italic;
 }
 
-/* The layout button beside the note: the current layout's icon and name, a chevron. */
-.section-cards-layout-btn {
+/* Picker controls — layout, sort, group: a button with an icon, the current choice's
+   name, and a chevron; the layout's icon is the current layout's, the others' fixed. */
+.sfsc-picker-btn {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
 	max-width: 180px;
-	padding: 4px 8px 4px 8px;
+	padding: 4px 8px;
 	font-size: calc(var(--font-ui-smaller, 12px) * 0.95);
 	font-weight: 600;
 	color: var(--text-normal);
@@ -271,39 +272,43 @@ body.sfsc-flat-cards .section-cards-view {
 	background-color: var(--interactive-normal);
 }
 
-.section-cards-layout-btn:hover,
-.section-cards-layout-btn.is-open {
+.sfsc-picker-btn:hover,
+.sfsc-picker-btn.is-open {
 	background-color: var(--interactive-hover);
 }
 
-.section-cards-layout-btn-icon svg,
-.section-cards-layout-btn-chevron svg {
+.sfsc-picker-btn-icon svg,
+.sfsc-picker-btn-chevron svg {
 	width: 14px;
 	height: 14px;
 }
 
-.section-cards-layout-btn-icon {
-	color: var(--interactive-accent);
+.sfsc-picker-btn-icon {
 	display: inline-flex;
-}
-
-.section-cards-layout-btn-chevron {
 	color: var(--text-muted);
-	display: inline-flex;
 }
 
-.section-cards-layout-btn-label {
+.section-cards-layout-btn .sfsc-picker-btn-icon {
+	color: var(--interactive-accent);
+}
+
+.sfsc-picker-btn-chevron {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+
+.sfsc-picker-btn-label {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-/* The layout picker: a grid of tiles dropped under the button. */
-.sfsc-layout-pop {
+/* The picker: a grid of tiles dropped under the button. */
+.sfsc-picker-pop {
 	position: absolute;
 	z-index: 60;
 	display: grid;
-	grid-template-columns: repeat(4, 84px);
+	grid-template-columns: repeat(var(--sfsc-picker-cols, 3), 84px);
 	gap: 6px;
 	padding: 8px;
 	background-color: var(--background-primary);
@@ -312,7 +317,7 @@ body.sfsc-flat-cards .section-cards-view {
 	box-shadow: var(--shadow-s, 0 4px 18px rgba(0, 0, 0, 0.25));
 }
 
-.sfsc-layout-tile {
+.sfsc-picker-tile {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -331,42 +336,42 @@ body.sfsc-flat-cards .section-cards-view {
 	box-shadow: none;
 }
 
-.sfsc-layout-tile:hover {
+.sfsc-picker-tile:hover {
 	background-color: var(--background-modifier-hover);
 }
 
-.sfsc-layout-tile.is-active {
+.sfsc-picker-tile.is-active {
 	border-color: var(--interactive-accent);
 	box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
-.sfsc-layout-tile:disabled {
+.sfsc-picker-tile:disabled {
 	opacity: 0.4;
 	cursor: not-allowed;
 }
 
-.sfsc-layout-tile-icon {
+.sfsc-picker-tile-icon {
 	display: inline-flex;
 	color: var(--text-muted);
 }
 
-.sfsc-layout-tile.is-active .sfsc-layout-tile-icon {
+.sfsc-picker-tile.is-active .sfsc-picker-tile-icon {
 	color: var(--interactive-accent);
 }
 
-.sfsc-layout-tile-icon svg {
+.sfsc-picker-tile-icon svg {
 	width: 20px;
 	height: 20px;
 }
 
-.sfsc-layout-tile-label {
+.sfsc-picker-tile-label {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	max-width: 100%;
 }
 
-body.is-phone .sfsc-layout-pop {
+body.is-phone .sfsc-picker-pop {
 	grid-template-columns: repeat(3, 84px);
 }
 

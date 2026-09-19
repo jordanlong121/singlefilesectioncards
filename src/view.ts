@@ -21,7 +21,7 @@ import {
 	type ViewStateResult,
 } from "obsidian";
 import { createEmbeddedEditor, type EmbeddedEditor } from "../editor-embed";
-import { LAYOUT_ICONS, DECK_BACKGROUND_KEY,
+import { GROUP_BY_ICONS, DECK_SORT_ICONS, LAYOUT_ICONS, DECK_BACKGROUND_KEY,
 	VIEW_TYPE_SECTION_CARDS,
 	INITIAL_RENDER_COUNT,
 	DEFERRED_RENDER_BATCH,
@@ -263,6 +263,28 @@ export interface PlannerItem {
 	slot?: PlannerSlot;
 }
 
+/** One choice in a toolbar picker (layout, sort, group). */
+interface PickerOption {
+	value: string;
+	label: string;
+	hint?: string;
+	icon: string;
+	fallback?: string;
+	disabled?: boolean;
+}
+
+interface PickerSpec {
+	/** A class for the button, so each picker can be styled or found. */
+	cls: string;
+	ariaLabel: string;
+	/** A fixed icon for the button (sort, group); unset, the current option's icon shows (layout). */
+	buttonIcon?: string;
+	value: string;
+	columns?: number;
+	options: PickerOption[];
+	onPick: (value: string) => void;
+}
+
 export interface CardsViewState {
 	filePath?: string;
 	headingLevel?: number;
@@ -380,9 +402,10 @@ export class SectionCardsView extends ItemView {
 	/** Opens the jump-to-date picker — stored so the hamburger menu can trigger it too. */
 	private openJumpPicker: (() => void) | null = null;
 	/** The Layout dropdown, so refresh can grey out Calendar in date-less notes. */
-	/** The toolbar's layout button (beside the note button) and its open picker, if any. */
-	private layoutBtn: HTMLElement | null = null;
-	private layoutPopover: HTMLElement | null = null;
+	/** The open picker (layout, sort, group), its button, and its listener teardown. */
+	private pickerPopover: HTMLElement | null = null;
+	private pickerAnchor: HTMLElement | null = null;
+	private pickerCleanup: (() => void) | null = null;
 	/** Whether ANY heading level of the note has date headings (Calendar picks its
 	 * own level, so this is broader than the current level's noteHasDates). */
 	private hasAnyDates = false;
@@ -776,77 +799,93 @@ export class SectionCardsView extends ItemView {
 		this.updateToolbarOffset();
 	}
 
-	/** The layout picker's date tiles follow the note's headings; an open picker redraws. */
+	/** The layout picker's date tiles follow the note's headings; an open picker closes
+	 * rather than go stale (the toolbar rebuild redraws it on the next click). */
 	private syncCalendarOption(): void {
-		if (this.layoutPopover && this.layoutBtn) this.openLayoutPicker(this.layoutBtn);
+		this.closePicker();
 	}
 
 	/**
-	 * The layout picker: a grid of tiles under the toolbar's layout button, one per
-	 * layout offered in this note — icon and name, the current one lit, the Calendar and
-	 * Heatmap greyed out until the note has date headings. Closes on a pick, Escape, or a
-	 * click elsewhere. (Hiding layouts from a note stays with ☰ → Layouts.)
+	 * A picker control: a button showing the current choice (its own icon, or a fixed one
+	 * for the control) and a chevron, dropping a grid of tiles — icon and name each, the
+	 * current one ringed — under it. One picker is open at a time; Escape or a click
+	 * elsewhere closes it. Layout, sort, and group all wear this.
 	 */
-	private openLayoutPicker(anchor: HTMLElement): void {
-		this.closeLayoutPicker();
-		const pop = this.contentEl.createDiv({ cls: "sfsc-layout-pop" });
+	private buildPicker(host: HTMLElement, spec: PickerSpec): HTMLElement {
+		const btn = host.createEl("button", { cls: `sfsc-picker-btn ${spec.cls}` });
+		const current = spec.options.find((o) => o.value === spec.value);
+		const icon = spec.buttonIcon ?? current?.icon ?? spec.options[0]?.icon ?? "chevron-down";
+		const fallback = spec.buttonIcon ? spec.buttonIcon : (current?.fallback ?? icon);
+		SectionCardsView.setIconOr(btn.createSpan({ cls: "sfsc-picker-btn-icon" }), icon, fallback);
+		btn.createSpan({ cls: "sfsc-picker-btn-label", text: current?.label ?? spec.value });
+		setIcon(btn.createSpan({ cls: "sfsc-picker-btn-chevron" }), "chevron-down");
+		btn.setAttr("aria-label", current ? `${spec.ariaLabel}: ${current.label}` : spec.ariaLabel);
+		btn.setAttr("aria-haspopup", "true");
+		btn.addEventListener("click", () => {
+			if (this.pickerAnchor === btn) this.closePicker();
+			else this.openPicker(btn, spec);
+		});
+		return btn;
+	}
+
+	private openPicker(anchor: HTMLElement, spec: PickerSpec): void {
+		this.closePicker();
+		const pop = this.contentEl.createDiv({ cls: "sfsc-picker-pop" });
 		pop.setAttr("role", "menu");
-		const dated = this.calendarSelectable();
-		for (const [value, label, hint] of LAYOUT_OPTIONS) {
-			if (!this.layoutEnabled(value)) continue;
-			const tile = pop.createEl("button", { cls: "sfsc-layout-tile" });
+		pop.setCssProps({ "--sfsc-picker-cols": String(spec.columns ?? 3) });
+		for (const option of spec.options) {
+			const tile = pop.createEl("button", { cls: "sfsc-picker-tile" });
 			tile.setAttr("role", "menuitemradio");
-			tile.setAttr("aria-checked", String(value === this.layout));
-			tile.setAttr("title", hint);
-			tile.toggleClass("is-active", value === this.layout);
-			const [icon, fallback] = LAYOUT_ICONS[value];
-			SectionCardsView.setIconOr(tile.createSpan({ cls: "sfsc-layout-tile-icon" }), icon, fallback);
-			tile.createSpan({ cls: "sfsc-layout-tile-label", text: label });
-			if ((value === "calendar" || value === "heatmap") && !dated && value !== this.layout) {
-				tile.toggleAttribute("disabled", true);
-				tile.setAttr("title", `${hint} — needs date headings`);
-			}
+			tile.setAttr("aria-checked", String(option.value === spec.value));
+			if (option.hint) tile.setAttr("title", option.hint);
+			tile.toggleClass("is-active", option.value === spec.value);
+			SectionCardsView.setIconOr(tile.createSpan({ cls: "sfsc-picker-tile-icon" }), option.icon, option.fallback ?? option.icon);
+			tile.createSpan({ cls: "sfsc-picker-tile-label", text: option.label });
+			if (option.disabled) tile.toggleAttribute("disabled", true);
 			tile.addEventListener("click", () => {
-				this.closeLayoutPicker();
-				if (value !== this.layout) this.setLayout(value);
+				this.closePicker();
+				if (option.value !== spec.value) spec.onPick(option.value);
 			});
 		}
-		// Under the button, within the pane.
+		// Under the button, within the pane (pulled left if it would run past the edge).
 		const host = this.contentEl.getBoundingClientRect();
 		const at = anchor.getBoundingClientRect();
-		pop.setCssStyles({ top: `${at.bottom - host.top + 4}px`, left: `${Math.max(8, at.left - host.left)}px` });
-		this.layoutPopover = pop;
+		const width = (spec.columns ?? 3) * 84 + ((spec.columns ?? 3) - 1) * 6 + 18;
+		const left = Math.max(8, Math.min(at.left - host.left, host.width - width - 8));
+		pop.setCssStyles({ top: `${at.bottom - host.top + 4}px`, left: `${left}px` });
+		this.pickerPopover = pop;
+		this.pickerAnchor = anchor;
 		anchor.addClass("is-open");
 		const onDown = (evt: PointerEvent) => {
 			const target = evt.target as Node | null;
 			if (pop.contains(target) || anchor.contains(target)) return;
-			this.closeLayoutPicker();
+			this.closePicker();
 		};
 		const onKey = (evt: KeyboardEvent) => {
 			if (evt.key !== "Escape") return;
 			evt.preventDefault();
-			this.closeLayoutPicker();
+			this.closePicker();
 			anchor.focus();
 		};
 		const doc = this.contentEl.doc;
 		doc.addEventListener("pointerdown", onDown, true);
 		doc.addEventListener("keydown", onKey, true);
-		this.layoutPopoverCleanup = () => {
+		this.pickerCleanup = () => {
 			doc.removeEventListener("pointerdown", onDown, true);
 			doc.removeEventListener("keydown", onKey, true);
 		};
-		(pop.querySelector<HTMLElement>(".sfsc-layout-tile.is-active") ?? pop.querySelector<HTMLElement>(".sfsc-layout-tile"))?.focus();
+		(pop.querySelector<HTMLElement>(".sfsc-picker-tile.is-active") ?? pop.querySelector<HTMLElement>(".sfsc-picker-tile"))?.focus();
 	}
 
-	private layoutPopoverCleanup: (() => void) | null = null;
-
-	private closeLayoutPicker(): void {
-		this.layoutPopoverCleanup?.();
-		this.layoutPopoverCleanup = null;
-		this.layoutPopover?.remove();
-		this.layoutPopover = null;
-		this.layoutBtn?.removeClass("is-open");
+	private closePicker(): void {
+		this.pickerCleanup?.();
+		this.pickerCleanup = null;
+		this.pickerPopover?.remove();
+		this.pickerPopover = null;
+		this.pickerAnchor?.removeClass("is-open");
+		this.pickerAnchor = null;
 	}
+
 
 	/** The Calendar layout implies Dates, so the toggle hides once it's on there — but
 	 * not while it's off, or the gate message's "turn on the Dates checkbox" advice
@@ -3974,22 +4013,27 @@ export class SectionCardsView extends ItemView {
 
 		// The layout, right of the note: the current one's icon and name, opening a grid
 		// of every layout (L still cycles). The Deck has no layout to pick.
-		this.closeLayoutPicker();
-		this.layoutBtn = null;
+		this.closePicker();
 		if (!this.deckMode) {
-			const layoutBtn = cluster.createEl("button", { cls: "section-cards-layout-btn" });
-			const current = LAYOUT_OPTIONS.find(([value]) => value === this.layout);
-			const [icon, fallback] = LAYOUT_ICONS[this.layout];
-			SectionCardsView.setIconOr(layoutBtn.createSpan({ cls: "section-cards-layout-btn-icon" }), icon, fallback);
-			layoutBtn.createSpan({ cls: "section-cards-layout-btn-label", text: current?.[1] ?? this.layout });
-			setIcon(layoutBtn.createSpan({ cls: "section-cards-layout-btn-chevron" }), "chevron-down");
-			layoutBtn.setAttr("aria-label", "Card layout (L cycles)");
-			layoutBtn.setAttr("aria-haspopup", "true");
-			layoutBtn.addEventListener("click", () => {
-				if (this.layoutPopover) this.closeLayoutPicker();
-				else this.openLayoutPicker(layoutBtn);
+			const dated = this.calendarSelectable();
+			this.buildPicker(cluster, {
+				cls: "section-cards-layout-btn",
+				ariaLabel: "Card layout (L cycles)",
+				value: this.layout,
+				columns: 4,
+				options: LAYOUT_OPTIONS.filter(([value]) => this.layoutEnabled(value)).map(([value, label, hint]) => {
+					const needsDates = (value === "calendar" || value === "heatmap") && !dated && value !== this.layout;
+					return {
+						value,
+						label,
+						hint: needsDates ? `${hint} — needs date headings` : hint,
+						icon: LAYOUT_ICONS[value][0],
+						fallback: LAYOUT_ICONS[value][1],
+						disabled: needsDates,
+					};
+				}),
+				onPick: (value) => this.setLayout(value as Layout),
 			});
-			this.layoutBtn = layoutBtn;
 		}
 
 		if (this.deckMode) {
@@ -3997,14 +4041,17 @@ export class SectionCardsView extends ItemView {
 			// stands down, but ordering the thumbnails belongs here.
 			const sortWrap = cluster.createDiv({ cls: "section-cards-control section-cards-sort-control" });
 			sortWrap.setAttr("aria-label", "Order the deck's notes");
-			sortWrap.createSpan({ text: "Sort", cls: "section-cards-label" });
-			const sortSelect = sortWrap.createEl("select", { cls: "dropdown" });
-			sortSelect.setAttr("aria-label", "Order the deck's notes");
-			for (const [value, label] of DECK_SORT_LABELS) sortSelect.createEl("option", { text: label, value });
-			sortSelect.value = this.plugin.settings.deckSort;
-			sortSelect.addEventListener("change", () => {
-				this.plugin.settings.deckSort = sortSelect.value as DeckSort;
-				void this.plugin.saveSettings().then(() => this.refresh());
+			this.buildPicker(sortWrap, {
+				cls: "section-cards-sort-btn",
+				ariaLabel: "Order the deck's notes",
+				buttonIcon: "arrow-up-down",
+				value: this.plugin.settings.deckSort,
+				columns: 3,
+				options: DECK_SORT_LABELS.map(([value, label]) => ({ value, label, icon: DECK_SORT_ICONS[value][0], fallback: DECK_SORT_ICONS[value][1] })),
+				onPick: (value) => {
+					this.plugin.settings.deckSort = value as DeckSort;
+					void this.plugin.saveSettings().then(() => this.refresh());
+				},
 			});
 			this.addHelpButton(right);
 			return;
@@ -4265,36 +4312,42 @@ export class SectionCardsView extends ItemView {
 		// Tooltips sit on the wrapper as well as the control, so hovering the text
 		// label ("Sort", "Layout", …) shows them too, not just the dropdown.
 		const sortWrap = cluster.createDiv({ cls: "section-cards-control section-cards-sort-control" });
-		sortWrap.setAttr("aria-label", "Order the cards are shown in");
-		sortWrap.createSpan({ text: "Sort", cls: "section-cards-label" });
-		const sortSelect = sortWrap.createEl("select", { cls: "dropdown" });
-		sortSelect.setAttr("aria-label", "Order the cards are shown in");
 		// On the Calendar the same control orders the months instead of the cards.
-		if (this.layout === "calendar") {
-			sortWrap.setAttr("aria-label", "Order the months are shown in");
-			sortSelect.setAttr("aria-label", "Order the months are shown in");
-			sortSelect.createEl("option", { text: "Ascending", value: "asc" });
-			sortSelect.createEl("option", { text: "Descending", value: "desc" });
-			sortSelect.value = this.sortOrder === "desc" ? "desc" : "asc";
-		} else {
-			sortSelect.createEl("option", { text: "A → Z", value: "asc" });
-			sortSelect.createEl("option", { text: "Z → A", value: "desc" });
-			sortSelect.createEl("option", { text: "Document order", value: "doc" });
-			// The count sorts belong to the Tasks layout — but a count order carried
-			// into another layout still works, so the select keeps showing it there.
-			if (this.layout === "tasks" || this.sortOrder.startsWith("count")) {
-				sortSelect.createEl("option", { text: SORT_LABELS["count-asc"], value: "count-asc" });
-				sortSelect.createEl("option", { text: SORT_LABELS["count-desc"], value: "count-desc" });
-			}
-			sortSelect.value = this.sortOrder;
+		const calendarSort = this.layout === "calendar";
+		sortWrap.setAttr("aria-label", calendarSort ? "Order the months are shown in" : "Order the cards are shown in");
+		const sortOptions: PickerOption[] = calendarSort
+			? [
+					{ value: "asc", label: "Ascending", icon: "calendar-arrow-down", fallback: "arrow-down" },
+					{ value: "desc", label: "Descending", icon: "calendar-arrow-up", fallback: "arrow-up" },
+				]
+			: [
+					{ value: "asc", label: "A → Z", icon: "arrow-down-a-z", fallback: "sort-asc" },
+					{ value: "desc", label: "Z → A", icon: "arrow-up-z-a", fallback: "sort-desc" },
+					{ value: "doc", label: "Document order", icon: "list-ordered", fallback: "list" },
+				];
+		// The count sorts belong to the Tasks layout — but a count order carried into
+		// another layout still works, so the picker keeps offering it there.
+		if (!calendarSort && (this.layout === "tasks" || this.sortOrder.startsWith("count"))) {
+			sortOptions.push(
+				{ value: "count-asc", label: SORT_LABELS["count-asc"], icon: "arrow-down-0-1", fallback: "list-checks" },
+				{ value: "count-desc", label: SORT_LABELS["count-desc"], icon: "arrow-up-1-0", fallback: "list-checks" },
+			);
 		}
-		sortSelect.addEventListener("change", () => {
-			this.sortOrder = sortSelect.value as SortOrder;
-			this.rememberView();
-			void this.refresh().then(() => {
-				this.revealSelection(); // a selected card follows the re-sort into view
-				this.app.workspace.requestSaveLayout();
-			});
+		this.buildPicker(sortWrap, {
+			cls: "section-cards-sort-btn",
+			ariaLabel: sortWrap.getAttr("aria-label") ?? "Sort",
+			buttonIcon: "arrow-up-down",
+			value: calendarSort ? (this.sortOrder === "desc" ? "desc" : "asc") : this.sortOrder,
+			columns: 3,
+			options: sortOptions,
+			onPick: (value) => {
+				this.sortOrder = value as SortOrder;
+				this.rememberView();
+				void this.refresh().then(() => {
+					this.revealSelection(); // a selected card follows the re-sort into view
+					this.app.workspace.requestSaveLayout();
+				});
+			},
 		});
 
 		// Group-by: divider bars over buckets, per note like the sort. Not on the layouts
@@ -4302,20 +4355,23 @@ export class SectionCardsView extends ItemView {
 		if (!this.layoutOwnsPlacement()) {
 			const groupWrap = cluster.createDiv({ cls: "section-cards-control section-cards-group-control" });
 			groupWrap.setAttr("aria-label", "Group the cards under divider bars");
-			groupWrap.createSpan({ text: "Group", cls: "section-cards-label" });
-			const groupSelect = groupWrap.createEl("select", { cls: "dropdown" });
-			groupSelect.setAttr("aria-label", "Group the cards under divider bars");
-			for (const [value, label] of GROUP_BY_LABELS) groupSelect.createEl("option", { text: label, value });
-			groupSelect.value = this.groupBy;
-			groupSelect.addEventListener("change", () => {
-				this.groupBy = groupSelect.value as GroupBy;
-				this.rememberView();
-				this.applyLayoutClass();
-				this.buildToolbar();
-				void this.refresh().then(() => {
-					this.revealSelection(); // the buckets move cards; keep the selected one on screen
-					this.app.workspace.requestSaveLayout();
-				});
+			this.buildPicker(groupWrap, {
+				cls: "section-cards-group-btn",
+				ariaLabel: "Group the cards under divider bars",
+				buttonIcon: "layers",
+				value: this.groupBy,
+				columns: 3,
+				options: GROUP_BY_LABELS.map(([value, label]) => ({ value, label, icon: GROUP_BY_ICONS[value][0], fallback: GROUP_BY_ICONS[value][1] })),
+				onPick: (value) => {
+					this.groupBy = value as GroupBy;
+					this.rememberView();
+					this.applyLayoutClass();
+					this.buildToolbar();
+					void this.refresh().then(() => {
+						this.revealSelection(); // the buckets move cards; keep the selected one on screen
+						this.app.workspace.requestSaveLayout();
+					});
+				},
 			});
 		}
 
