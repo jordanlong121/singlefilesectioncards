@@ -4380,6 +4380,8 @@ export class SectionCardsView extends ItemView {
 		}
 		for (const entry of entries) {
 			const tile = this.gridEl.createDiv({ cls: "sfsc-deck-card" });
+			// The tile wears the note's own background, so the deck reads like the notes do.
+			this.stampBackground(tile, entry.path);
 			tile.setAttr("role", "button");
 			tile.setAttr("tabindex", "0");
 			tile.setAttr("aria-label", `Open ${entry.name} as cards`);
@@ -4962,28 +4964,38 @@ export class SectionCardsView extends ItemView {
 
 	/** Show or clear the note's background image behind the card wall. */
 	private applyBackground(): void {
-		const path = this.plugin.getBackgroundImage(this.filePath);
+		this.stampBackground(this.contentEl, this.filePath);
+	}
+
+	/**
+	 * Dress an element in a note's background — the image and its veil, brightness, and
+	 * saturation as CSS variables, plus has-sfsc-bg, which styles.css layers into a
+	 * background-image — or strip it when the note has none. The pane wears its own
+	 * note's; a Deck tile wears the note it stands for.
+	 */
+	private stampBackground(el: HTMLElement, notePath: string): void {
+		const path = this.plugin.getBackgroundImage(notePath);
 		const file = path ? this.app.vault.getFileByPath(path) : null;
 		if (file) {
 			// The veil is only written inline when this note set its own strength;
 			// otherwise styles.css's default (Style Settings can override it) applies.
-			const dim = this.plugin.getBackgroundDimOverride(this.filePath);
-			const adjust = this.plugin.getBackgroundAdjust(this.filePath);
-			this.contentEl.setCssProps({
+			const dim = this.plugin.getBackgroundDimOverride(notePath);
+			const adjust = this.plugin.getBackgroundAdjust(notePath);
+			el.setCssProps({
 				"--sfsc-bg-image": `url("${this.app.vault.getResourcePath(file)}")`,
 				"--sfsc-bg-veil": dim === null ? "" : String(dim / 100),
 				"--sfsc-bg-light": backgroundLightLayer(adjust.brightness),
 				"--sfsc-bg-desat": backgroundDesatLayer(adjust.saturation),
 			});
-			this.contentEl.addClass("has-sfsc-bg");
+			el.addClass("has-sfsc-bg");
 		} else {
-			this.contentEl.setCssProps({
+			el.setCssProps({
 				"--sfsc-bg-image": "",
 				"--sfsc-bg-veil": "",
 				"--sfsc-bg-light": "",
 				"--sfsc-bg-desat": "",
 			});
-			this.contentEl.removeClass("has-sfsc-bg");
+			el.removeClass("has-sfsc-bg");
 		}
 	}
 
