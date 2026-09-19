@@ -98,7 +98,10 @@ whole pane; a click on that bar, the panel button in the zoom controls (bottom-l
 note's background — so a note can switch between, say, a "SWOT" grid and a "Timeline" strip;
 pick one from the dropdown to apply it, save again under the same name to update it. Once
 the canvas drifts from the applied layout its name wears an asterisk, and clearing the
-canvas, switching layouts, or leaving the Custom Grid first asks whether to save.
+canvas, switching layouts, or leaving the Custom Grid first asks whether to save. Saved
+layouts also appear as tiles in the toolbar's Layout picker, after the layouts, so one is a
+click away from any layout; and the New note wizard offers a template note's saved layouts,
+so a note made from a template can open on one of them.
 
 ![Custom Grid](screenshots/custom.png)
 

@@ -179,6 +179,8 @@ export interface StructuredSpec {
 	format: StructuredFormat | "none" | "note" | "preset";
 	templatePath?: string;
 	preset?: StructuredFormatDef;
+	/** One of the template note's saved Custom Grid layouts to apply to the new note. */
+	savedLayout?: string;
 	level: number;
 	sections: string[];
 	intro: boolean;
@@ -325,7 +327,22 @@ export class StructuredNoteModal extends Modal {
 		let templateRow!: Setting;
 		let sectionsRow!: Setting;
 		let hintsRow!: Setting;
+		let savedRow!: Setting;
+		let savedDropdown!: { selectEl: HTMLSelectElement; addOption: (v: string, l: string) => unknown; setValue: (v: string) => unknown };
 		let presets: StructuredFormatDef[] = [];
+
+		// The template note's saved Custom Grid layouts, offered for the new note.
+		const syncSavedLayouts = () => {
+			const templateNote = spec.format === "preset" ? spec.preset?.path : spec.format === "note" ? spec.templatePath : undefined;
+			const saved = templateNote ? this.plugin.getSavedLayouts(templateNote) : {};
+			const names = Object.keys(saved).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
+			spec.savedLayout = undefined;
+			savedDropdown.selectEl.empty();
+			savedDropdown.addOption("", "As arranged now");
+			for (const n of names) savedDropdown.addOption(n, n);
+			savedDropdown.setValue("");
+			savedRow.settingEl.toggleClass("is-hidden", names.length === 0);
+		};
 
 		// The rows that only make sense for one kind of template.
 		const syncRows = () => {
@@ -333,6 +350,7 @@ export class StructuredNoteModal extends Modal {
 			templateRow.settingEl.toggleClass("is-hidden", !fromNote);
 			sectionsRow.settingEl.toggleClass("is-hidden", fromNote);
 			hintsRow.settingEl.toggleClass("is-hidden", fromNote);
+			syncSavedLayouts();
 		};
 
 		new Setting(contentEl)
@@ -381,6 +399,7 @@ export class StructuredNoteModal extends Modal {
 					new FileSuggestModal(this.plugin.app, this.plugin, (path) => {
 						spec.templatePath = path;
 						templateRow.setDesc(path);
+						syncSavedLayouts();
 						const file = this.plugin.app.vault.getAbstractFileByPath(path);
 						if (file instanceof TFile) {
 							if (!nameTouched) {
@@ -435,6 +454,15 @@ export class StructuredNoteModal extends Modal {
 			.setName("Additional notes")
 			.setDesc("A last section for whatever doesn't fit.")
 			.addToggle((t) => t.setValue(spec.notes).onChange((v) => (spec.notes = v)));
+		savedRow = new Setting(contentEl)
+			.setName("Saved layout")
+			.setDesc("Open the new note on one of the template's saved Custom Grid layouts.")
+			.addDropdown((dd) => {
+				savedDropdown = dd;
+				dd.addOption("", "As arranged now");
+				dd.onChange((value) => (spec.savedLayout = value || undefined));
+			});
+
 		hintsRow = new Setting(contentEl)
 			.setName("Hints")
 			.setDesc("One italic line under each heading saying what belongs there (the built-ins' and presets' own; a generic one for the introduction and notes).")

@@ -4031,23 +4031,52 @@ export class SectionCardsView extends ItemView {
 		this.closePicker();
 		if (!this.deckMode) {
 			const dated = this.calendarSelectable();
+			// The note's saved Custom Grid layouts follow the layouts as tiles of their own:
+			// picking one switches to the Custom Grid and applies it.
+			const savedNames = Object.keys(this.plugin.getSavedLayouts(this.currentPath())).sort((a, b) =>
+				a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }),
+			);
+			const state = this.savedLayoutState();
+			const value = this.layout === "custom" && state && !state.dirty ? `saved:${state.name}` : this.layout;
 			this.buildPicker(cluster, {
 				cls: "section-cards-layout-btn",
 				ariaLabel: "Card layout (L cycles)",
-				value: this.layout,
+				value,
 				columns: 4,
-				options: LAYOUT_OPTIONS.filter(([value]) => this.layoutEnabled(value)).map(([value, label, hint]) => {
-					const needsDates = (value === "calendar" || value === "heatmap") && !dated && value !== this.layout;
-					return {
-						value,
-						label,
-						hint: needsDates ? `${hint} — needs date headings` : hint,
-						icon: LAYOUT_ICONS[value][0],
-						fallback: LAYOUT_ICONS[value][1],
-						disabled: needsDates,
-					};
-				}),
-				onPick: (value) => this.setLayout(value as Layout),
+				options: [
+					...LAYOUT_OPTIONS.filter(([value]) => this.layoutEnabled(value)).map((entry): PickerOption => {
+						const [value, label, hint] = entry;
+						const needsDates = (value === "calendar" || value === "heatmap") && !dated && value !== this.layout;
+						return {
+							value,
+							label,
+							hint: needsDates ? `${hint} — needs date headings` : hint,
+							icon: LAYOUT_ICONS[value][0],
+							fallback: LAYOUT_ICONS[value][1],
+							disabled: needsDates,
+						};
+					}),
+					...savedNames.map((name): PickerOption => ({
+						value: `saved:${name}`,
+						label: name,
+						hint: "A saved Custom Grid layout: its arrangement, zoom, and background",
+						icon: "bookmark",
+						fallback: "star",
+					})),
+				],
+				onPick: (picked) => {
+					if (!picked.startsWith("saved:")) {
+						this.setLayout(picked as Layout);
+						return;
+					}
+					const name = picked.slice("saved:".length);
+					const apply = () => void this.plugin.applySavedLayout(this.currentPath(), name);
+					if (this.layout === "custom") this.confirmSavedLayoutChanges(apply);
+					else {
+						this.switchLayout("custom");
+						apply();
+					}
+				},
 			});
 		}
 
@@ -8219,9 +8248,10 @@ export class SectionCardsView extends ItemView {
 	 */
 	private buildSavedLayoutsRow(): void {
 		const row = this.trayEl.createDiv({ cls: "section-cards-tray-layouts" });
-		const saved = this.plugin.getSavedLayouts(this.filePath);
+		const notePath = this.currentPath();
+		const saved = this.plugin.getSavedLayouts(notePath);
 		const names = Object.keys(saved).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
-		const active = this.plugin.getActiveSavedLayout(this.filePath);
+		const active = this.plugin.getActiveSavedLayout(notePath);
 		const select = row.createEl("select", { cls: "dropdown section-cards-tray-layout-select" });
 		select.createEl("option", { value: "", text: names.length ? "Saved layouts…" : "No saved layouts" });
 		for (const name of names) select.createEl("option", { value: name, text: name });
@@ -8232,7 +8262,7 @@ export class SectionCardsView extends ItemView {
 			const chosen = select.value;
 			if (!chosen) return;
 			this.confirmSavedLayoutChanges(
-				() => void this.plugin.applySavedLayout(this.filePath, chosen),
+				() => void this.plugin.applySavedLayout(notePath, chosen),
 				() => {
 					select.value = active && saved[active] ? active : "";
 					this.syncSavedLayoutDirty();
@@ -8254,7 +8284,7 @@ export class SectionCardsView extends ItemView {
 			new TextInputModal(this.app, "Save layout", select.value || active || "", "Save", (value) => {
 				const name = value.trim();
 				if (!name) return;
-				const write = () => void this.plugin.saveCanvasLayout(this.filePath, name, this.viewSettings()).then(redraw);
+				const write = () => void this.plugin.saveCanvasLayout(notePath, name, this.viewSettings()).then(redraw);
 				if (saved[name] && name !== select.value) {
 					new ConfirmActionModal(
 						this.app,
@@ -8276,7 +8306,7 @@ export class SectionCardsView extends ItemView {
 				`“${name}” is forgotten. The canvas stays as it is.`,
 				"Delete",
 				true,
-				() => void this.plugin.deleteSavedLayout(this.filePath, name).then(redraw),
+				() => void this.plugin.deleteSavedLayout(notePath, name).then(redraw),
 			).open();
 		});
 		const syncDelete = () => del.toggleAttribute("disabled", !select.value);
@@ -8288,10 +8318,11 @@ export class SectionCardsView extends ItemView {
 	/** The active saved layout and whether the canvas has drifted from it (placements,
 	 * zoom, or background); null when no saved layout is active. */
 	private savedLayoutState(): { name: string; dirty: boolean } | null {
-		const name = this.plugin.getActiveSavedLayout(this.filePath);
+		const notePath = this.currentPath();
+		const name = this.plugin.getActiveSavedLayout(notePath);
 		if (!name) return null;
-		const saved = this.plugin.getSavedLayouts(this.filePath)[name];
-		const entry = this.plugin.settings.perFile?.[this.filePath];
+		const saved = this.plugin.getSavedLayouts(notePath)[name];
+		const entry = this.plugin.settings.perFile?.[notePath];
 		if (!saved || !entry) return null;
 		return { name, dirty: !canvasLayoutEquals(snapshotCanvasLayout(entry), saved) };
 	}
@@ -8326,7 +8357,7 @@ export class SectionCardsView extends ItemView {
 				return;
 			}
 			if (choice === "save") {
-				void this.plugin.saveCanvasLayout(this.filePath, state.name, this.viewSettings()).then(() => {
+				void this.plugin.saveCanvasLayout(this.currentPath(), state.name, this.viewSettings()).then(() => {
 					this.syncSavedLayoutDirty();
 					then();
 				});
