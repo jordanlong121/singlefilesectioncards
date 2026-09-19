@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare, bareMonthIndex, firstDueTaskIndex, plannerColumnSplit, plannerCardWeight, structuredNoteMarkdown, structuredPlacements, structuredTitles, STRUCTURED_FORMATS, structuredNoteContent, templateNoteLevel, presetFromNote, snapshotCanvasLayout, applyCanvasLayout, canvasLayoutEquals } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare, bareMonthIndex, firstDueTaskIndex, plannerColumnSplit, plannerCardWeight, structuredNoteMarkdown, structuredPlacements, structuredTitles, STRUCTURED_FORMATS, structuredNoteContent, headingsOnlyFormat, presetFromNote, snapshotCanvasLayout, applyCanvasLayout, canvasLayoutEquals } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -2102,13 +2102,16 @@ t("saved layouts: equality ignores savedAt and treats a missing zoom as 100%; an
   assert.ok(!canvasLayoutEquals(a, { ...a, backgroundDim: 20 }));
 });
 
-t("note from template: a vault note's body is copied between the optional sections, placeholders filled", () => {
-  const spec = { format: "note", templatePath: "T.md", level: 3, sections: [], intro: true, notes: true, hints: false };
-  const body = "\n### Plan for {{title}}\n- [ ] first step\n\n### Log\n";
-  const md = structuredNoteContent(spec, "Launch", "YYYY-MM-DD, dddd", body);
+t("new note from a vault note: its headings only — no hints, no bodies — at their level, placeholders filled", () => {
+  const body = "\n### Plan for {{title}}\n*a hint line*\n- [ ] first step\n\n### Log\nsome text\n";
+  const format = headingsOnlyFormat("T", "T.md", body);
+  assert.equal(format.level, 3);
+  assert.deepEqual(format.sections, [{ title: "Plan for {{title}}", hint: "" }, { title: "Log", hint: "" }]);
+  const spec = { format: "note", templatePath: "T.md", preset: format, level: 3, sections: format.sections.map((s) => s.title), intro: true, notes: true, hints: true };
+  const md = structuredNoteContent(spec, "Launch", "YYYY-MM-DD, dddd");
   assert.deepEqual(md.split("\n").filter((l) => l.startsWith("#")), ["### Introduction", "### Plan for Launch", "### Log", "### Additional notes"]);
-  assert.equal(templateNoteLevel(body, 2), 3, "the template's shallowest heading");
-  assert.equal(templateNoteLevel("just text", 2), 2, "no headings: the fallback");
+  assert.ok(!md.includes("first step") && !md.includes("some text") && !md.includes("a hint line"), "the note's text stays behind");
+  assert.equal(headingsOnlyFormat("P", "P.md", "just text"), null);
   const kanban = structuredNoteContent({ format: "kanban", level: 2, sections: ["Now {{title}}"], intro: false, notes: false, hints: false }, "Q4", "YYYY-MM-DD");
   assert.equal(kanban, "## Now Q4\n", "built-in formats take placeholders too");
 });

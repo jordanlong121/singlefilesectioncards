@@ -404,14 +404,9 @@ export default class SectionCardsPlugin extends Plugin {
 			new Notice(`“${path}” already exists.`);
 			return;
 		}
-		let templateBody = "";
-		if (spec.format === "note") {
-			const template = spec.templatePath ? this.app.vault.getAbstractFileByPath(spec.templatePath) : null;
-			if (!(template instanceof TFile)) {
-				new Notice("The template note wasn't found.");
-				return;
-			}
-			templateBody = await this.app.vault.cachedRead(template);
+		if (spec.format === "note" && !(spec.templatePath && this.app.vault.getAbstractFileByPath(spec.templatePath) instanceof TFile)) {
+			new Notice("The note whose headings to use wasn't found.");
+			return;
 		}
 		const noteName = path.split("/").pop()?.replace(/\.md$/, "") ?? name;
 		// Never a new folder: a name with a folder/ must name one that exists.
@@ -422,13 +417,14 @@ export default class SectionCardsPlugin extends Plugin {
 		}
 		let file: TFile;
 		try {
-			file = await this.app.vault.create(path, structuredNoteContent(spec, noteName, this.getNewCardFormat(path), templateBody));
+			file = await this.app.vault.create(path, structuredNoteContent(spec, noteName, this.getNewCardFormat(path)));
 		} catch (err) {
 			new Notice(`Couldn't create “${path}”: ${err instanceof Error ? err.message : String(err)}`);
 			return;
 		}
 		if (spec.format === "note" && spec.templatePath) {
-			// The copy starts with the template's remembered view; the level follows its headings.
+			// The new note starts with the source note's remembered view (placements are keyed
+			// by heading, so they fit); the level follows its headings.
 			await this.copyNoteState(spec.templatePath, file.path);
 			if (spec.savedLayout) await this.applySavedLayout(file.path, spec.savedLayout);
 			const stored = this.getStoredView(spec.templatePath);

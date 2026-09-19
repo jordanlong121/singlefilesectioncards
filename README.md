@@ -38,8 +38,8 @@ If this plugin is useful to you, you can support its development:
 ## New in 2.0
 
 - **New note wizard.** ☰ → Note → **New note…** makes a blank note, or one shaped as a Kanban
-  board, a SWOT analysis, an Eisenhower matrix, or a GTD system — or a copy of any note in the
-  vault. Section names are editable, an Introduction and Additional notes are a toggle each,
+  board, a SWOT analysis, an Eisenhower matrix, or a GTD system — or on the headings of any note
+  in the vault, its text left behind. Section names are editable, an Introduction and Additional notes are a toggle each,
   and a one-line hint can sit under every heading. Any note with `cards-preset: true` in its
   properties joins the list as a preset of your own (see [Templates](#templates)).
 - **Saved layouts.** Name a Custom Grid arrangement — placements, zoom, and the note's
@@ -79,7 +79,7 @@ If this plugin is useful to you, you can support its development:
 - **Navigate as cards.** Wikilinks open the linked note's card wall, the ↗ button opens the section in a
   normal editor.
 - **Templates.** New cards can start from a template note, and new notes from the New note
-  wizard's built-in structures, your preset notes, or a copy of any note.
+  wizard's built-in structures, your preset notes, or the headings of any note.
 - **Deck.** The toolbar's deck button (or `D`) flips the view to thumbnails of your pinned
   and most recent card notes, each wearing its note's background — click one to hop over.
 - **Pick or create a note.** The toolbar's note button (or `O`) opens a picker of recent notes
@@ -474,13 +474,13 @@ creating the card `2026-08-20, Thursday` produces:
 
 ☰ → Note → **New note…** (also a command) creates a note: blank by default (**None**), or with
 a well-known shape — a **Kanban board**, a **SWOT analysis**, an **Eisenhower matrix**, or a
-**GTD** system — or a copy of **a note from the vault**, so any note you write can serve as a
-template. Pick the template, name the note, choose the heading level (a vault note's is read from its headings),
+**GTD** system — or on **the headings of a note in the vault**: its headings become the
+sections and its text stays behind, so any note you write can serve as a template. Pick the template, name the note, choose the heading level (a vault note's is read from its headings),
 edit the section names, and switch on an **Introduction** section, an **Additional notes**
 section, and a one-line hint under each heading. The placeholders above are filled — `{{title}}`
 is the note's name. The note opens as cards in the layout that suits it: columns side by side
-for a board, a 2×2 canvas for a matrix, the wall for GTD, and a copied note's own remembered
-view, placements included.
+for a board, a 2×2 canvas for a matrix, the wall for GTD, and — for a note made on another
+note's headings — that note's remembered view, placements included.
 
 **Your own presets.** Any note with `cards-preset: true` in its properties appears in the
 wizard's template list, after the built-ins. Its sections are the headings at its shallowest
