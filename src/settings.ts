@@ -34,6 +34,13 @@ export const DECK_SVG = `<g transform="scale(4.1667)" fill="none" stroke="curren
 
 /** The card-flip button: a circle seen edge-on — a horizontal ellipse arrow running
  * around a vertical axis, the way the card itself turns. Lucide has no such glyph. */
+/** The Rolodex's icon: a card with its tab strip above — a square under a line. */
+export const ROLODEX_ICON = "sfsc-rolodex";
+export const ROLODEX_SVG = `<g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+	<path d="M4 4h16"/>
+	<rect x="4" y="8" width="16" height="13" rx="2"/>
+</g>`;
+
 export const FLIP_ICON = "sfsc-flip";
 
 export const FLIP_SVG = `<g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -123,7 +130,7 @@ export const LAYOUT_ICONS: Record<Layout, [string, string]> = {
 	tasks: ["list-checks", "check-square"],
 	horizontal: ["rows-3", "rows"],
 	vertical: ["columns-3", "columns"],
-	rolodex: ["gallery-horizontal", "book-open"],
+	rolodex: [ROLODEX_ICON, "book-open"],
 	planner: ["notebook-pen", "clipboard-list"],
 	custom: ["shapes", "move"],
 	images: ["image", "image"],
