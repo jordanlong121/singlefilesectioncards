@@ -4610,13 +4610,16 @@ export class SectionCardsView extends ItemView {
 					.onClick(() => this.flipAll(false)),
 			);
 		}
-		menu.addItem((item) =>
-			item
-				.setTitle("Highlight today's card")
-				.setIcon("calendar-check")
-				.setChecked(this.containsDates)
-				.onClick(() => void this.plugin.setContainsDates(this.filePath, !this.containsDates, base)),
-		);
+		// Per note: nothing to highlight in the Deck, which stands for no one note.
+		if (!this.deckMode) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Highlight today's card")
+					.setIcon("calendar-check")
+					.setChecked(this.containsDates)
+					.onClick(() => void this.plugin.setContainsDates(this.filePath, !this.containsDates, base)),
+			);
+		}
 		this.addBackgroundItems(menu, base);
 
 		menu.addSeparator();
