@@ -5,6 +5,8 @@ import {
 	DECK_SVG,
 	FLIP_ICON,
 	FLIP_SVG,
+	ROLODEX_ICON,
+	ROLODEX_SVG,
 	Layout,
 	LAYOUT_OPTIONS,
 	SectionCardsSettings,
@@ -58,6 +60,7 @@ export default class SectionCardsPlugin extends Plugin {
 
 		addIcon(DECK_ICON, DECK_SVG);
 		addIcon(FLIP_ICON, FLIP_SVG);
+		addIcon(ROLODEX_ICON, ROLODEX_SVG);
 
 		this.registerView(VIEW_TYPE_SECTION_CARDS, (leaf) => new SectionCardsView(leaf, this));
 
