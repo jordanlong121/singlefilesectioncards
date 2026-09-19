@@ -4402,10 +4402,6 @@ export class SectionCardsView extends ItemView {
 		templateBtn.toggleClass("has-template", !!this.plugin.getTemplatePath(this.filePath));
 		templateBtn.addEventListener("click", (evt) => this.openTemplateMenu(evt, templateBtn));
 
-		const refreshBtn = cluster.createEl("button", { cls: "section-cards-icon-btn", text: "↻" });
-		refreshBtn.setAttr("aria-label", "Reload from file");
-		refreshBtn.addEventListener("click", () => void this.refresh());
-
 		this.addHelpButton(right);
 	}
 
@@ -4782,6 +4778,13 @@ export class SectionCardsView extends ItemView {
 						(levels) => void this.plugin.setDocumentLevels(this.filePath, levels, base),
 					).open();
 				}),
+		);
+		// Re-read the note and redraw — the file changed outside Obsidian, say.
+		menu.addItem((item) =>
+			item
+				.setTitle("Reload from file")
+				.setIcon("refresh-cw")
+				.onClick(() => void this.refresh()),
 		);
 
 		// Layouts are the note's; the Deck has none to switch.

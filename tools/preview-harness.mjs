@@ -173,7 +173,7 @@ function toolbarHtml(layout, mode = "default") {
 	<div class="section-cards-control section-cards-group-control"><button class="sfsc-picker-btn section-cards-group-btn"><span class="sfsc-picker-btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg></span><span class="sfsc-picker-btn-label">None</span><span class="sfsc-picker-btn-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m6 9 6 6 6-6"/></svg></span></button></div>
 	${layout === "tasks" ? `<div class="section-cards-control"><span class="section-cards-label">Tasks</span><select class="dropdown"><option>All</option></select></div>` : ""}
 	<button class="section-cards-icon-btn section-cards-template-btn">${TEMPLATE_ICON}</button>
-	<button class="section-cards-icon-btn">↻</button>
+	
 	<button class="section-cards-help-btn">?</button>
 	</div>
 </div>`;

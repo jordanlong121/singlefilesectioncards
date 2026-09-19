@@ -4720,6 +4720,21 @@ body.is-phone .section-cards-label {
 	margin-top: 8px;
 }
 
+/* A category heading spanning both columns; the first sits flush with the top. */
+.sfsc-shortcuts-group {
+	grid-column: 1 / -1;
+	margin-top: 10px;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--text-muted);
+}
+
+.sfsc-shortcuts-group:first-child {
+	margin-top: 0;
+}
+
 .sfsc-shortcuts-key {
 	justify-self: start;
 	padding: 1px 7px;
