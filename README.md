@@ -88,9 +88,9 @@ Full-height cards side by side.
 
 A freeform canvas: drag sections on from the tray, then place, move, and resize them.
 The arrangement is remembered per note in the plugin's data — never in your notes. The
-chevron beside **Clear layout** folds the tray away so the canvas takes the whole pane; the
-**Show list** button that takes its place in the top-right corner, the panel button in the
-zoom controls (bottom-left), or ☰ → **Show the list beside the canvas**, brings it back. The Images and Links canvases fold the same way.
+chevron beside **Clear layout** folds the tray to a slim bar so the canvas takes almost the
+whole pane; a click on that bar, the panel button in the zoom controls (bottom-left), or ☰ →
+**Show the list beside the canvas** brings it back. The Images and Links canvases fold the same way.
 **Saved layouts** (the row beneath) name the current arrangement — placements, zoom, and the
 note's background — so a note can switch between, say, a "SWOT" grid and a "Timeline" strip;
 pick one from the dropdown to apply it, save again under the same name to update it. Once

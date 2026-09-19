@@ -263,7 +263,7 @@ function imagesHtml() {
 <div class="section-cards-canvas-extent" style="left: 1447px; top: 1049px;"></div>
 ${placed.join("\n")}
 </div>
-<div class="section-cards-tray">
+<div class="section-cards-tray">${process.env.TRAY === "hidden" ? '<button class="section-cards-tray-bar"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m15 18-6-6 6-6"/></svg></button>' : ""}
 	<div class="section-cards-tray-actions"><button class="section-cards-tray-clear">Clear layout</button></div>
 	<div class="section-cards-tray-sorts"><button class="section-cards-tray-sort${SORT === "asc" ? " is-active" : ""}">A→Z</button><button class="section-cards-tray-sort${SORT === "desc" ? " is-active" : ""}">Z→A</button><button class="section-cards-tray-sort${SORT === "doc" ? " is-active" : ""}">Doc</button></div>
 	<div class="section-cards-tray-hint">Drag an image onto the canvas</div>
@@ -303,7 +303,7 @@ function linksHtml() {
 <div class="section-cards-canvas-extent" style="left: 1447px; top: 1049px;"></div>
 ${placed.join("\n")}
 </div>
-<div class="section-cards-tray">
+<div class="section-cards-tray">${process.env.TRAY === "hidden" ? '<button class="section-cards-tray-bar"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m15 18-6-6 6-6"/></svg></button>' : ""}
 	<div class="section-cards-tray-actions"><button class="section-cards-tray-clear">Clear layout</button></div>
 	<div class="section-cards-tray-sorts"><button class="section-cards-tray-sort${SORT === "asc" ? " is-active" : ""}">A→Z</button><button class="section-cards-tray-sort${SORT === "desc" ? " is-active" : ""}">Z→A</button><button class="section-cards-tray-sort${SORT === "doc" ? " is-active" : ""}">Doc</button></div>
 	<div class="section-cards-tray-hint">Drag a link onto the canvas</div>
@@ -471,7 +471,7 @@ ${sections.map((s, i) => cardHtml(s).replace('class="section-card', `class="sect
 ${placedCards.join("\n")}
 ${hidden.join("\n")}
 </div>
-<div class="section-cards-tray">
+<div class="section-cards-tray">${process.env.TRAY === "hidden" ? '<button class="section-cards-tray-bar"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m15 18-6-6 6-6"/></svg></button>' : ""}
 	<div class="section-cards-tray-actions"><button class="section-cards-tray-clear">Clear layout</button></div>
 	<div class="section-cards-tray-sorts"><button class="section-cards-tray-sort${SORT === "asc" ? " is-active" : ""}">A→Z</button><button class="section-cards-tray-sort${SORT === "desc" ? " is-active" : ""}">Z→A</button><button class="section-cards-tray-sort${SORT === "doc" ? " is-active" : ""}">Doc</button></div>
 	<div class="section-cards-tray-hint">Drag a section onto the canvas</div>
@@ -811,7 +811,6 @@ function pageHtml(layout, { withMenu = false, mode = "default", background = nul
 <div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}${sticky ? " is-sticky" : ""}${process.env.TRAY === "hidden" && ["custom", "images", "links"].includes(layout) ? " is-tray-collapsed" : ""}${background ? " has-sfsc-bg" : ""}"${background ? ` style="--sfsc-bg-image: url('${background}.svg')"` : ""}>
 ${toolbarHtml(layout, mode)}
 ${sticky ? stickyHeadHtml() : ""}
-${process.env.TRAY === "hidden" ? '<button class="section-cards-tray-restore"><span class="section-cards-tray-restore-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m10 15-3-3 3-3"/></svg></span><span>Show list</span></button>' : ""}
 ${gridHtml(layout, mode)}
 </div>
 </div>`;
