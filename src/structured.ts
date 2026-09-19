@@ -323,8 +323,6 @@ export class StructuredNoteModal extends Modal {
 		let sectionsInput!: HTMLInputElement;
 		let levelDropdown!: { setValue: (v: string) => unknown };
 		let templateRow!: Setting;
-		let sectionsRow!: Setting;
-		let hintsRow!: Setting;
 		let savedRow!: Setting;
 		let savedDropdown!: { selectEl: HTMLSelectElement; addOption: (v: string, l: string) => unknown; setValue: (v: string) => unknown };
 		let presets: StructuredFormatDef[] = [];
@@ -389,7 +387,7 @@ export class StructuredNoteModal extends Modal {
 
 		templateRow = new Setting(contentEl)
 			.setName("Note")
-			.setDesc("No note chosen yet. Its headings will fill the Sections below; its text stays where it is.")
+			.setDesc("No note chosen yet. Its headings will fill the sections below; its text stays where it is.")
 			.addButton((b) =>
 				b.setButtonText("Choose…").onClick(() => {
 					new FileSuggestModal(this.plugin.app, this.plugin, (path) => {
@@ -441,7 +439,7 @@ export class StructuredNoteModal extends Modal {
 				levelDropdown = dd;
 			});
 
-		sectionsRow = new Setting(contentEl)
+		new Setting(contentEl)
 			.setName("Sections")
 			.setDesc("Comma-separated, in order. Rename or add; a matrix reads best with four.")
 			.addText((t) => {
@@ -461,14 +459,14 @@ export class StructuredNoteModal extends Modal {
 			.addToggle((t) => t.setValue(spec.notes).onChange((v) => (spec.notes = v)));
 		savedRow = new Setting(contentEl)
 			.setName("Saved layout")
-			.setDesc("Open the new note on one of the template's saved Custom Grid layouts.")
+			.setDesc("Open the new note on one of the template's saved layouts.")
 			.addDropdown((dd) => {
 				savedDropdown = dd;
 				dd.addOption("", "As arranged now");
 				dd.onChange((value) => (spec.savedLayout = value || undefined));
 			});
 
-		hintsRow = new Setting(contentEl)
+		new Setting(contentEl)
 			.setName("Hints")
 			.setDesc("One italic line under each heading saying what belongs there (the built-ins' and presets' own; a generic one for the introduction and notes).")
 			.addToggle((t) => t.setValue(spec.hints).onChange((v) => (spec.hints = v)));
