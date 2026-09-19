@@ -4661,6 +4661,18 @@ export class SectionCardsView extends ItemView {
 		if (!this.deckMode) {
 			menu.addSeparator();
 			this.addLayoutItems(menu);
+			// The canvases' tray can be folded away; this is the way back that's always
+			// in reach (the zoom bar's panel button is the other).
+			if (this.isCanvasLayout()) {
+				const hidden = this.trayHidden();
+				menu.addItem((item) =>
+					item
+						.setTitle("Show the list beside the canvas")
+						.setIcon("panel-right")
+						.setChecked(!hidden)
+						.onClick(() => void this.setTrayCollapsed(!hidden)),
+				);
+			}
 		}
 
 		// Dates: only when there's something to offer — a jump needs date headings, the

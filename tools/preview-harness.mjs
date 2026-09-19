@@ -269,7 +269,7 @@ ${placed.join("\n")}
 	<div class="section-cards-tray-hint">Drag an image onto the canvas</div>
 ${tiles.join("\n")}
 </div>
-<div class="section-cards-zoom"><button>−</button><button class="section-cards-zoom-label">100%</button><button>+</button></div>`;
+<div class="section-cards-zoom"><button>−</button><button class="section-cards-zoom-label">100%</button><button>+</button><button class="section-cards-tray-fold${process.env.TRAY === "hidden" ? " is-active" : ""}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>${process.env.TRAY === "hidden" ? '<path d="m10 15-3-3 3-3"/>' : '<path d="m8 9 3 3-3 3"/>'}</svg></button></div>`;
 }
 
 /** Links canvas: page previews staged offline via srcdoc stand-in pages. */
@@ -309,7 +309,7 @@ ${placed.join("\n")}
 	<div class="section-cards-tray-hint">Drag a link onto the canvas</div>
 ${tiles.join("\n")}
 </div>
-<div class="section-cards-zoom"><button>−</button><button class="section-cards-zoom-label">100%</button><button>+</button></div>`;
+<div class="section-cards-zoom"><button>−</button><button class="section-cards-zoom-label">100%</button><button>+</button><button class="section-cards-tray-fold${process.env.TRAY === "hidden" ? " is-active" : ""}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>${process.env.TRAY === "hidden" ? '<path d="m10 15-3-3 3-3"/>' : '<path d="m8 9 3 3-3 3"/>'}</svg></button></div>`;
 }
 
 /** Heatmap: a deterministic fake year of activity — most weekdays filled, weekends
@@ -477,7 +477,7 @@ ${hidden.join("\n")}
 	<div class="section-cards-tray-hint">Drag a section onto the canvas</div>
 ${tiles}
 </div>
-<div class="section-cards-zoom"><button>−</button><button class="section-cards-zoom-label">100%</button><button>+</button></div>`;
+<div class="section-cards-zoom"><button>−</button><button class="section-cards-zoom-label">100%</button><button>+</button><button class="section-cards-tray-fold${process.env.TRAY === "hidden" ? " is-active" : ""}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>${process.env.TRAY === "hidden" ? '<path d="m10 15-3-3 3-3"/>' : '<path d="m8 9 3 3-3 3"/>'}</svg></button></div>`;
 	}
 	if (hier) {
 		// Replays rebuildHierarchy: each column defaults to its first item, and cards
@@ -808,7 +808,7 @@ function pageHtml(layout, { withMenu = false, mode = "default", background = nul
 	const activeAt = Math.max(0, sections.findIndex((s) => process.env.ROLO_ACTIVE && s.title.includes(process.env.ROLO_ACTIVE)));
 	const tabTitle = sticky ? `Sticky: ${sections[activeAt]?.title ?? ""}` : `Cards: ${path.basename(notePath, ".md")}`;
 	const view = `<div class="workspace-leaf-content" data-type="section-cards-view">
-<div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}${sticky ? " is-sticky" : ""}${background ? " has-sfsc-bg" : ""}"${background ? ` style="--sfsc-bg-image: url('${background}.svg')"` : ""}>
+<div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}${sticky ? " is-sticky" : ""}${process.env.TRAY === "hidden" && ["custom", "images", "links"].includes(layout) ? " is-tray-collapsed" : ""}${background ? " has-sfsc-bg" : ""}"${background ? ` style="--sfsc-bg-image: url('${background}.svg')"` : ""}>
 ${toolbarHtml(layout, mode)}
 ${sticky ? stickyHeadHtml() : ""}
 ${gridHtml(layout, mode)}
