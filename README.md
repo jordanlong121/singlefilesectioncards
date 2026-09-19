@@ -173,8 +173,9 @@ to detected** forgets the saved rows.
 
 ### Calendar
 
-Date cards on a monthly grid, today highlighted. Click an empty day to start its card,
-or drag a card onto another day to move it. Needs date headings.
+Date cards on a monthly grid, today highlighted — the layout opens on today's month, with
+today's cell ringed even when it has no card yet. Click an empty day to start its card, or
+drag a card onto another day to move it. Needs date headings.
 
 ![Calendar](screenshots/calendar.png)
 

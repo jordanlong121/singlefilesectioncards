@@ -861,6 +861,12 @@ body.is-mobile .is-layout-tight .section-card-body {
 	color: var(--text-faint);
 }
 
+/* Today's cell when today has no card yet: the same ring today's card wears. */
+.sc-cal-blank.is-today {
+	box-shadow: inset 0 0 0 2px var(--text-highlight-bg, var(--interactive-accent));
+	color: var(--text-normal);
+}
+
 /* An empty day is an offer: click it to create that date's card. */
 .sc-cal-blank:not(.sc-cal-pad) {
 	cursor: pointer;
