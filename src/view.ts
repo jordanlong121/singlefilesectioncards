@@ -42,7 +42,7 @@ import { GROUP_BY_ICONS, DECK_SORT_ICONS, LAYOUT_ICONS, DECK_BACKGROUND_KEY,
 	DEFAULT_SETTINGS,
 	resolveViewSettings,
 } from "./settings";
-import {
+import { levelCoverage,
 	Section,
 	mo,
 	HEADING_RE,
@@ -352,6 +352,10 @@ export class SectionCardsView extends ItemView {
 	private selectionBar: HTMLElement | null = null;
 	/** The status bar along the pane's bottom while Hide past / future dates is on. */
 	private dateBarEl: HTMLElement | null = null;
+	/** The bar saying the card level leaves text out (levelCoverage), above the date bar. */
+	private levelBarEl: HTMLElement | null = null;
+	/** "path:level" the user dismissed the level bar for. */
+	private levelBarDismissed: string | null = null;
 	/** A card drag that carries the whole selection along (document order only). */
 	private draggingMany: Section[] | null = null;
 	/** Rolodex: the title-tab strip above the one showing card, and the wrapper that
@@ -1042,6 +1046,7 @@ export class SectionCardsView extends ItemView {
 		// The hide-dates status bar lives on the leaf container, not in the scrolling
 		// pane, so the cards scroll underneath it.
 		this.dateBarEl = this.containerEl.createDiv({ cls: "sfsc-datebar is-hidden" });
+		this.levelBarEl = this.containerEl.createDiv({ cls: "sfsc-datebar sfsc-levelbar is-hidden" });
 		// Right-click on the wall itself — not a card or a control, which have their
 		// own menus — offers the background options where the background actually is.
 		// Registered on the hierarchy columns pane too: it covers the wall's left side
@@ -1618,6 +1623,7 @@ export class SectionCardsView extends ItemView {
 		const show = (hide.future || hide.past) && this.containsDates && this.dateHideApplies() && !this.deckMode;
 		bar.toggleClass("is-hidden", !show);
 		this.contentEl.toggleClass("has-datebar", show);
+		this.positionLevelBar();
 		if (!show) return;
 		bar.empty();
 		fastIcon(bar.createSpan({ cls: "sfsc-datebar-icon" }), "eye-off");
@@ -5544,6 +5550,70 @@ export class SectionCardsView extends ItemView {
 		);
 	}
 
+	// ---------- Level bar: the card level leaves text out ----------
+
+	/**
+	 * A bar along the pane's bottom — like the date-hide bar — when text sits under
+	 * headings that aren't cards at this level: how many lines, under which levels, with
+	 * a button to switch to the level that would show the most and one for the Hierarchy
+	 * view, whose columns at least show the headings. Dismissable per note and level.
+	 */
+	private syncLevelBar(lines: string[]): void {
+		const bar = this.levelBarEl;
+		if (!bar) return;
+		const applies = !this.deckMode && !this.sticky && !this.isDateLayout() && this.layoutOwnsPlacement() === false;
+		const coverage = applies ? levelCoverage(lines, this.headingLevel) : null;
+		const key = `${this.filePath}:${this.headingLevel}`;
+		const show = !!coverage && coverage.hiddenLines > 0 && this.levelBarDismissed !== key;
+		bar.toggleClass("is-hidden", !show);
+		this.contentEl.toggleClass("has-levelbar", show);
+		this.positionLevelBar();
+		if (!show || !coverage) return;
+		bar.empty();
+		fastIcon(bar.createSpan({ cls: "sfsc-datebar-icon" }), "eye-off");
+		const levels = coverage.hiddenLevels.map((l) => `H${l}`).join(", ");
+		const n = coverage.hiddenLines;
+		bar.createSpan({
+			cls: "sfsc-datebar-text",
+			text: `${n} line${n === 1 ? "" : "s"} of text under ${levels} ${n === 1 ? "isn't" : "aren't"} on a card at H${this.headingLevel}`,
+		});
+		if (coverage.bestLevel !== null) {
+			const best = coverage.bestLevel;
+			const btn = bar.createEl("button", { text: `Show H${best}` });
+			btn.setAttr("aria-label", `Switch the card level to H${best}, where most of that text sits`);
+			btn.addEventListener("click", () => void this.changeHeadingLevel(best));
+		}
+		if (!this.hierarchyOn) {
+			const btn = bar.createEl("button", { text: "Hierarchy view" });
+			btn.setAttr("aria-label", "Show the headings above the cards as columns");
+			btn.addEventListener("click", () => {
+				this.hierarchyOn = true;
+				this.sectionsOn = false;
+				this.rememberView();
+				this.applyLayoutClass();
+				this.buildToolbar();
+				void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+			});
+		}
+		const close = bar.createEl("button", { cls: "sfsc-datebar-close" });
+		fastIcon(close, "x");
+		close.setAttr("aria-label", "Hide this notice for this note and level");
+		close.addEventListener("click", () => {
+			this.levelBarDismissed = key;
+			bar.addClass("is-hidden");
+			this.contentEl.removeClass("has-levelbar");
+		});
+	}
+
+	/** The level bar sits above the date bar when both show. */
+	private positionLevelBar(): void {
+		const bar = this.levelBarEl;
+		if (!bar) return;
+		const dateShown = !!this.dateBarEl && !this.dateBarEl.hasClass("is-hidden");
+		bar.setCssStyles({ bottom: dateShown ? `${this.dateBarEl?.offsetHeight ?? 0}px` : "" });
+		this.contentEl.toggleClass("has-two-bars", dateShown && !bar.hasClass("is-hidden"));
+	}
+
 	/** Clear the wall (cards and hierarchy columns) and show a two-line message instead. */
 	private showEmpty(line1: string, line2: string): void {
 		this.clearAllCards();
@@ -5667,6 +5737,7 @@ export class SectionCardsView extends ItemView {
 			this.applyStickyOnTop();
 		}
 		const sections = this.sticky ? (stickySection ? [stickySection] : []) : parsed;
+		this.syncLevelBar(lines);
 
 		// Does this note deal in dates? The checkbox rules when the user has set it;
 		// until then the note decides for itself (the tally above already looked at
