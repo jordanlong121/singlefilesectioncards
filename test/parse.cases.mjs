@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare, bareMonthIndex, firstDueTaskIndex, plannerColumnSplit, plannerCardWeight, structuredNoteMarkdown, structuredPlacements, structuredTitles, STRUCTURED_FORMATS } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare, bareMonthIndex, firstDueTaskIndex, plannerColumnSplit, plannerCardWeight, structuredNoteMarkdown, structuredPlacements, structuredTitles, STRUCTURED_FORMATS, snapshotCanvasLayout, applyCanvasLayout } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -2064,4 +2064,29 @@ t("structured notes: a matrix places its quadrants 2×2 with intro and notes as 
   for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) assert.ok(!rectsCollide(rects[i], rects[j]), "no overlap");
   assert.ok(rects.every((r) => r.x % 24 === 0 && r.y % 24 === 0 && r.w % 24 === 0 && r.h % 24 === 0), "on the snap grid");
   assert.equal(structuredPlacements({ ...spec, format: "kanban" }), null);
+});
+
+t("saved layouts: a snapshot copies placements, zoom, and background; apply replaces and clears", () => {
+  const entry = {
+    layout: "custom", headingLevel: 2, sortOrder: "doc",
+    customGrid: { "## A": { x: 24, y: 24, w: 288, h: 192 } }, customZoom: 1.25,
+    backgroundImage: "img/a.png", backgroundDim: 30,
+  };
+  const saved = snapshotCanvasLayout(entry, 5);
+  assert.deepEqual(saved, { customGrid: { "## A": { x: 24, y: 24, w: 288, h: 192 } }, customZoom: 1.25, backgroundImage: "img/a.png", backgroundDim: 30, savedAt: 5 });
+  entry.customGrid["## A"].x = 48; // a later drag
+  assert.equal(saved.customGrid["## A"].x, 24, "the saved copy is its own");
+  // Another arrangement with no background: applying it clears the note's.
+  applyCanvasLayout(entry, { customGrid: { "## B": { x: 0, y: 0, w: 192, h: 192 } }, savedAt: 6 });
+  assert.deepEqual(Object.keys(entry.customGrid), ["## B"]);
+  assert.equal(entry.customZoom, undefined);
+  assert.equal(entry.backgroundImage, undefined);
+  assert.equal(entry.backgroundDim, undefined);
+  // And back: the first snapshot restores everything, as a copy.
+  applyCanvasLayout(entry, saved);
+  assert.equal(entry.customGrid["## A"].x, 24);
+  assert.equal(entry.customZoom, 1.25);
+  assert.equal(entry.backgroundImage, "img/a.png");
+  entry.customGrid["## A"].y = 999;
+  assert.equal(saved.customGrid["## A"].y, 24);
 });

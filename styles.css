@@ -2559,6 +2559,24 @@ body.is-phone .sfsc-planner-title {
 	height: 28px;
 }
 
+/* Saved layouts: switcher, save, delete — a row under Clear layout. */
+.section-cards-tray-layouts {
+	display: flex;
+	gap: 4px;
+	margin-bottom: 8px;
+}
+
+.section-cards-tray-layout-select {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: var(--font-ui-smaller);
+}
+
+.section-cards-tray-layout-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
 .section-cards-tray-count {
 	margin-top: 6px;
 	text-align: center;

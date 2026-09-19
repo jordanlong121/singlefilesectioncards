@@ -3,7 +3,7 @@
 import { Platform } from "obsidian";
 import { PlannerSlot } from "./planner";
 import { DocumentLevels } from "./periods";
-import { CardRect } from "./canvas";
+import { CardRect, SavedCanvasLayout } from "./canvas";
 
 export const VIEW_TYPE_SECTION_CARDS = "section-cards-view";
 
@@ -216,6 +216,10 @@ export interface PerFileView extends ViewSettings {
 	hiddenLayouts?: Layout[];
 	/** The canvases' tray (the list of what isn't on the canvas) folded to a slim strip. */
 	trayCollapsed?: boolean;
+	/** Custom Grid arrangements saved under a name (tray → save), with their backgrounds. */
+	savedLayouts?: Record<string, SavedCanvasLayout>;
+	/** The saved layout last applied or saved, shown in the tray's switcher. */
+	activeSavedLayout?: string;
 	/** Document setup: what each heading level holds (☰ → Document setup…). */
 	levels?: DocumentLevels;
 	/** Headings pinned to the top of the card wall, in the order they were pinned. */
