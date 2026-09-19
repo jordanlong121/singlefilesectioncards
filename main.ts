@@ -30,7 +30,7 @@ import { CardRect, SavedCanvasLayout, snapshotCanvasLayout, applyCanvasLayout } 
 import { BACKGROUND_DIM_DEFAULT } from "./src/background";
 import { TextInputModal, NoteLibraryModal } from "./src/modals";
 import { SectionCardsSettingTab } from "./src/settings-tab";
-import { StructuredNoteModal, StructuredSpec, structuredFormat, structuredNoteContent, structuredPlacements, structuredNotePath } from "./src/structured";
+import { StructuredNoteModal, StructuredSpec, specFormat, structuredNoteContent, structuredPlacements, structuredNotePath } from "./src/structured";
 import { SectionCardsView } from "./src/view";
 
 export * from "./src/settings";
@@ -441,7 +441,10 @@ export default class SectionCardsPlugin extends Plugin {
 			await this.openCardsView(file.path, undefined, "new");
 			return;
 		}
-		const def = structuredFormat(spec.format);
+		const def = specFormat(spec);
+		// A preset note that was arranged itself lends the copy its remembered view first
+		// (placements for headings kept as they were); the layout and level below win.
+		if (def?.path) await this.copyNoteState(def.path, file.path);
 		const view: ViewSettings = {
 			layout: def?.layout ?? this.settings.layout,
 			headingLevel: spec.level,
