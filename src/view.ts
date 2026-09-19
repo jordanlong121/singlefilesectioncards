@@ -10,8 +10,7 @@ import {
 	Notice,
 	Platform,
 	Scope,
-	setIcon,
-	type Modifier,
+		type Modifier,
 	TFile,
 	WorkspaceLeaf,
 	debounce,
@@ -21,6 +20,7 @@ import {
 	type ViewStateResult,
 } from "obsidian";
 import { createEmbeddedEditor, type EmbeddedEditor } from "../editor-embed";
+import { fastIcon } from "./icons";
 import { GROUP_BY_ICONS, DECK_SORT_ICONS, LAYOUT_ICONS, DECK_BACKGROUND_KEY,
 	VIEW_TYPE_SECTION_CARDS,
 	INITIAL_RENDER_COUNT,
@@ -827,7 +827,7 @@ export class SectionCardsView extends ItemView {
 		const fallback = spec.buttonIcon ? spec.buttonIcon : (current?.fallback ?? icon);
 		SectionCardsView.setIconOr(btn.createSpan({ cls: "sfsc-picker-btn-icon" }), icon, fallback);
 		btn.createSpan({ cls: "sfsc-picker-btn-label", text: current?.label ?? value });
-		setIcon(btn.createSpan({ cls: "sfsc-picker-btn-chevron" }), "chevron-down");
+		fastIcon(btn.createSpan({ cls: "sfsc-picker-btn-chevron" }), "chevron-down");
 		btn.setAttr("aria-label", current ? `${spec.ariaLabel}: ${current.label}` : spec.ariaLabel);
 		btn.setAttr("aria-haspopup", "true");
 		btn.addEventListener("click", () => {
@@ -989,7 +989,7 @@ export class SectionCardsView extends ItemView {
 		const zoom = this.roloWrapEl.createDiv({ cls: "sfsc-rolo-zoom" });
 		const zoomBtn = (icon: string, label: string, delta: number) => {
 			const btn = zoom.createEl("button", { cls: "sfsc-rolo-zoom-btn" });
-			setIcon(btn, icon);
+			fastIcon(btn, icon);
 			btn.setAttr("aria-label", label);
 			btn.addEventListener("click", () => {
 				this.roloRows = Math.max(1, this.roloRowsShown + delta);
@@ -1025,7 +1025,7 @@ export class SectionCardsView extends ItemView {
 		// Edge indicators: tabs are cut off on that side; a click pages the strip.
 		for (const side of ["left", "right"] as const) {
 			const more = scroll.createEl("button", { cls: `sfsc-rolo-more is-${side}` });
-			setIcon(more, side === "left" ? "chevron-left" : "chevron-right");
+			fastIcon(more, side === "left" ? "chevron-left" : "chevron-right");
 			more.setAttr("aria-label", side === "left" ? "More tabs to the left" : "More tabs to the right");
 			more.addEventListener("click", () => {
 				const strip = this.roloTabsEl;
@@ -1552,7 +1552,7 @@ export class SectionCardsView extends ItemView {
 		const btn = card.querySelector<HTMLElement>(".section-card-pin");
 		if (!btn) return;
 		// Always the same glyph; the states differ by strength (CSS), not icon.
-		setIcon(btn, "pin");
+		fastIcon(btn, "pin");
 		btn.setAttr("aria-label", pinned ? "Unpin this card" : "Pin this card to the top");
 	}
 
@@ -1618,7 +1618,7 @@ export class SectionCardsView extends ItemView {
 		this.contentEl.toggleClass("has-datebar", show);
 		if (!show) return;
 		bar.empty();
-		setIcon(bar.createSpan({ cls: "sfsc-datebar-icon" }), "eye-off");
+		fastIcon(bar.createSpan({ cls: "sfsc-datebar-icon" }), "eye-off");
 		const what = hide.past && hide.future ? "past and future" : hide.past ? "past" : "future";
 		bar.createSpan({ cls: "sfsc-datebar-text", text: `Hiding ${what} dates` });
 		const base = this.viewSettings();
@@ -1821,7 +1821,7 @@ export class SectionCardsView extends ItemView {
 		card.toggleClass("is-collapsed", collapsed);
 		const btn = card.querySelector<HTMLElement>(".section-card-collapse");
 		if (!btn) return;
-		setIcon(btn, collapsed ? "chevron-down" : "chevron-up");
+		fastIcon(btn, collapsed ? "chevron-down" : "chevron-up");
 		btn.setAttr("aria-label", collapsed ? "Expand this card" : "Collapse this card");
 	}
 
@@ -1977,7 +1977,7 @@ export class SectionCardsView extends ItemView {
 		bar.createSpan({ cls: "sfsc-selection-count", text: `${n} selected` });
 		const action = (label: string, icon: string, onClick: (evt: MouseEvent) => void) => {
 			const btn = bar.createEl("button", { text: label });
-			setIcon(btn.createSpan({ cls: "sfsc-selection-icon" }), icon);
+			fastIcon(btn.createSpan({ cls: "sfsc-selection-icon" }), icon);
 			btn.addEventListener("click", (evt) => onClick(evt));
 		};
 		const base = this.viewSettings();
@@ -2342,8 +2342,8 @@ export class SectionCardsView extends ItemView {
 	/** setIcon with a fallback name: Lucide renamed some icons (plus-square → square-plus),
 	 * and which one Obsidian's bundled set knows depends on its version. */
 	private static setIconOr(el: HTMLElement, icon: string, fallback: string): void {
-		setIcon(el, icon);
-		if (!el.querySelector("svg")) setIcon(el, fallback);
+		fastIcon(el, icon);
+		if (!el.querySelector("svg")) fastIcon(el, fallback);
 	}
 
 	/**
@@ -2713,7 +2713,7 @@ export class SectionCardsView extends ItemView {
 		const arrow = (dir: "prev" | "next") => {
 			const { entry: neighbour, create } = neighbourOf(dir);
 			const btn = head.createEl("button", { cls: `sfsc-planner-arrow is-${dir}` });
-			setIcon(btn, dir === "prev" ? "chevron-left" : "chevron-right");
+			fastIcon(btn, dir === "prev" ? "chevron-left" : "chevron-right");
 			const word = dir === "prev" ? "Previous" : "Next";
 			const key = dir === "prev" ? "←" : "→";
 			const unit = period ? periodUnit(period.role) : "card";
@@ -2837,7 +2837,7 @@ export class SectionCardsView extends ItemView {
 		const head = root.createDiv({ cls: "sfsc-planner-head" });
 		const dead = (dir: "prev" | "next") => {
 			const btn = head.createEl("button", { cls: `sfsc-planner-arrow is-${dir}` });
-			setIcon(btn, dir === "prev" ? "chevron-left" : "chevron-right");
+			fastIcon(btn, dir === "prev" ? "chevron-left" : "chevron-right");
 			btn.setAttr("aria-label", `No H${level} cards to step through`);
 			btn.toggleAttribute("disabled", true);
 		};
@@ -3375,19 +3375,37 @@ export class SectionCardsView extends ItemView {
 	 * order. Rect reads only, after layout has settled, so no reflow is forced; hidden
 	 * cards (filtered out, or off the Rolodex's showing tab) read as empty and wait.
 	 */
-	private takeDeferredBatch(entries: CardEntry[]): CardEntry[] {
-		const n = DEFERRED_RENDER_BATCH;
+	/**
+	 * The next `n` bodies to render. The first batches are picked nearest the viewport,
+	 * which means measuring every card still owed — O(N) rects per batch, O(N²) over a
+	 * big note. Once a pick lands wholly outside the viewport the visible cards are
+	 * done, and the rest go in document order without measuring (a scroll during the
+	 * tail is caught by the next batch's cheap viewport check).
+	 */
+	private takeDeferredBatch(entries: CardEntry[], n: number): CardEntry[] {
 		if (entries.length <= n) return entries.splice(0, n);
 		const view = this.contentEl.getBoundingClientRect();
-		const picked = pickNearViewport(
-			entries.map((e) => e.el.getBoundingClientRect()),
-			view,
-			n,
-		);
+		if (!this.deferredMeasure) {
+			// Peek at the first few owed cards: back in view (a scroll) means measure again.
+			const peek = entries.slice(0, 8).some((e) => {
+				const r = e.el.getBoundingClientRect();
+				return r.bottom >= view.top - view.height && r.top <= view.bottom + view.height;
+			});
+			if (!peek) return entries.splice(0, n);
+			this.deferredMeasure = true;
+		}
+		const rects = entries.map((e) => e.el.getBoundingClientRect());
+		const picked = pickNearViewport(rects, view, n);
+		// Nothing picked touches the viewport (or its margin): the visible wall is rendered.
+		const nearby = picked.some((i) => rects[i].bottom >= view.top - view.height && rects[i].top <= view.bottom + view.height);
+		if (!nearby) this.deferredMeasure = false;
 		const batch = picked.map((i) => entries[i]);
 		for (let k = picked.length - 1; k >= 0; k--) entries.splice(picked[k], 1);
 		return batch;
 	}
+
+	/** Whether deferred batches are still being picked by viewport distance (see above). */
+	private deferredMeasure = true;
 
 	/**
 	 * Render the bodies that didn't make the synchronous budget, a batch per idle slot.
@@ -3401,13 +3419,21 @@ export class SectionCardsView extends ItemView {
 			typeof window.requestIdleCallback === "function"
 				? (cb) => window.requestIdleCallback(cb, { timeout: 200 })
 				: (cb) => window.setTimeout(cb, 50);
+		// Batches grow while they stay cheap and shrink when one runs long, so a note of
+		// short cards finishes in a few idle slots and one of long cards never janks.
+		let n = DEFERRED_RENDER_BATCH;
+		this.deferredMeasure = true;
 		const step = (): void => {
 			if (gen !== this.renderGeneration) return;
-			const batch = this.takeDeferredBatch(entries);
+			const batch = this.takeDeferredBatch(entries, n);
 			if (!batch.length) return;
+			const started = performance.now();
 			void Promise.all(batch.map((entry) => this.runBodyRender(entry))).then(() => {
 				if (gen !== this.renderGeneration) return;
 				this.prepareBodies(batch);
+				const took = performance.now() - started;
+				if (took < 6) n = Math.min(n * 2, DEFERRED_RENDER_BATCH * 4);
+				else if (took > 16) n = Math.max(Math.floor(n / 2), Math.max(4, Math.floor(DEFERRED_RENDER_BATCH / 2)));
 				this.repack();
 				if (entries.length) {
 					idle(step);
@@ -3673,7 +3699,7 @@ export class SectionCardsView extends ItemView {
 			if (!first) continue;
 			const bar = createDiv({ cls: "section-cards-section-bar" });
 			const chevron = bar.createSpan({ cls: "section-cards-section-chevron" });
-			setIcon(chevron, "chevron-down");
+			fastIcon(chevron, "chevron-down");
 			bar.createSpan({ cls: "section-cards-section-title", text: group.title });
 			bar.createSpan({ cls: "section-cards-section-count", text: String(group.keys.length) });
 			const sync = () => {
@@ -4001,7 +4027,7 @@ export class SectionCardsView extends ItemView {
 		// The hamburger menu leads the bar: dates, new-card options, and the per-note
 		// background live here as well as (for now) on their own toolbar controls.
 		const menuBtn = cluster.createEl("button", { cls: "section-cards-icon-btn section-cards-menu-btn" });
-		setIcon(menuBtn, "menu");
+		fastIcon(menuBtn, "menu");
 		menuBtn.setAttr("aria-label", "Cards view menu (M)");
 		menuBtn.addEventListener("click", (evt) => this.openMainMenu(evt));
 		this.menuBtn = menuBtn;
@@ -4009,7 +4035,7 @@ export class SectionCardsView extends ItemView {
 		// The Deck toggle: a wall of note thumbnails instead of the cards. It sits before
 		// the note button: pick a note from thumbnails, or from the list.
 		const deckBtn = cluster.createEl("button", { cls: "section-cards-icon-btn section-cards-deck-btn" });
-		setIcon(deckBtn, DECK_ICON);
+		fastIcon(deckBtn, DECK_ICON);
 		deckBtn.toggleClass("is-active", this.deckMode);
 		deckBtn.setAttr(
 			"aria-label",
@@ -4123,7 +4149,7 @@ export class SectionCardsView extends ItemView {
 		filterInput.value = this.filterQuery;
 		filterWrap.toggleClass("has-query", this.filterQuery.length > 0);
 		const clearBtn = filterWrap.createEl("button", { cls: "section-cards-filter-clear" });
-		setIcon(clearBtn, "x");
+		fastIcon(clearBtn, "x");
 		clearBtn.setAttr("aria-label", "Clear the filter and show all cards (Esc)");
 		// Typing coalesces: every keystroke would otherwise re-filter and re-pack the
 		// whole wall (a third of a second on a few thousand cards). Clearing is immediate.
@@ -4161,7 +4187,7 @@ export class SectionCardsView extends ItemView {
 		const starBtn = cluster.createEl("button", { cls: "section-cards-icon-btn section-cards-star-btn" });
 		this.starBtn = starBtn;
 		starBtn.toggleClass("is-hidden", !this.hasStars);
-		setIcon(starBtn, "star");
+		fastIcon(starBtn, "star");
 		const syncStarBtn = () => {
 			starBtn.toggleClass("is-active", this.starredOnly);
 			starBtn.setAttr(
@@ -4195,7 +4221,7 @@ export class SectionCardsView extends ItemView {
 		this.jumpDateWrap = jumpWrap;
 		jumpWrap.toggleClass("is-hidden", !this.hasDateHeadings);
 		const jumpBtn = jumpWrap.createEl("button", { cls: "section-cards-icon-btn section-cards-jump-btn" });
-		setIcon(jumpBtn, "calendar-days");
+		fastIcon(jumpBtn, "calendar-days");
 		jumpBtn.setAttr("aria-label", "Jump to a date's card");
 		const jumpInput = jumpWrap.createEl("input", {
 			cls: "section-cards-jump-input",
@@ -4226,7 +4252,7 @@ export class SectionCardsView extends ItemView {
 		const hide = this.plugin.getDateHide(this.filePath);
 		const hideBtn = (icon: string, label: string, key: "future" | "past", on: boolean) => {
 			const btn = jumpWrap.createEl("button", { cls: "section-cards-icon-btn section-cards-datehide-btn" });
-			setIcon(btn, icon);
+			fastIcon(btn, icon);
 			btn.setAttr("aria-label", `${label}${on ? " (on)" : ""}`);
 			btn.toggleClass("is-active", on);
 			btn.addEventListener("click", () => void this.plugin.setDateHide(this.filePath, { [key]: !on }, this.viewSettings()));
@@ -4397,7 +4423,7 @@ export class SectionCardsView extends ItemView {
 
 		const templateBtn = cluster.createEl("button", { cls: "section-cards-icon-btn section-cards-template-btn" });
 		this.templateBtn = templateBtn;
-		setIcon(templateBtn, "layout-template");
+		fastIcon(templateBtn, "layout-template");
 		templateBtn.setAttr("aria-label", "New-card options for this note: template and heading name");
 		templateBtn.toggleClass("has-template", !!this.plugin.getTemplatePath(this.filePath));
 		templateBtn.addEventListener("click", (evt) => this.openTemplateMenu(evt, templateBtn));
@@ -5438,7 +5464,7 @@ export class SectionCardsView extends ItemView {
 		const head = this.stickyHeadEl;
 		head.empty();
 		head.toggleClass("is-missing", !section);
-		setIcon(head.createSpan({ cls: "sfsc-sticky-icon" }), "sticky-note");
+		fastIcon(head.createSpan({ cls: "sfsc-sticky-icon" }), "sticky-note");
 		const title = (this.sticky ?? "").replace(/^#+\s*/, "") || "(untitled)";
 		head.createSpan({
 			cls: "sfsc-sticky-note",
@@ -5447,7 +5473,7 @@ export class SectionCardsView extends ItemView {
 		});
 		const button = (label: string, icon: string, onClick: () => void) => {
 			const btn = head.createEl("button", { cls: "sfsc-sticky-btn" });
-			setIcon(btn, icon);
+			fastIcon(btn, icon);
 			btn.setAttr("aria-label", label);
 			btn.addEventListener("click", onClick);
 		};
@@ -6189,7 +6215,7 @@ export class SectionCardsView extends ItemView {
 		});
 
 		const untrayBtn = header.createEl("button", { cls: "section-card-untray" });
-		setIcon(untrayBtn, "x");
+		fastIcon(untrayBtn, "x");
 		untrayBtn.setAttr("aria-label", "Remove from the canvas (back to the list)");
 		untrayBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -6213,7 +6239,7 @@ export class SectionCardsView extends ItemView {
 		);
 
 		const quickAddBtn = actions.createEl("button", { cls: "section-card-quickadd" });
-		setIcon(quickAddBtn, "plus");
+		fastIcon(quickAddBtn, "plus");
 		quickAddBtn.setAttr("aria-label", "Quick add text to this card");
 		quickAddBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -6229,7 +6255,7 @@ export class SectionCardsView extends ItemView {
 		});
 
 		const colorBtn = actions.createEl("button", { cls: "section-card-color" });
-		setIcon(colorBtn, "palette");
+		fastIcon(colorBtn, "palette");
 		colorBtn.setAttr("aria-label", "Set this card's color");
 		colorBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -6237,7 +6263,7 @@ export class SectionCardsView extends ItemView {
 		});
 
 		const deleteBtn = actions.createEl("button", { cls: "section-card-delete" });
-		setIcon(deleteBtn, "trash-2");
+		fastIcon(deleteBtn, "trash-2");
 		deleteBtn.setAttr("aria-label", "Delete this card");
 		deleteBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -6247,7 +6273,7 @@ export class SectionCardsView extends ItemView {
 		const bigBtn = actions.createEl("button", { cls: "section-card-big" });
 		// Magnifier for the click action (make the card big); the button doubles as the
 		// grab point for drag-to-reorder, which the tooltip spells out.
-		setIcon(bigBtn, "zoom-in");
+		fastIcon(bigBtn, "zoom-in");
 		bigBtn.setAttr("aria-label", "Make this card big · drag to reorder");
 		bigBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -6256,7 +6282,7 @@ export class SectionCardsView extends ItemView {
 
 		if (this.stickyOffered(section)) {
 			const stickyBtn = actions.createEl("button", { cls: "section-card-sticky" });
-			setIcon(stickyBtn, "sticky-note");
+			fastIcon(stickyBtn, "sticky-note");
 			stickyBtn.setAttr("aria-label", "Open in a sticky window");
 			stickyBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
@@ -6265,7 +6291,7 @@ export class SectionCardsView extends ItemView {
 		}
 
 		const openBtn = actions.createEl("button", { cls: "section-card-open" });
-		setIcon(openBtn, "external-link");
+		fastIcon(openBtn, "external-link");
 		openBtn.setAttr("aria-label", "Open this section in the note");
 		openBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -6300,7 +6326,7 @@ export class SectionCardsView extends ItemView {
 			backEl = card.createDiv({ cls: "section-card-body section-card-back markdown-rendered" });
 			this.applyBodyHeight(backEl);
 			const flipBtn = actions.createEl("button", { cls: "section-card-flip" });
-			setIcon(flipBtn, FLIP_ICON);
+			fastIcon(flipBtn, FLIP_ICON);
 			flipBtn.setAttr("aria-label", "Flip the card over");
 			flipBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
@@ -6758,7 +6784,7 @@ export class SectionCardsView extends ItemView {
 		body.setCssStyles({ maxHeight: "" });
 		// Big, the back is free to grow like the front; the next flip re-measures it.
 		card.querySelector<HTMLElement>(".section-card-back")?.setCssStyles({ maxHeight: "", height: "" });
-		setIcon(button, "zoom-out");
+		fastIcon(button, "zoom-out");
 		button.setAttr("aria-label", "Shrink this card (Esc)");
 		restoreCaret(caret);
 	}
@@ -6772,7 +6798,7 @@ export class SectionCardsView extends ItemView {
 		open.card.setCssStyles(open.inlineRect);
 		open.body.setCssStyles({ maxHeight: open.bodyMaxHeight });
 		this.applyBodyHeight(open.card.querySelector<HTMLElement>(".section-card-back"));
-		setIcon(open.button, "zoom-in");
+		fastIcon(open.button, "zoom-in");
 		open.button.setAttr("aria-label", "Make this card big · drag to reorder");
 
 		const caret = captureCaret(open.card);
@@ -7351,7 +7377,7 @@ export class SectionCardsView extends ItemView {
 			video.muted = true;
 			video.loop = true;
 			const badge = el.createDiv({ cls: "sc-image-play" });
-			setIcon(badge, "play");
+			fastIcon(badge, "play");
 			el.addEventListener("dblclick", () => {
 				if (video.paused) void video.play();
 				else video.pause();
@@ -7367,7 +7393,7 @@ export class SectionCardsView extends ItemView {
 		el.addEventListener("contextmenu", (evt) => this.openImageMenu(evt, image));
 
 		const untrayBtn = el.createEl("button", { cls: "sc-image-untray" });
-		setIcon(untrayBtn, "x");
+		fastIcon(untrayBtn, "x");
 		untrayBtn.setAttr("aria-label", "Remove from the canvas (back to the list)");
 		untrayBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -7379,7 +7405,7 @@ export class SectionCardsView extends ItemView {
 		// app, external URLs in the browser. An inline data: URI has no original to
 		// open, so the magnifier takes the corner alone (CSS keys off :last-child).
 		const bigBtn = el.createEl("button", { cls: "sc-image-big" });
-		setIcon(bigBtn, "zoom-in");
+		fastIcon(bigBtn, "zoom-in");
 		bigBtn.setAttr("aria-label", `Make this ${image.kind} big`);
 		bigBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -7393,7 +7419,7 @@ export class SectionCardsView extends ItemView {
 		if (!image.key.startsWith("data:")) {
 			const external = /^https?:\/\//i.test(image.key);
 			const openBtn = el.createEl("button", { cls: "sc-image-open" });
-			setIcon(openBtn, "external-link");
+			fastIcon(openBtn, "external-link");
 			openBtn.setAttr("aria-label", external ? "Open the URL in your browser" : "Open the original file");
 			openBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
@@ -7875,7 +7901,7 @@ export class SectionCardsView extends ItemView {
 	private renderLinkCard(link: UrlLink): { key: string; el: HTMLElement; label: string } {
 		const el = this.gridEl.createDiv({ cls: "sc-image-card sc-link-card" });
 		const bar = el.createDiv({ cls: "sc-link-card-bar" });
-		setIcon(bar.createSpan({ cls: "sc-link-card-icon" }), "globe");
+		fastIcon(bar.createSpan({ cls: "sc-link-card-icon" }), "globe");
 		bar.createSpan({ cls: "sc-link-card-title", text: link.label });
 		el.createEl("iframe", {
 			cls: "sc-link-card-frame",
@@ -7892,7 +7918,7 @@ export class SectionCardsView extends ItemView {
 		el.addEventListener("contextmenu", (evt) => this.openLinkMenu(evt, link));
 
 		const untrayBtn = el.createEl("button", { cls: "sc-image-untray" });
-		setIcon(untrayBtn, "x");
+		fastIcon(untrayBtn, "x");
 		untrayBtn.setAttr("aria-label", "Remove from the canvas (back to the list)");
 		untrayBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -7900,7 +7926,7 @@ export class SectionCardsView extends ItemView {
 		});
 
 		const bigBtn = el.createEl("button", { cls: "sc-image-big" });
-		setIcon(bigBtn, "zoom-in");
+		fastIcon(bigBtn, "zoom-in");
 		bigBtn.setAttr("aria-label", "Make this page big (interactive)");
 		bigBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -7909,7 +7935,7 @@ export class SectionCardsView extends ItemView {
 		el.addEventListener("dblclick", () => this.openLinkLightbox(link));
 
 		const openBtn = el.createEl("button", { cls: "sc-image-open" });
-		setIcon(openBtn, "external-link");
+		fastIcon(openBtn, "external-link");
 		openBtn.setAttr("aria-label", "Open the URL in your browser");
 		openBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
@@ -8046,7 +8072,7 @@ export class SectionCardsView extends ItemView {
 			if (!link) continue;
 			const tile = this.trayEl.createDiv({ cls: "section-cards-tray-tile sc-link-tile" });
 			const row = tile.createDiv({ cls: "sc-link-tile-row" });
-			setIcon(row.createSpan({ cls: "sc-link-card-icon" }), "globe");
+			fastIcon(row.createSpan({ cls: "sc-link-card-icon" }), "globe");
 			row.createSpan({ cls: "sc-link-tile-name", text: link.label });
 			tile.createDiv({ cls: "sc-link-tile-url", text: link.url });
 			tile.setAttr("aria-label", link.url);
@@ -8223,7 +8249,7 @@ export class SectionCardsView extends ItemView {
 	/** The folded tray: a full-height bar where the column was; a click opens it again. */
 	private buildTrayBar(noun: string): void {
 		const bar = this.trayEl.createEl("button", { cls: "section-cards-tray-bar" });
-		setIcon(bar, "chevron-left");
+		fastIcon(bar, "chevron-left");
 		bar.setAttr("aria-label", `Show the ${noun} list`);
 		bar.addEventListener("click", () => void this.setTrayCollapsed(false));
 	}
@@ -8275,7 +8301,7 @@ export class SectionCardsView extends ItemView {
 		});
 		const iconBtn = (icon: string, label: string, onClick: () => void) => {
 			const btn = row.createEl("button", { cls: "section-cards-tray-toggle section-cards-tray-layout-btn" });
-			setIcon(btn, icon);
+			fastIcon(btn, icon);
 			btn.setAttr("aria-label", label);
 			btn.addEventListener("click", onClick);
 			return btn;
@@ -8394,7 +8420,7 @@ export class SectionCardsView extends ItemView {
 			this.confirmSavedLayoutChanges(() => new ConfirmClearModal(this.app, placed, noun, () => this.clearCanvas()).open());
 		});
 		const foldBtn = actions.createEl("button", { cls: "section-cards-tray-toggle" });
-		setIcon(foldBtn, "chevron-right");
+		fastIcon(foldBtn, "chevron-right");
 		foldBtn.setAttr("aria-label", `Hide the ${noun} list`);
 		foldBtn.addEventListener("click", () => void this.setTrayCollapsed(true));
 		if (noun === "section") this.buildSavedLayoutsRow();
