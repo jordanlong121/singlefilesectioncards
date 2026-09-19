@@ -4657,8 +4657,11 @@ export class SectionCardsView extends ItemView {
 				}),
 		);
 
-		menu.addSeparator();
-		this.addLayoutItems(menu);
+		// Layouts are the note's; the Deck has none to switch.
+		if (!this.deckMode) {
+			menu.addSeparator();
+			this.addLayoutItems(menu);
+		}
 
 		// Dates: only when there's something to offer — a jump needs date headings, the
 		// hides a dated note on a layout they apply to.
