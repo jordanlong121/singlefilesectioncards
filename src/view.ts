@@ -235,6 +235,8 @@ export interface CardEntry {
 	raw: string;
 	/** Set while the body's markdown render is still owed; null once started. */
 	renderBody: (() => Promise<void>) | null;
+	/** Build the hover strip's buttons if they aren't yet (they're made on first hover). */
+	ensureActions: () => void;
 }
 
 /** A period a planner card names, per the level's Document setup role. */
@@ -6238,65 +6240,78 @@ export class SectionCardsView extends ItemView {
 			{ capture: true },
 		);
 
-		const quickAddBtn = actions.createEl("button", { cls: "section-card-quickadd" });
-		fastIcon(quickAddBtn, "plus");
-		quickAddBtn.setAttr("aria-label", "Quick add text to this card");
-		quickAddBtn.addEventListener("click", (evt) => {
-			evt.stopPropagation();
-			const target = holder.section;
-			const hasBack = this.cardFaces(target.body).back !== null;
-			new QuickAddModal(this.plugin, target.title || "(untitled)", hasBack, async (text, where) => {
-				const ok = await quickAddToSection(this.app, file, this.headingLevel, target, text, where, this.flipMarker());
-				if (!ok) {
-					new Notice("Couldn't find that section — the file changed on disk.");
-				}
-				await this.refresh();
-			}).open();
-		});
-
-		const colorBtn = actions.createEl("button", { cls: "section-card-color" });
-		fastIcon(colorBtn, "palette");
-		colorBtn.setAttr("aria-label", "Set this card's color");
-		colorBtn.addEventListener("click", (evt) => {
-			evt.stopPropagation();
-			this.openColorMenu(evt, file, holder.section.headingRaw);
-		});
-
-		const deleteBtn = actions.createEl("button", { cls: "section-card-delete" });
-		fastIcon(deleteBtn, "trash-2");
-		deleteBtn.setAttr("aria-label", "Delete this card");
-		deleteBtn.addEventListener("click", (evt) => {
-			evt.stopPropagation();
-			confirmDeleteCard();
-		});
-
-		const bigBtn = actions.createEl("button", { cls: "section-card-big" });
-		// Magnifier for the click action (make the card big); the button doubles as the
-		// grab point for drag-to-reorder, which the tooltip spells out.
-		fastIcon(bigBtn, "zoom-in");
-		bigBtn.setAttr("aria-label", "Make this card big · drag to reorder");
-		bigBtn.addEventListener("click", (evt) => {
-			evt.stopPropagation();
-			this.toggleMaximized(card);
-		});
-
-		if (this.stickyOffered(section)) {
-			const stickyBtn = actions.createEl("button", { cls: "section-card-sticky" });
-			fastIcon(stickyBtn, "sticky-note");
-			stickyBtn.setAttr("aria-label", "Open in a sticky window");
-			stickyBtn.addEventListener("click", (evt) => {
+		// The strip's buttons are built on the card's first hover or focus — at once on
+		// touch, where they sit in the title row — rather than for every card up front: a
+		// shell's icons were most of its cost on a big wall, and most cards are never
+		// hovered. ensureActions also serves code that looks a strip button up.
+		let actionsBuilt = false;
+		let buildFlipButton: (() => void) | null = null;
+		const ensureActions = () => {
+			if (actionsBuilt) return;
+			actionsBuilt = true;
+			const quickAddBtn = actions.createEl("button", { cls: "section-card-quickadd" });
+			fastIcon(quickAddBtn, "plus");
+			quickAddBtn.setAttr("aria-label", "Quick add text to this card");
+			quickAddBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
-				void this.plugin.openSticky(file.path, section.headingRaw);
+				const target = holder.section;
+				const hasBack = this.cardFaces(target.body).back !== null;
+				new QuickAddModal(this.plugin, target.title || "(untitled)", hasBack, async (text, where) => {
+					const ok = await quickAddToSection(this.app, file, this.headingLevel, target, text, where, this.flipMarker());
+					if (!ok) {
+						new Notice("Couldn't find that section — the file changed on disk.");
+					}
+					await this.refresh();
+				}).open();
 			});
-		}
 
-		const openBtn = actions.createEl("button", { cls: "section-card-open" });
-		fastIcon(openBtn, "external-link");
-		openBtn.setAttr("aria-label", "Open this section in the note");
-		openBtn.addEventListener("click", (evt) => {
-			evt.stopPropagation();
-			void this.plugin.revealSection(file, holder.section.headingLine);
-		});
+			const colorBtn = actions.createEl("button", { cls: "section-card-color" });
+			fastIcon(colorBtn, "palette");
+			colorBtn.setAttr("aria-label", "Set this card's color");
+			colorBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				this.openColorMenu(evt, file, holder.section.headingRaw);
+			});
+
+			const deleteBtn = actions.createEl("button", { cls: "section-card-delete" });
+			fastIcon(deleteBtn, "trash-2");
+			deleteBtn.setAttr("aria-label", "Delete this card");
+			deleteBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				confirmDeleteCard();
+			});
+
+			const bigBtn = actions.createEl("button", { cls: "section-card-big" });
+			// Magnifier for the click action (make the card big); the button doubles as the
+			// grab point for drag-to-reorder, which the tooltip spells out.
+			fastIcon(bigBtn, "zoom-in");
+			bigBtn.setAttr("aria-label", "Make this card big · drag to reorder");
+			bigBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				this.toggleMaximized(card);
+			});
+
+			if (this.stickyOffered(section)) {
+				const stickyBtn = actions.createEl("button", { cls: "section-card-sticky" });
+				fastIcon(stickyBtn, "sticky-note");
+				stickyBtn.setAttr("aria-label", "Open in a sticky window");
+				stickyBtn.addEventListener("click", (evt) => {
+					evt.stopPropagation();
+					void this.plugin.openSticky(file.path, section.headingRaw);
+				});
+			}
+
+			const openBtn = actions.createEl("button", { cls: "section-card-open" });
+			fastIcon(openBtn, "external-link");
+			openBtn.setAttr("aria-label", "Open this section in the note");
+			openBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				void this.plugin.revealSection(file, holder.section.headingLine);
+			});
+			buildFlipButton?.();
+		};
+		card.addEventListener("pointerenter", ensureActions);
+		card.addEventListener("focusin", ensureActions);
 
 		this.applyPinState(card, this.plugin.getPinned(file.path).includes(section.headingRaw));
 
@@ -6325,18 +6340,19 @@ export class SectionCardsView extends ItemView {
 			// the front stays the card's first .section-card-body for every lookup.
 			backEl = card.createDiv({ cls: "section-card-body section-card-back markdown-rendered" });
 			this.applyBodyHeight(backEl);
-			const flipBtn = actions.createEl("button", { cls: "section-card-flip" });
-			fastIcon(flipBtn, FLIP_ICON);
-			flipBtn.setAttr("aria-label", "Flip the card over");
-			flipBtn.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				void this.flipCard(card);
-			});
+			buildFlipButton = () => {
+				const flipBtn = actions.createEl("button", { cls: "section-card-flip" });
+				fastIcon(flipBtn, FLIP_ICON);
+				flipBtn.setAttr("aria-label", card.hasClass("is-flipped") ? "Flip back to the front" : "Flip the card over");
+				flipBtn.addEventListener("click", (evt) => {
+					evt.stopPropagation();
+					void this.flipCard(card);
+				});
+			};
 			// A card remembered as showing its back comes back the same way — across
 			// rebuilds, layout switches, and reopening the note.
 			if (this.plugin.getFlipped(file.path).includes(section.headingRaw)) {
 				card.addClass("is-flipped");
-				flipBtn.setAttr("aria-label", "Flip back to the front");
 				void this.renderBack(backEl, holder, file, scope);
 			}
 		}
@@ -6696,7 +6712,8 @@ export class SectionCardsView extends ItemView {
 			void this.completeDrag(file, moved, holder.section, this.isDropBefore(evt, card));
 		});
 
-		return { el: card, bodyEl, backEl, scope, holder, raw: section.raw, renderBody };
+		if (Platform.isMobile) ensureActions();
+		return { el: card, bodyEl, backEl, scope, holder, raw: section.raw, renderBody, ensureActions };
 	}
 
 	/**
@@ -6735,6 +6752,7 @@ export class SectionCardsView extends ItemView {
 		}
 		this.closeMaximized();
 
+		this.cardEntries.find((e) => e.el === card)?.ensureActions();
 		const body = card.querySelector<HTMLElement>(".section-card-body");
 		const button = card.querySelector<HTMLElement>(".section-card-big");
 		if (!body || !button) return;
