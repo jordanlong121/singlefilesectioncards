@@ -399,10 +399,14 @@ export default class SectionCardsPlugin extends Plugin {
 			new Notice(`“${path}” already exists.`);
 			return;
 		}
+		// Never a new folder: a name with a folder/ must name one that exists.
+		const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+		if (folder && !(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) {
+			new Notice(`There's no folder “${folder}” — create it first, or leave the folder out of the name.`);
+			return;
+		}
 		let file: TFile;
 		try {
-			const folder = path.slice(0, path.lastIndexOf("/"));
-			if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
 			file = await this.app.vault.create(path, structuredNoteMarkdown(spec));
 		} catch (err) {
 			new Notice(`Couldn't create “${path}”: ${err instanceof Error ? err.message : String(err)}`);
