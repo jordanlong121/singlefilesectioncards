@@ -354,7 +354,7 @@ export class StructuredNoteModal extends Modal {
 				});
 				dd.setValue("none").onChange((value) => {
 					const preset = presets.find((p) => p.id === value);
-					def = preset ?? structuredFormat(value as StructuredFormat | "note" | "none");
+					def = preset ?? structuredFormat(value);
 					spec.format = preset ? "preset" : def ? (def.id as StructuredFormat) : value === "note" ? "note" : "none";
 					spec.preset = preset;
 					spec.sections = def ? def.sections.map((s) => s.title) : [];

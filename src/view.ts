@@ -995,13 +995,6 @@ export class SectionCardsView extends ItemView {
 		// chevron only hides it).
 		this.trayToggleBtn = zoomBar.createEl("button", { cls: "section-cards-tray-fold" });
 		this.trayToggleBtn.addEventListener("click", () => void this.setTrayCollapsed(!this.plugin.getTrayCollapsed(this.filePath)));
-		// And where the column was: a small "Show list" button in the canvas's top-right
-		// corner, shown only while the tray is folded (CSS), so the way back is in sight.
-		const restore = this.contentEl.createEl("button", { cls: "section-cards-tray-restore" });
-		setIcon(restore.createSpan({ cls: "section-cards-tray-restore-icon" }), "panel-right-open");
-		restore.createSpan({ text: "Show list" });
-		restore.setAttr("aria-label", "Show the list of what isn't on the canvas");
-		restore.addEventListener("click", () => void this.setTrayCollapsed(false));
 		this.syncTrayToggle();
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
 			if (evt.key !== "Escape") return;
@@ -7885,7 +7878,10 @@ export class SectionCardsView extends ItemView {
 	 * a tray full of loading pages would be pure weight). */
 	private rebuildLinksTray(unplacedKeys: string[]): void {
 		this.trayEl.empty();
-		if (this.trayHidden()) return;
+		if (this.trayHidden()) {
+			this.buildTrayBar("link");
+			return;
+		}
 		this.buildTrayControls("link", "Drag a link onto the canvas");
 		for (const key of unplacedKeys) {
 			const link = this.linksByKey.get(key);
@@ -8061,10 +8057,17 @@ export class SectionCardsView extends ItemView {
 		this.canvasExtentEl.setCssStyles({ left: `${w - 1}px`, top: `${h - 1}px` });
 	}
 
-	/** The tray is folded away for this note: its column is hidden, so nothing is drawn
-	 * in it (the zoom bar's panel button brings it back). */
+	/** The tray is folded away for this note: its column is a slim bar (buildTrayBar). */
 	private trayHidden(): boolean {
 		return this.plugin.getTrayCollapsed(this.filePath);
+	}
+
+	/** The folded tray: a full-height bar where the column was; a click opens it again. */
+	private buildTrayBar(noun: string): void {
+		const bar = this.trayEl.createEl("button", { cls: "section-cards-tray-bar" });
+		setIcon(bar, "chevron-left");
+		bar.setAttr("aria-label", `Show the ${noun} list`);
+		bar.addEventListener("click", () => void this.setTrayCollapsed(false));
 	}
 
 	/** The zoom bar's panel button says what it does: hide the list, or show it. */
@@ -8257,7 +8260,10 @@ export class SectionCardsView extends ItemView {
 
 	private rebuildTray(unplacedKeys: string[]): void {
 		this.trayEl.empty();
-		if (this.trayHidden()) return;
+		if (this.trayHidden()) {
+			this.buildTrayBar("section");
+			return;
+		}
 		this.buildTrayControls("section", "Drag a section onto the canvas");
 		const today = this.todayKeys();
 		const trayColors = this.plugin.getCardColors(this.filePath);
@@ -8291,7 +8297,10 @@ export class SectionCardsView extends ItemView {
 	/** The Images tray: a thumbnail-and-name tile per unplaced image. */
 	private rebuildImagesTray(unplacedKeys: string[]): void {
 		this.trayEl.empty();
-		if (this.trayHidden()) return;
+		if (this.trayHidden()) {
+			this.buildTrayBar("image");
+			return;
+		}
 		this.buildTrayControls("image", "Drag an image onto the canvas");
 		for (const key of unplacedKeys) {
 			const image = this.imagesByKey.get(key);
