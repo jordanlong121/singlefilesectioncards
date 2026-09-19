@@ -74,9 +74,9 @@ If this plugin is useful to you, you can support its development:
 
 Pick a layout from the toolbar's **Layout** button beside the note's name — it opens a grid
 of every layout, an icon and name each — from the **Layouts** row of the toolbar's ☰ menu or
-any right-click menu, or press `L` to cycle (Shift+L backwards). The **Sort** and **Group**
-controls among the view options are the same kind of button: an icon, the current choice, and
-a grid of icon tiles to pick from. Layouts you never use
+any right-click menu, or press `L` to cycle (Shift+L backwards). **Card level**, **View mode**, **Sort**, and
+**Group** are the same kind of button: an icon, the current choice, and a grid of icon tiles to
+pick from. Layouts you never use
 in a note can be hidden from it: Ctrl/⌘-click one in the **Layouts** menu and it leaves that
 note's dropdown and `L` cycle, staying in the menu dimmed as "(hidden)" — click it there to
 bring it back (remembered per note; the layout showing can't be hidden — switch away first).

@@ -531,17 +531,6 @@ body.is-phone .sfsc-picker-pop {
 	padding: 0 20px 0 6px;
 }
 
-.section-cards-toolbar.is-compact .section-cards-segmented button {
-	padding: 2px 5px;
-	height: 18px;
-}
-
-.section-cards-toolbar.is-compact .section-cards-segmented button svg {
-	display: block;
-	width: 12px;
-	height: 12px;
-}
-
 .section-cards-toolbar.is-compact .section-cards-icon-btn svg {
 	width: 12px;
 	height: 12px;
@@ -1350,47 +1339,6 @@ body.is-mobile .is-layout-tight .section-card-body {
 
 .is-hier-on .section-cards-empty {
 	grid-column: 1 / -1;
-}
-
-/* The View mode segmented toggle. The active segment wears the theme's highlight
-   (accent) color, like the + New card button. */
-.section-cards-segmented {
-	display: flex;
-	border: 1px solid var(--sc-line);
-	border-radius: var(--radius-s, 5px);
-	overflow: hidden;
-}
-
-.section-cards-segmented button {
-	/* No background override: the theme's own button fill shows through, which is the
-	   same surface the dropdowns use — so the control matches them in any theme. */
-	box-shadow: none;
-	border: none;
-	border-radius: 0;
-	padding: 5px 9px;
-	line-height: 1;
-	/* Same size as the toolbar's other small text (labels, count). */
-	font-size: calc(var(--font-ui-smaller, 12px) * 0.85);
-	color: var(--text-muted);
-}
-
-.section-cards-segmented button + button {
-	border-left: 1px solid var(--sc-line);
-}
-
-.section-cards-segmented button:hover {
-	color: var(--text-normal);
-}
-
-.section-cards-segmented button.is-active,
-.section-cards-segmented button.is-active:hover {
-	background-color: var(--interactive-accent);
-	color: var(--text-on-accent, #fff);
-}
-
-.section-cards-segmented button:disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
 }
 
 .section-cards-hier-col {
