@@ -90,6 +90,9 @@ A freeform canvas: drag sections on from the tray, then place, move, and resize 
 The arrangement is remembered per note in the plugin's data — never in your notes. The
 chevron beside **Clear layout** folds the tray to a slim strip (with a count of what's
 still off the canvas) and opens it again; the Images and Links canvases fold the same way.
+**Saved layouts** (the row beneath) name the current arrangement — placements, zoom, and the
+note's background — so a note can switch between, say, a "SWOT" grid and a "Timeline" strip;
+pick one from the dropdown to apply it, save again under the same name to update it.
 
 ![Custom Grid](screenshots/custom.png)
 

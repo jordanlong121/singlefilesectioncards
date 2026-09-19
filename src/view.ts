@@ -191,7 +191,7 @@ import {
 	GradientBackgroundModal,
 	BACKGROUND_EXTENSIONS,
 } from "./background";
-import {
+import { ConfirmActionModal,
 	FileSuggestModal,
 	ConfirmDeleteModal,
 	SwitchToDocumentOrderModal,
@@ -8003,6 +8003,76 @@ export class SectionCardsView extends ItemView {
 		return true;
 	}
 
+	/** A saved layout was applied to this note: drop the cached placements and redraw. */
+	reloadPlacements(): void {
+		this.placementsLoadedFor = null;
+		this.traySignature = null;
+		void this.refresh();
+	}
+
+	/**
+	 * Custom Grid tray: the saved-layouts row — a switcher over the note's named
+	 * arrangements (placements, zoom, background), a save button that names the current
+	 * one, and a delete button for the one selected.
+	 */
+	private buildSavedLayoutsRow(): void {
+		const row = this.trayEl.createDiv({ cls: "section-cards-tray-layouts" });
+		const saved = this.plugin.getSavedLayouts(this.filePath);
+		const names = Object.keys(saved).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
+		const active = this.plugin.getActiveSavedLayout(this.filePath);
+		const select = row.createEl("select", { cls: "dropdown section-cards-tray-layout-select" });
+		select.createEl("option", { value: "", text: names.length ? "Saved layouts…" : "No saved layouts" });
+		for (const name of names) select.createEl("option", { value: name, text: name });
+		select.value = active && saved[active] ? active : "";
+		select.setAttr("aria-label", "Switch to a saved layout");
+		select.addEventListener("change", () => {
+			if (select.value) void this.plugin.applySavedLayout(this.filePath, select.value);
+		});
+		const iconBtn = (icon: string, label: string, onClick: () => void) => {
+			const btn = row.createEl("button", { cls: "section-cards-tray-toggle section-cards-tray-layout-btn" });
+			setIcon(btn, icon);
+			btn.setAttr("aria-label", label);
+			btn.addEventListener("click", onClick);
+			return btn;
+		};
+		const redraw = async () => {
+			this.traySignature = null;
+			await this.refresh();
+		};
+		iconBtn("save", "Save this arrangement and background as a layout…", () => {
+			new TextInputModal(this.app, "Save layout", select.value || active || "", "Save", (value) => {
+				const name = value.trim();
+				if (!name) return;
+				const write = () => void this.plugin.saveCanvasLayout(this.filePath, name, this.viewSettings()).then(redraw);
+				if (saved[name] && name !== select.value) {
+					new ConfirmActionModal(
+						this.app,
+						"Replace saved layout?",
+						`“${name}” already exists. Replace it with the current arrangement and background?`,
+						"Replace",
+						false,
+						write,
+					).open();
+				} else write();
+			}).open();
+		});
+		const del = iconBtn("trash-2", "Delete the selected saved layout", () => {
+			const name = select.value;
+			if (!name) return;
+			new ConfirmActionModal(
+				this.app,
+				"Delete saved layout?",
+				`“${name}” is forgotten. The canvas stays as it is.`,
+				"Delete",
+				true,
+				() => void this.plugin.deleteSavedLayout(this.filePath, name).then(redraw),
+			).open();
+		});
+		const syncDelete = () => del.toggleAttribute("disabled", !select.value);
+		syncDelete();
+		select.addEventListener("change", syncDelete);
+	}
+
 	/** Fold or open the tray, remembered per note; the tray redraws on the refresh. */
 	private async setTrayCollapsed(collapsed: boolean): Promise<void> {
 		await this.plugin.setTrayCollapsed(this.filePath, collapsed, this.viewSettings());
@@ -8027,6 +8097,7 @@ export class SectionCardsView extends ItemView {
 		setIcon(foldBtn, "chevron-right");
 		foldBtn.setAttr("aria-label", `Hide the ${noun} list`);
 		foldBtn.addEventListener("click", () => void this.setTrayCollapsed(true));
+		if (noun === "section") this.buildSavedLayoutsRow();
 		const sortRow = this.trayEl.createDiv({ cls: "section-cards-tray-sorts" });
 		const sorts: [SortOrder, string][] = [
 			["asc", "A→Z"],

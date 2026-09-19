@@ -24,7 +24,7 @@ import { TasksApiV1 } from "./src/tasks";
 import { noteFolderOf, insertSection } from "./src/writes";
 import { PlannerSlot } from "./src/planner";
 import { DocumentLevels } from "./src/periods";
-import { CardRect } from "./src/canvas";
+import { CardRect, SavedCanvasLayout, snapshotCanvasLayout, applyCanvasLayout } from "./src/canvas";
 import { BACKGROUND_DIM_DEFAULT } from "./src/background";
 import { TextInputModal, NoteLibraryModal } from "./src/modals";
 import { SectionCardsSettingTab } from "./src/settings-tab";
@@ -708,6 +708,53 @@ export default class SectionCardsPlugin extends Plugin {
 	/** The per-note "headings are dates" choice; undefined = the user hasn't set it. */
 	getContainsDates(path: string): boolean | undefined {
 		return this.settings.perFile?.[path]?.containsDates;
+	}
+
+	// ---------- Custom Grid: saved layouts ----------
+
+	getSavedLayouts(path: string): Record<string, SavedCanvasLayout> {
+		return this.settings.perFile?.[path]?.savedLayouts ?? {};
+	}
+
+	getActiveSavedLayout(path: string): string | null {
+		return this.settings.perFile?.[path]?.activeSavedLayout ?? null;
+	}
+
+	/** Save the note's current arrangement and background under a name (replacing a
+	 * layout of that name), and make it the active one. */
+	async saveCanvasLayout(path: string, name: string, base: ViewSettings): Promise<void> {
+		if (!path || !name.trim()) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		current.savedLayouts = { ...(current.savedLayouts ?? {}), [name.trim()]: snapshotCanvasLayout(current) };
+		current.activeSavedLayout = name.trim();
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
+	/** Switch the note's canvas to a saved layout: placements, zoom, and background. Open
+	 * views of the note reload their placements (they're cached per note). */
+	async applySavedLayout(path: string, name: string): Promise<void> {
+		const current = this.settings.perFile?.[path];
+		const saved = current?.savedLayouts?.[name];
+		if (!current || !saved) return;
+		applyCanvasLayout(current, saved);
+		current.activeSavedLayout = name;
+		await this.saveSettings();
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
+			const view = leaf.view;
+			if (view instanceof SectionCardsView && view.filePath === path) view.reloadPlacements();
+		}
+	}
+
+	/** Forget a saved layout; the canvas stays as it is. */
+	async deleteSavedLayout(path: string, name: string): Promise<void> {
+		const current = this.settings.perFile?.[path];
+		if (!current?.savedLayouts?.[name]) return;
+		delete current.savedLayouts[name];
+		if (!Object.keys(current.savedLayouts).length) delete current.savedLayouts;
+		if (current.activeSavedLayout === name) delete current.activeSavedLayout;
+		await this.saveSettings();
 	}
 
 	/** Whether the canvases' tray is folded to a slim strip for this note. */

@@ -1,5 +1,7 @@
 // The canvases (Custom Grid, Images, Links): rectangles, snapping, and link extraction.
 
+import type { PerFileView } from "./settings";
+
 
 
 /**
@@ -231,4 +233,48 @@ export function findFreeSpot(want: CardRect, others: CardRect[], gap: number, st
 	}
 	const bottom = others.reduce((max, other) => Math.max(max, other.y + other.h), 0);
 	return { ...spot, y: bottom + step };
+}
+
+/**
+ * A Custom Grid arrangement saved under a name (tray → save): the placements and
+ * zoom, and the background as it was — so switching to it brings the look back too.
+ * Absent background fields mean "no background" and clear the note's on apply.
+ */
+export interface SavedCanvasLayout {
+	customGrid: Record<string, CardRect>;
+	customZoom?: number;
+	backgroundImage?: string;
+	backgroundDim?: number;
+	backgroundBrightness?: number;
+	backgroundSaturation?: number;
+	savedAt: number;
+}
+
+/** The note's current arrangement and background as a saved layout (deep-copied). */
+export function snapshotCanvasLayout(entry: PerFileView, now = Date.now()): SavedCanvasLayout {
+	const out: SavedCanvasLayout = { customGrid: {}, savedAt: now };
+	for (const [key, r] of Object.entries(entry.customGrid ?? {})) out.customGrid[key] = { x: r.x, y: r.y, w: r.w, h: r.h };
+	if (entry.customZoom !== undefined) out.customZoom = entry.customZoom;
+	if (entry.backgroundImage !== undefined) out.backgroundImage = entry.backgroundImage;
+	if (entry.backgroundDim !== undefined) out.backgroundDim = entry.backgroundDim;
+	if (entry.backgroundBrightness !== undefined) out.backgroundBrightness = entry.backgroundBrightness;
+	if (entry.backgroundSaturation !== undefined) out.backgroundSaturation = entry.backgroundSaturation;
+	return out;
+}
+
+/** Put a saved layout onto the note: placements and zoom replaced, background fields
+ * set or cleared to match. Copies, so later drags don't edit the saved layout. */
+export function applyCanvasLayout(entry: PerFileView, saved: SavedCanvasLayout): void {
+	entry.customGrid = {};
+	for (const [key, r] of Object.entries(saved.customGrid)) entry.customGrid[key] = { x: r.x, y: r.y, w: r.w, h: r.h };
+	if (saved.customZoom !== undefined) entry.customZoom = saved.customZoom;
+	else delete entry.customZoom;
+	if (saved.backgroundImage !== undefined) entry.backgroundImage = saved.backgroundImage;
+	else delete entry.backgroundImage;
+	if (saved.backgroundDim !== undefined) entry.backgroundDim = saved.backgroundDim;
+	else delete entry.backgroundDim;
+	if (saved.backgroundBrightness !== undefined) entry.backgroundBrightness = saved.backgroundBrightness;
+	else delete entry.backgroundBrightness;
+	if (saved.backgroundSaturation !== undefined) entry.backgroundSaturation = saved.backgroundSaturation;
+	else delete entry.backgroundSaturation;
 }
