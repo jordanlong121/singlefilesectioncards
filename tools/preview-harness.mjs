@@ -811,6 +811,7 @@ function pageHtml(layout, { withMenu = false, mode = "default", background = nul
 <div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}${sticky ? " is-sticky" : ""}${process.env.TRAY === "hidden" && ["custom", "images", "links"].includes(layout) ? " is-tray-collapsed" : ""}${background ? " has-sfsc-bg" : ""}"${background ? ` style="--sfsc-bg-image: url('${background}.svg')"` : ""}>
 ${toolbarHtml(layout, mode)}
 ${sticky ? stickyHeadHtml() : ""}
+${process.env.TRAY === "hidden" ? '<button class="section-cards-tray-restore"><span class="section-cards-tray-restore-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m10 15-3-3 3-3"/></svg></span><span>Show list</span></button>' : ""}
 ${gridHtml(layout, mode)}
 </div>
 </div>`;

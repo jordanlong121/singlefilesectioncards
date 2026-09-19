@@ -2575,6 +2575,43 @@ body.is-phone .sfsc-planner-title {
 	color: var(--interactive-accent);
 }
 
+/* Where the column was: a small button in the canvas's top-right corner, only while
+   the tray is folded, on the canvases only. */
+.section-cards-tray-restore {
+	display: none;
+}
+
+.is-tray-collapsed.is-layout-custom .section-cards-tray-restore,
+.is-tray-collapsed.is-layout-images .section-cards-tray-restore,
+.is-tray-collapsed.is-layout-links .section-cards-tray-restore {
+	/* The canvas's grid cell, top-right corner — over the canvas, under nothing. */
+	grid-row: 2;
+	grid-column: 1;
+	justify-self: end;
+	align-self: start;
+	margin: 10px 12px 0 0;
+	position: relative;
+	z-index: 20;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 10px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	background-color: var(--sc-bar);
+	border: 1px solid var(--sc-line);
+	box-shadow: var(--sc-shadow);
+}
+
+.section-cards-tray-restore:hover {
+	color: var(--text-normal);
+}
+
+.section-cards-tray-restore-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
 .section-cards-tray-clear {
 	width: 100%;
 	font-weight: 600;
