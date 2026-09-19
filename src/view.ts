@@ -4390,7 +4390,10 @@ export class SectionCardsView extends ItemView {
 	 * With the setting off, all six levels as before.
 	 */
 	private levelOptionValues(): number[] {
-		if (!this.plugin.settings.dynamicLevelOptions) return [1, 2, 3, 4, 5, 6];
+		// Every level when the options aren't narrowed to the note's — or when the note
+		// has no headings at all, since then there's nothing to narrow by and the first
+		// card could go at any level.
+		if (!this.plugin.settings.dynamicLevelOptions || !this.availableLevels.length) return [1, 2, 3, 4, 5, 6];
 		return [...new Set([...this.availableLevels, this.headingLevel])].sort((a, b) => a - b);
 	}
 
