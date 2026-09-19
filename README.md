@@ -321,8 +321,8 @@ with the button in its strip. Desktop only.
 ## The Deck
 
 The toolbar's deck button (or `D`) flips the view to thumbnails of your card notes —
-pinned ones first, then the most recently opened — each with the note's first lines
-and its layout. Click one to hop over; the Sort dropdown reorders them by recency,
+pinned ones first, then the most recently opened — each with the note's first lines,
+its layout, and its own background. Click one to hop over; the Sort dropdown reorders them by recency,
 file name, or the file's modified/created time. Right-click a tile for **Rename note…**
 (links update and the remembered view follows) above Obsidian's own file menu.
 

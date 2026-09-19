@@ -182,7 +182,8 @@ body.sfsc-flat-cards .section-cards-view {
    the cards scroll. A veil keeps the toolbar and cards readable — --mono-rgb-0 is
    the page color, so it's a black veil on dark themes and white on light. Its
    strength is the per-note transparency slider (menu → Background: transparency). */
-.workspace-leaf-content .view-content.section-cards-view.has-sfsc-bg {
+.workspace-leaf-content .view-content.section-cards-view.has-sfsc-bg,
+.sfsc-deck-card.has-sfsc-bg {
 	/* Layers, top to bottom: the theme-colored veil (transparency slider), a
 	   black/white wash (brightness), a gray drained into the image with the
 	   `saturation` blend mode (saturation), then the image itself. The plugin
