@@ -524,6 +524,14 @@ and Day Planner ignore them — the grids place every day, and the planner shows
 time and walks to the next with its arrows — so the toggles step aside on those layouts and
 come back, still set, when you return to a wall layout.
 
+## Text a level leaves out
+
+Pick a card level that only some of the note uses — H4 in a note of H1 months, H2 weeks, and
+H3 days — and everything written under the other headings is off the wall. A bar along the
+pane's bottom then says how many lines of text sit under which levels without a card, with
+**Show H2** (or whichever level would hold the most) to switch, **Hierarchy view** to at least
+see those headings as columns, and a close button to dismiss it for that note and level.
+
 ## Jump to a date
 
 With **Dates** on and date headings present, a calendar button appears beside the checkbox.

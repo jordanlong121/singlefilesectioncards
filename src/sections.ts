@@ -800,3 +800,58 @@ export function planCardReuse(prevRaws: string[], nextRaws: string[]): number[] 
 	});
 	return nextRaws.map((raw) => pool.get(raw)?.shift() ?? -1);
 }
+
+/** What a card level leaves out of the wall (see levelCoverage). */
+export interface LevelCoverage {
+	/** Cards at this level. */
+	sections: number;
+	/** Non-blank, non-heading lines that sit under a heading but inside no card at this
+	 * level — text the wall doesn't show. Lines above the first heading (the unfiled
+	 * card's) and heading lines themselves aren't counted. */
+	hiddenLines: number;
+	/** The heading levels those lines sit under, shallowest first. */
+	hiddenLevels: number[];
+	/** The level most of that text sits directly under (shallower on a tie) — the card
+	 * level that would show it; null when nothing is hidden. */
+	bestLevel: number | null;
+}
+
+/**
+ * Text a card level hides: H4 picked in a note of H1 months, H2 weeks, and H3 days shows
+ * only the few H4 sections, and everything written under the other headings is off the
+ * wall with nothing to say so. Counts that text, notes which levels it sits under, and
+ * names the level most of it sits under.
+ */
+export function levelCoverage(lines: string[], level: number): LevelCoverage {
+	const headings = parseAncestorHeadings(lines, 7);
+	if (!headings.length) return { sections: 0, hiddenLines: 0, hiddenLevels: [], bestLevel: null };
+	const coveredBy = (l: number): Uint8Array => {
+		const covered = new Uint8Array(lines.length);
+		for (const s of parseSections(lines, l)) for (let i = s.startLine; i < s.endLine; i++) covered[i] = 1;
+		return covered;
+	};
+	const sections = parseSections(lines, level);
+	const covered = coveredBy(level);
+	// Walk from the first heading: text lines outside every card, and the heading they sit under.
+	const headingAt = new Map<number, number>(headings.map((h) => [h.line, h.level]));
+	let hiddenLines = 0;
+	const under = new Map<number, number>();
+	let current = headings[0].level;
+	let inFence = false;
+	for (let i = headings[0].line; i < lines.length; i++) {
+		const line = lines[i];
+		if (FENCE_RE.test(line)) inFence = !inFence;
+		const h = !inFence ? headingAt.get(i) : undefined;
+		if (h !== undefined) {
+			current = h;
+			continue;
+		}
+		if (covered[i] || !line.trim()) continue;
+		hiddenLines++;
+		under.set(current, (under.get(current) ?? 0) + 1);
+	}
+	const hiddenLevels = [...under.keys()].sort((a, b) => a - b);
+	let best: number | null = null;
+	for (const l of hiddenLevels) if (best === null || (under.get(l) ?? 0) > (under.get(best) ?? 0)) best = l;
+	return { sections: sections.length, hiddenLines, hiddenLevels, bestLevel: best };
+}

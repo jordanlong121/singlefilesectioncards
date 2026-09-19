@@ -4152,6 +4152,28 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="section-cards-view"] > .
 	margin-left: auto;
 }
 
+/* The level bar wears the date bar's look (it shares the class); its close button is a
+   small round glyph at the end. */
+.sfsc-datebar-close {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 6px;
+	color: var(--text-muted);
+}
+
+.sfsc-datebar-close svg {
+	width: 12px;
+	height: 12px;
+}
+
+.section-cards-view.has-levelbar .section-cards-grid {
+	padding-bottom: calc(var(--sc-pad) + 36px);
+}
+
+.section-cards-view.has-two-bars .section-cards-grid {
+	padding-bottom: calc(var(--sc-pad) + 72px);
+}
+
 .section-cards-view.has-datebar .section-cards-grid {
 	padding-bottom: calc(var(--sc-pad) + 36px);
 }
