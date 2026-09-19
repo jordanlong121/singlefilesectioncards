@@ -447,6 +447,30 @@ is the note's name. The note opens as cards in the layout that suits it: columns
 for a board, a 2×2 canvas for a matrix, the wall for GTD, and a copied note's own remembered
 view, placements included.
 
+**Your own presets.** Any note with `cards-preset: true` in its properties appears in the
+wizard's template list, after the built-ins. Its sections are the headings at its shallowest
+level (renameable in the wizard like the built-ins'), an italic first line under a heading is
+that section's hint (the Hints toggle applies), and anything further under a heading is kept —
+example tasks, say. Three more properties are optional: `cards-description` for the line under
+the picker, `cards-layout` for the layout the new note opens in (`grid`, `vertical`, `custom`,
+…), and `cards-matrix: true` to place the sections 2×2 on the Custom Grid. A preset note you've
+arranged on a canvas lends the copy its placements too.
+
+```markdown
+---
+cards-preset: true
+cards-description: Weekly review — what happened, what's next, what's stuck.
+cards-layout: custom
+cards-matrix: true
+---
+## Went well
+*Wins worth repeating.*
+
+## Went badly
+*What to stop or fix.*
+- [ ] one thing to change this week
+```
+
 ## Dates, per note
 
 The toolbar's **Dates** checkbox says whether the open note's headings name dates. It governs

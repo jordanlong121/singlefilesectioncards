@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare, bareMonthIndex, firstDueTaskIndex, plannerColumnSplit, plannerCardWeight, structuredNoteMarkdown, structuredPlacements, structuredTitles, STRUCTURED_FORMATS, structuredNoteContent, templateNoteLevel, snapshotCanvasLayout, applyCanvasLayout, canvasLayoutEquals } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare, bareMonthIndex, firstDueTaskIndex, plannerColumnSplit, plannerCardWeight, structuredNoteMarkdown, structuredPlacements, structuredTitles, STRUCTURED_FORMATS, structuredNoteContent, templateNoteLevel, presetFromNote, snapshotCanvasLayout, applyCanvasLayout, canvasLayoutEquals } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -2111,4 +2111,31 @@ t("note from template: a vault note's body is copied between the optional sectio
   assert.equal(templateNoteLevel("just text", 2), 2, "no headings: the fallback");
   const kanban = structuredNoteContent({ format: "kanban", level: 2, sections: ["Now {{title}}"], intro: false, notes: false, hints: false }, "Q4", "YYYY-MM-DD");
   assert.equal(kanban, "## Now Q4\n", "built-in formats take placeholders too");
+});
+
+t("presets: a note's headings, italic hints, kept bodies, and frontmatter keys become a format", () => {
+  const body = "---\ncards-preset: true\n---\n\n## Went well\n*Wins worth repeating.*\n\n## Went badly\n_What to stop._\n\n- [ ] one change\n- [ ] another\n\n## Blocked\nno hint here\n";
+  const fm = { "cards-preset": true, "cards-description": "Weekly review.", "cards-layout": "custom", "cards-matrix": "true" };
+  const def = presetFromNote("Weekly review", "Templates/Weekly review.md", body, fm);
+  assert.equal(def.id, "preset:Templates/Weekly review.md");
+  assert.equal(def.level, 2);
+  assert.deepEqual(def.sections, [
+    { title: "Went well", hint: "Wins worth repeating." },
+    { title: "Went badly", hint: "What to stop.", body: "- [ ] one change\n- [ ] another" },
+    { title: "Blocked", hint: "", body: "no hint here" },
+  ]);
+  assert.equal(def.layout, "custom");
+  assert.equal(def.matrix, true);
+  assert.equal(def.description, "Weekly review.");
+  // Unknown layout falls back; no description gets a generated one; no headings: null.
+  const bare = presetFromNote("P", "P.md", "## A\n", { "cards-layout": "nope" });
+  assert.equal(bare.layout, "grid");
+  assert.ok(bare.description.includes("1 section"));
+  assert.equal(presetFromNote("P", "P.md", "just text", {}), null);
+  // Generating from the preset: renamed sections keep their hint and body; hints off drops only the hints.
+  const spec = { format: "preset", preset: def, level: 3, sections: ["Good", "Bad", "Blocked"], intro: false, notes: false, hints: true };
+  const md = structuredNoteContent(spec, "Week 38", "YYYY-MM-DD");
+  assert.equal(md, "### Good\n\n*Wins worth repeating.*\n\n### Bad\n\n*What to stop.*\n\n- [ ] one change\n- [ ] another\n\n### Blocked\n\nno hint here\n");
+  const quiet = structuredNoteContent({ ...spec, hints: false }, "W", "YYYY-MM-DD");
+  assert.ok(!quiet.includes("Wins") && quiet.includes("- [ ] one change"));
 });

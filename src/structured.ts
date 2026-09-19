@@ -7,7 +7,8 @@ import { App, Modal, Notice, Setting, TFile, normalizePath } from "obsidian";
 import type SectionCardsPlugin from "../main";
 import { Layout } from "./settings";
 import { CardRect, CUSTOM_SNAP } from "./canvas";
-import { applyTemplatePlaceholders, headingLevelsIn } from "./sections";
+import { LAYOUT_OPTIONS } from "./settings";
+import { applyTemplatePlaceholders, headingLevelsIn, parseSections } from "./sections";
 import { FileSuggestModal } from "./modals";
 
 export type StructuredFormat = "kanban" | "swot" | "eisenhower" | "gtd";
@@ -16,10 +17,13 @@ export interface StructuredSection {
 	title: string;
 	/** One line under the heading saying what belongs there (optional in the wizard). */
 	hint: string;
+	/** A preset note's further content under the heading (example tasks, say), kept as is. */
+	body?: string;
 }
 
 export interface StructuredFormatDef {
-	id: StructuredFormat;
+	/** A built-in format's id, or "preset:<path>" for a preset note. */
+	id: string;
 	label: string;
 	/** Shown in the wizard under the format picker. */
 	description: string;
@@ -31,6 +35,76 @@ export interface StructuredFormatDef {
 	layout: Layout;
 	/** A 2×2 matrix: the four sections are placed as quadrants on the Custom Grid. */
 	matrix?: boolean;
+	/** A preset note: its vault path, and the heading level its sections sit at. */
+	path?: string;
+	level?: number;
+}
+
+/** The frontmatter keys that make a note a preset in the wizard. */
+export const PRESET_KEYS = {
+	preset: "cards-preset",
+	description: "cards-description",
+	layout: "cards-layout",
+	matrix: "cards-matrix",
+} as const;
+
+const HINT_LINE_RE = /^(\*|_)(.+)\1$/;
+
+/**
+ * A preset from a note: its sections are the headings at its shallowest level; an italic
+ * first line under a heading is that section's hint, and anything further is kept as
+ * the section's body. The frontmatter can name a description, the layout the new note
+ * opens in (cards-layout), and whether the sections are a 2×2 matrix (cards-matrix).
+ * Null when the note has no headings.
+ */
+export function presetFromNote(name: string, path: string, body: string, frontmatter: Record<string, unknown> | undefined): StructuredFormatDef | null {
+	const lines = body.split(/\r?\n/);
+	const level = headingLevelsIn(lines)[0];
+	if (!level) return null;
+	const sections: StructuredSection[] = parseSections(lines, level).map((s) => {
+		const rows = s.body.split("\n");
+		let i = 0;
+		while (i < rows.length && rows[i].trim() === "") i++;
+		const m = i < rows.length ? HINT_LINE_RE.exec(rows[i].trim()) : null;
+		const rest = rows.slice(m ? i + 1 : i);
+		while (rest.length && rest[0].trim() === "") rest.shift();
+		while (rest.length && rest[rest.length - 1].trim() === "") rest.pop();
+		const section: StructuredSection = { title: s.title, hint: m ? m[2].trim() : "" };
+		if (rest.length) section.body = rest.join("\n");
+		return section;
+	});
+	if (!sections.length) return null;
+	const fm = frontmatter ?? {};
+	// Frontmatter values arrive as whatever YAML made of them; only scalars count.
+	const text = (v: unknown): string => (typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : "");
+	const layoutValue = text(fm[PRESET_KEYS.layout]);
+	const layout = LAYOUT_OPTIONS.find(([value]) => value === layoutValue)?.[0];
+	const matrixValue = fm[PRESET_KEYS.matrix];
+	const description = text(fm[PRESET_KEYS.description]).trim();
+	return {
+		id: `preset:${path}`,
+		label: name,
+		description: description || `${sections.length} section${sections.length === 1 ? "" : "s"}, from “${name}”.`,
+		noteName: name,
+		layout: layout ?? "grid",
+		matrix: matrixValue === true || matrixValue === "true",
+		sections,
+		path,
+		level,
+	};
+}
+
+/** Every preset note in the vault (frontmatter cards-preset: true), read once per wizard. */
+export async function listPresets(app: App): Promise<StructuredFormatDef[]> {
+	const out: StructuredFormatDef[] = [];
+	for (const file of app.vault.getMarkdownFiles()) {
+		const fm: Record<string, unknown> | undefined = app.metadataCache.getFileCache(file)?.frontmatter;
+		const flag = fm?.[PRESET_KEYS.preset];
+		if (flag !== true && flag !== "true") continue;
+		const def = presetFromNote(file.basename, file.path, await app.vault.cachedRead(file), fm);
+		if (def) out.push(def);
+	}
+	return out.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base", numeric: true }));
 }
 
 export const STRUCTURED_FORMATS: StructuredFormatDef[] = [
@@ -97,15 +171,24 @@ export function structuredFormat(id: StructuredFormat | "note"): StructuredForma
 }
 
 /** What the wizard collected. `sections` are the titles as edited, in order; with the
- * "note" format the body comes from `templatePath` instead. */
+ * "note" format the body comes from `templatePath` instead; with "preset", `preset`
+ * holds the note's parsed format. */
 export interface StructuredSpec {
-	format: StructuredFormat | "note";
+	format: StructuredFormat | "note" | "preset";
 	templatePath?: string;
+	preset?: StructuredFormatDef;
 	level: number;
 	sections: string[];
 	intro: boolean;
 	notes: boolean;
 	hints: boolean;
+}
+
+/** The format a spec draws sections and hints from: a built-in, or the preset it carries. */
+export function specFormat(spec: StructuredSpec): StructuredFormatDef | null {
+	if (spec.format === "preset") return spec.preset ?? null;
+	if (spec.format === "note") return null;
+	return structuredFormat(spec.format);
 }
 
 export const INTRO_TITLE = "Introduction";
@@ -128,16 +211,21 @@ export function structuredTitles(spec: StructuredSpec): string[] {
  * sections around it.
  */
 export function structuredNoteMarkdown(spec: StructuredSpec, templateBody = ""): string {
-	const def = structuredFormat(spec.format);
+	const def = specFormat(spec);
 	const hashes = "#".repeat(Math.min(6, Math.max(1, spec.level)));
 	const hintFor = (title: string, index: number): string | null => {
 		if (!spec.hints) return null;
 		if (title === INTRO_TITLE) return "What this note is for, and how to use it.";
 		if (title === NOTES_TITLE) return "Anything that doesn't fit the sections above.";
-		return def?.sections[index]?.hint ?? null;
+		return def?.sections[index]?.hint || null;
 	};
 	const blocks: string[] = [];
-	const push = (title: string, hint: string | null) => blocks.push(hint ? `${hashes} ${title}\n\n*${hint}*\n` : `${hashes} ${title}\n`);
+	const push = (title: string, hint: string | null, body?: string) => {
+		let block = `${hashes} ${title}\n`;
+		if (hint) block += `\n*${hint}*\n`;
+		if (body) block += `\n${body}\n`;
+		blocks.push(block);
+	};
 	if (spec.intro) push(INTRO_TITLE, hintFor(INTRO_TITLE, -1));
 	if (spec.format === "note") {
 		const body = templateBody.replace(/^\s*\n/, "").trimEnd();
@@ -146,7 +234,7 @@ export function structuredNoteMarkdown(spec: StructuredSpec, templateBody = ""):
 		spec.sections
 			.map((s) => s.trim())
 			.filter(Boolean)
-			.forEach((title, i) => push(title, hintFor(title, i)));
+			.forEach((title, i) => push(title, hintFor(title, i), def?.sections[i]?.body));
 	}
 	if (spec.notes) push(NOTES_TITLE, hintFor(NOTES_TITLE, -1));
 	return blocks.join("\n");
@@ -169,7 +257,7 @@ export function templateNoteLevel(body: string, fallback: number): number {
  * lands in the tray. Null for formats that open on the wall or in columns.
  */
 export function structuredPlacements(spec: StructuredSpec): Record<string, CardRect> | null {
-	const def = structuredFormat(spec.format);
+	const def = specFormat(spec);
 	if (!def?.matrix) return null;
 	const hashes = "#".repeat(Math.min(6, Math.max(1, spec.level)));
 	const unit = CUSTOM_SNAP;
@@ -214,7 +302,7 @@ export class StructuredNoteModal extends Modal {
 
 		let def: StructuredFormatDef | null = STRUCTURED_FORMATS[0];
 		const spec: StructuredSpec = {
-			format: def.id,
+			format: def.id as StructuredFormat,
 			level: 2,
 			sections: def.sections.map((s) => s.title),
 			intro: true,
@@ -232,6 +320,7 @@ export class StructuredNoteModal extends Modal {
 		let templateRow!: Setting;
 		let sectionsRow!: Setting;
 		let hintsRow!: Setting;
+		let presets: StructuredFormatDef[] = [];
 
 		// The rows that only make sense for one kind of template.
 		const syncRows = () => {
@@ -241,24 +330,43 @@ export class StructuredNoteModal extends Modal {
 			hintsRow.settingEl.toggleClass("is-hidden", fromNote);
 		};
 
-		new Setting(contentEl).setName("Template").addDropdown((dd) => {
-			for (const f of STRUCTURED_FORMATS) dd.addOption(f.id, f.label);
-			dd.addOption("note", "A note from the vault…");
-			dd.setValue(def?.id ?? "note").onChange((value) => {
-				def = structuredFormat(value as StructuredFormat | "note");
-				spec.format = def?.id ?? "note";
-				if (def) {
-					spec.sections = def.sections.map((s) => s.title);
-					sectionsInput.value = spec.sections.join(", ");
-				}
-				description.setText(def?.description ?? NOTE_DESC);
-				if (!nameTouched && def) {
-					name = def.noteName;
-					nameInput.value = name;
-				}
-				syncRows();
+		new Setting(contentEl)
+			.setName("Template")
+			.setDesc("Built-in structures, your preset notes (frontmatter cards-preset: true), or any note.")
+			.addDropdown((dd) => {
+				for (const f of STRUCTURED_FORMATS) dd.addOption(f.id, f.label);
+				dd.addOption("note", "A note from the vault…");
+				// Preset notes join the list once read — after the built-ins, before "any note".
+				void listPresets(this.plugin.app).then((found) => {
+					presets = found;
+					const noteOption = dd.selectEl.querySelector('option[value="note"]');
+					for (const p of found) {
+						const option = createEl("option", { value: p.id, text: p.label });
+						if (noteOption) dd.selectEl.insertBefore(option, noteOption);
+						else dd.selectEl.appendChild(option);
+					}
+				});
+				dd.setValue(def?.id ?? "note").onChange((value) => {
+					const preset = presets.find((p) => p.id === value);
+					def = preset ?? structuredFormat(value as StructuredFormat | "note");
+					spec.format = preset ? "preset" : def ? (def.id as StructuredFormat) : "note";
+					spec.preset = preset;
+					if (def) {
+						spec.sections = def.sections.map((s) => s.title);
+						sectionsInput.value = spec.sections.join(", ");
+						if (def.level) {
+							spec.level = def.level;
+							levelDropdown.setValue(String(spec.level));
+						}
+					}
+					description.setText(def?.description ?? NOTE_DESC);
+					if (!nameTouched && def) {
+						name = def.noteName;
+						nameInput.value = name;
+					}
+					syncRows();
+				});
 			});
-		});
 		description = contentEl.createEl("p", { cls: "sfsc-structured-desc", text: def.description });
 
 		templateRow = new Setting(contentEl)
