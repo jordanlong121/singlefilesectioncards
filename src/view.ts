@@ -4610,6 +4610,14 @@ export class SectionCardsView extends ItemView {
 					.onClick(() => this.flipAll(false)),
 			);
 		}
+		menu.addItem((item) =>
+			item
+				.setTitle("Highlight today's card")
+				.setIcon("calendar-check")
+				.setChecked(this.containsDates)
+				.onClick(() => void this.plugin.setContainsDates(this.filePath, !this.containsDates, base)),
+		);
+		this.addBackgroundItems(menu, base);
 
 		menu.addSeparator();
 		addHeading("Note");
@@ -4651,13 +4659,6 @@ export class SectionCardsView extends ItemView {
 
 		menu.addSeparator();
 		addHeading("Dates");
-		menu.addItem((item) =>
-			item
-				.setTitle("Highlight today's card")
-				.setIcon("calendar-check")
-				.setChecked(this.containsDates)
-				.onClick(() => void this.plugin.setContainsDates(this.filePath, !this.containsDates, base)),
-		);
 		if (this.hasDateHeadings) {
 			menu.addItem((item) =>
 				item
@@ -4685,8 +4686,6 @@ export class SectionCardsView extends ItemView {
 					.onClick(() => void this.plugin.setDateHide(this.filePath, { past: !hide.past }, base)),
 			);
 		}
-		menu.addSeparator();
-		this.addBackgroundItems(menu, base);
 
 		menu.addSeparator();
 		menu.addItem((item) =>
