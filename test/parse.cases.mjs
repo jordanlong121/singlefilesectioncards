@@ -2037,7 +2037,9 @@ t("structured notes: one heading per section at the level, hints as an italic li
   assert.deepEqual(structuredTitles(spec), ["Introduction", "To do", "Doing", "Done", "Additional notes"]);
   const headings = md.split("\n").filter((l) => l.startsWith("#"));
   assert.deepEqual(headings, ["## Introduction", "## To do", "## Doing", "## Done", "## Additional notes"]);
-  assert.ok(md.includes("## Doing\n*Work under way right now"), "a renamed section keeps its position's hint");
+  assert.ok(md.includes("## Doing\n\n*Work under way right now"), "a renamed section keeps its position's hint, a blank line on each side");
+  const doing = parseSections(L(md), 2).find((s) => s.title === "Doing");
+  assert.deepEqual(movableBlocks(doing.body.split("\n")).map((b) => b.kind), ["paragraph"], "the hint is one block of its own");
   const bare = structuredNoteMarkdown({ ...spec, intro: false, notes: false, hints: false, level: 3 });
   assert.equal(bare, "### To do\n\n### Doing\n\n### Done\n");
   assert.equal(parseSections(L(md), 2).length, 5, "the note parses back into five cards");

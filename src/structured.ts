@@ -115,7 +115,9 @@ export function structuredTitles(spec: StructuredSpec): string[] {
  * The note's markdown: one heading per section at the chosen level, a blank line
  * between sections, and — with hints on — one italic line under each heading saying
  * what belongs there (the format's own for its sections, a generic one for the two
- * optional ones; a renamed section keeps its position's hint).
+ * optional ones; a renamed section keeps its position's hint). The hint sits between
+ * blank lines, so it stays a paragraph of its own: a task added above it (Quick Add at
+ * the top, a drop) doesn't swallow it as a continuation, and it moves and deletes alone.
  */
 export function structuredNoteMarkdown(spec: StructuredSpec): string {
 	const def = structuredFormat(spec.format);
@@ -128,7 +130,7 @@ export function structuredNoteMarkdown(spec: StructuredSpec): string {
 	};
 	const own = spec.sections.map((s) => s.trim()).filter(Boolean);
 	const blocks: string[] = [];
-	const push = (title: string, hint: string | null) => blocks.push(hint ? `${hashes} ${title}\n*${hint}*\n` : `${hashes} ${title}\n`);
+	const push = (title: string, hint: string | null) => blocks.push(hint ? `${hashes} ${title}\n\n*${hint}*\n` : `${hashes} ${title}\n`);
 	if (spec.intro) push(INTRO_TITLE, hintFor(INTRO_TITLE, -1));
 	own.forEach((title, i) => push(title, hintFor(title, i)));
 	if (spec.notes) push(NOTES_TITLE, hintFor(NOTES_TITLE, -1));
