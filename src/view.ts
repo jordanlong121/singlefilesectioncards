@@ -590,7 +590,10 @@ export class SectionCardsView extends ItemView {
 	private availableLevels: number[] = [1, 2, 3, 4, 5, 6];
 	/** The toolbar's Heading dropdown, so refresh can repopulate it in place when an
 	 * edit introduces or removes a heading level. */
-	private levelSelect: HTMLSelectElement | null = null;
+	/** The Card level picker's wrapper; populateLevelOptions rebuilds the picker in it. */
+	private levelHost: HTMLElement | null = null;
+	/** The levels the picker was last built with, so a refresh rebuilds it only on change. */
+	private levelOptionsShown = "";
 	/** The toolbar's filter box, so the Ctrl/⌘+F shortcut can focus it. */
 	private filterInput: HTMLInputElement | null = null;
 
@@ -4061,21 +4064,8 @@ export class SectionCardsView extends ItemView {
 		// card sits on the left with the note name; the view options keep the right.
 		const levelWrap = cluster.createDiv({ cls: "section-cards-control section-cards-level-control" });
 		levelWrap.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
-		levelWrap.createSpan({ text: "Card level", cls: "section-cards-label" });
-		const levelSelect = levelWrap.createEl("select", { cls: "dropdown" });
-		levelSelect.setAttr("aria-label", "Heading level shown as cards (keys 1–6)");
-		this.levelSelect = levelSelect;
+		this.levelHost = levelWrap;
 		this.populateLevelOptions();
-		// The date layouts follow the note's date-heading level; the dropdown still
-		// SHOWS which level that is, but a manual pick would only be forced back on
-		// the next refresh, so it greys out (the 1–6 keys are guarded the same way).
-		if (this.isDateLayout()) {
-			levelSelect.disabled = true;
-			const hint = "The Calendar and Heatmap follow the note's date-heading level";
-			levelWrap.setAttr("aria-label", hint);
-			levelSelect.setAttr("aria-label", hint);
-		}
-		levelSelect.addEventListener("change", () => void this.changeHeadingLevel(Number(levelSelect.value)));
 
 		// Filter box: typing narrows the wall to cards containing the text; X clears.
 		const filterWrap = cluster.createDiv({ cls: "section-cards-control section-cards-filter" });
@@ -4248,66 +4238,35 @@ export class SectionCardsView extends ItemView {
 		// above the card level — one flat wall, drill-down hierarchy columns, or a
 		// collapsible divider bar per heading. The grouped modes keep whatever layout
 		// the dropdown says; neither is available on the Custom Grid canvas.
+		// View mode: one flat wall, hierarchy columns, or divider bars — a picker like the
+		// others. Not on the layouts that place everything themselves.
 		const modeWrap = cluster.createDiv({ cls: "section-cards-control section-cards-mode-control" });
-		modeWrap.createSpan({ text: "View mode", cls: "section-cards-label" });
-		const modeSeg = modeWrap.createDiv({ cls: "section-cards-segmented" });
-		const modeButtons: [HTMLButtonElement, () => boolean][] = [];
-		const syncModeButtons = () => {
-			const modesOff = this.layoutOwnsPlacement();
-			for (const [btn, isOn] of modeButtons) {
-				btn.toggleClass("is-active", isOn());
-				btn.toggleAttribute("disabled", modesOff);
-				if (modesOff) {
-					btn.setAttr("aria-label", "View modes aren't available on the canvas layouts, the Calendar, the Rolodex, or the Day Planner");
-				}
-			}
-		};
-		// Compact swaps the three text buttons for icons; the hints still name them.
-		const addModeBtn = (label: string, icon: string, hint: string, isOn: () => boolean, apply: () => void) => {
-			const btn = modeSeg.createEl("button", { text: compact ? "" : label });
-			if (compact) setIcon(btn, icon);
-			btn.setAttr("aria-label", hint);
-			modeButtons.push([btn, isOn]);
-			btn.addEventListener("click", () => {
-				if (this.layoutOwnsPlacement() || isOn()) return;
-				apply();
+		const modesOff = this.layoutOwnsPlacement();
+		const modeBtn = this.buildPicker(modeWrap, {
+			cls: "section-cards-mode-btn",
+			ariaLabel: "View mode (V cycles)",
+			buttonIcon: "layout-panel-left",
+			value: this.hierarchyActive() ? "hier" : this.sectionsActive() ? "sections" : "default",
+			columns: 3,
+			options: [
+				{ value: "default", label: "Default view", hint: "One flat wall of cards, ungrouped", icon: "layout-grid", fallback: "grid" },
+				{ value: "hier", label: "Hierarchy view", hint: "Hierarchy columns: drill into the headings above the card level (V cycles)", icon: "list-tree", fallback: "list" },
+				{ value: "sections", label: "Divider view", hint: "Dividers: group the cards under the heading above the card level (V cycles)", icon: "rows-3", fallback: "rows" },
+			],
+			onPick: (value) => {
+				if (this.layoutOwnsPlacement()) return;
+				this.hierarchyOn = value === "hier";
+				this.sectionsOn = value === "sections"; // never both groupers at once
 				this.rememberView();
 				this.applyLayoutClass();
-				this.buildToolbar(); // the toggle reflects the state
+				this.buildToolbar(); // the picker reflects the state
 				void this.refresh().then(() => this.app.workspace.requestSaveLayout());
-			});
-		};
-		addModeBtn(
-			"Default",
-			"layout-grid",
-			"One flat wall of cards, ungrouped",
-			() => !this.hierarchyActive() && !this.sectionsActive(),
-			() => {
-				this.hierarchyOn = false;
-				this.sectionsOn = false;
 			},
-		);
-		addModeBtn(
-			"Hierarchy",
-			"list-tree",
-			"Hierarchy columns: drill into the headings above the card level (V cycles)",
-			() => this.hierarchyActive(),
-			() => {
-				this.hierarchyOn = true;
-				this.sectionsOn = false; // never both groupers at once
-			},
-		);
-		addModeBtn(
-			"Dividers",
-			"rows-3",
-			"Dividers: group the cards under the heading above the card level (V cycles)",
-			() => this.sectionsActive(),
-			() => {
-				this.sectionsOn = true;
-				this.hierarchyOn = false; // never both groupers at once
-			},
-		);
-		syncModeButtons();
+		});
+		if (modesOff) {
+			modeBtn.toggleAttribute("disabled", true);
+			modeBtn.setAttr("aria-label", "View modes aren't available on the canvas layouts, the Calendar, the Rolodex, or the Day Planner");
+		}
 
 		// Tooltips sit on the wrapper as well as the control, so hovering the text
 		// label ("Sort", "Layout", …) shows them too, not just the dropdown.
@@ -4423,14 +4382,29 @@ export class SectionCardsView extends ItemView {
 		return [...new Set([...this.availableLevels, this.headingLevel])].sort((a, b) => a - b);
 	}
 
+	/** (Re)build the Card level picker: the note's heading levels as H1–H6 tiles. The
+	 * date layouts follow the note's date-heading level, so the picker still shows
+	 * which level that is but greys out (the 1–6 keys are guarded the same way). */
 	private populateLevelOptions(): void {
-		const select = this.levelSelect;
-		if (!select) return;
-		select.empty();
-		for (const l of this.levelOptionValues()) {
-			select.createEl("option", { text: `H${l}`, value: String(l) });
+		const host = this.levelHost;
+		if (!host?.isConnected) return;
+		host.empty();
+		this.levelOptionsShown = this.levelOptionValues().join(",");
+		const btn = this.buildPicker(host, {
+			cls: "section-cards-level-btn",
+			ariaLabel: "Heading level shown as cards (keys 1–6)",
+			buttonIcon: "heading",
+			value: String(this.headingLevel),
+			columns: 3,
+			options: this.levelOptionValues().map((l) => ({ value: String(l), label: `H${l}`, icon: `heading-${l}`, fallback: "heading" })),
+			onPick: (value) => void this.changeHeadingLevel(Number(value)),
+		});
+		if (this.isDateLayout()) {
+			const hint = "The Calendar and Heatmap follow the note's date-heading level";
+			btn.toggleAttribute("disabled", true);
+			btn.setAttr("aria-label", hint);
+			host.setAttr("aria-label", hint);
 		}
-		select.value = String(this.headingLevel);
 	}
 
 	/** Whether a plain-key view shortcut may run: no card editor open, and the key
@@ -5560,13 +5534,7 @@ export class SectionCardsView extends ItemView {
 		// on the post-save refresh.
 		this.noteLines = lines;
 		this.availableLevels = headingLevelsIn(lines);
-		if (this.levelSelect) {
-			const want = this.levelOptionValues().join(",");
-			const have = Array.from(this.levelSelect.options)
-				.map((o) => o.value)
-				.join(",");
-			if (want !== have) this.populateLevelOptions();
-		}
+		if (this.levelOptionValues().join(",") !== this.levelOptionsShown) this.populateLevelOptions();
 
 		// A note the user hasn't set a view for opens at a level that actually has headings.
 		if (!this.plugin.getStoredView(file.path)) {
