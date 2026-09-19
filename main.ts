@@ -94,7 +94,7 @@ export default class SectionCardsPlugin extends Plugin {
 
 		this.addCommand({
 			id: "new-structured-note",
-			name: "New note from template",
+			name: "New note",
 			callback: () => this.promptStructuredNote(),
 		});
 
@@ -383,7 +383,7 @@ export default class SectionCardsPlugin extends Plugin {
 	 * another tab, so any number of cards tabs — including several of the same note — can
 	 * be open at once. (Obsidian's native "Duplicate tab" also works on cards tabs.)
 	 */
-	/** The new-note-from-template wizard; a created note opens as cards in its template's layout. */
+	/** The New note wizard (blank, a built-in structure, a preset, or a copy); the note opens as cards. */
 	promptStructuredNote(): void {
 		new StructuredNoteModal(this, (name, spec) => void this.createStructuredNote(name, spec)).open();
 	}

@@ -174,7 +174,9 @@ export function structuredFormat(id: StructuredFormat | "note"): StructuredForma
  * "note" format the body comes from `templatePath` instead; with "preset", `preset`
  * holds the note's parsed format. */
 export interface StructuredSpec {
-	format: StructuredFormat | "note" | "preset";
+	/** A built-in, a preset note, a vault note to copy, or "none" — a blank note (plus
+	 * whatever sections the wizard adds). */
+	format: StructuredFormat | "none" | "note" | "preset";
 	templatePath?: string;
 	preset?: StructuredFormatDef;
 	level: number;
@@ -187,7 +189,7 @@ export interface StructuredSpec {
 /** The format a spec draws sections and hints from: a built-in, or the preset it carries. */
 export function specFormat(spec: StructuredSpec): StructuredFormatDef | null {
 	if (spec.format === "preset") return spec.preset ?? null;
-	if (spec.format === "note") return null;
+	if (spec.format === "note" || spec.format === "none") return null;
 	return structuredFormat(spec.format);
 }
 
@@ -298,20 +300,23 @@ export class StructuredNoteModal extends Modal {
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.addClass("sfsc-structured-modal");
-		contentEl.createEl("h3", { text: "New note from template" });
+		contentEl.createEl("h3", { text: "New note" });
 
-		let def: StructuredFormatDef | null = STRUCTURED_FORMATS[0];
+		// The default is no template: a blank note, plus whatever the rows below add.
+		let def: StructuredFormatDef | null = null;
 		const spec: StructuredSpec = {
-			format: def.id as StructuredFormat,
+			format: "none",
 			level: 2,
-			sections: def.sections.map((s) => s.title),
-			intro: true,
-			notes: true,
+			sections: [],
+			intro: false,
+			notes: false,
 			hints: true,
 		};
-		let name = def.noteName;
+		let name = "New note";
 		let nameTouched = false;
+		const NONE_DESC = "A blank note — or type section names below and switch on an introduction or notes.";
 		const NOTE_DESC = "A copy of a note in the vault, its {{title}}, {{date}}, and {{time}} placeholders filled in.";
+		const describe = () => (spec.format === "none" ? NONE_DESC : spec.format === "note" ? NOTE_DESC : (def?.description ?? ""));
 
 		let description!: HTMLElement;
 		let nameInput!: HTMLInputElement;
@@ -334,6 +339,7 @@ export class StructuredNoteModal extends Modal {
 			.setName("Template")
 			.setDesc("Built-in structures, your preset notes (frontmatter cards-preset: true), or any note.")
 			.addDropdown((dd) => {
+				dd.addOption("none", "None");
 				for (const f of STRUCTURED_FORMATS) dd.addOption(f.id, f.label);
 				dd.addOption("note", "A note from the vault…");
 				// Preset notes join the list once read — after the built-ins, before "any note".
@@ -346,28 +352,26 @@ export class StructuredNoteModal extends Modal {
 						else dd.selectEl.appendChild(option);
 					}
 				});
-				dd.setValue(def?.id ?? "note").onChange((value) => {
+				dd.setValue("none").onChange((value) => {
 					const preset = presets.find((p) => p.id === value);
-					def = preset ?? structuredFormat(value as StructuredFormat | "note");
-					spec.format = preset ? "preset" : def ? (def.id as StructuredFormat) : "note";
+					def = preset ?? structuredFormat(value as StructuredFormat | "note" | "none");
+					spec.format = preset ? "preset" : def ? (def.id as StructuredFormat) : value === "note" ? "note" : "none";
 					spec.preset = preset;
-					if (def) {
-						spec.sections = def.sections.map((s) => s.title);
-						sectionsInput.value = spec.sections.join(", ");
-						if (def.level) {
-							spec.level = def.level;
-							levelDropdown.setValue(String(spec.level));
-						}
+					spec.sections = def ? def.sections.map((s) => s.title) : [];
+					sectionsInput.value = spec.sections.join(", ");
+					if (def?.level) {
+						spec.level = def.level;
+						levelDropdown.setValue(String(spec.level));
 					}
-					description.setText(def?.description ?? NOTE_DESC);
-					if (!nameTouched && def) {
-						name = def.noteName;
+					description.setText(describe());
+					if (!nameTouched) {
+						name = def?.noteName ?? "New note";
 						nameInput.value = name;
 					}
 					syncRows();
 				});
 			});
-		description = contentEl.createEl("p", { cls: "sfsc-structured-desc", text: def.description });
+		description = contentEl.createEl("p", { cls: "sfsc-structured-desc", text: describe() });
 
 		templateRow = new Setting(contentEl)
 			.setName("Template note")
@@ -433,7 +437,7 @@ export class StructuredNoteModal extends Modal {
 			.addToggle((t) => t.setValue(spec.notes).onChange((v) => (spec.notes = v)));
 		hintsRow = new Setting(contentEl)
 			.setName("Hints")
-			.setDesc("One italic line under each heading saying what belongs there.")
+			.setDesc("One italic line under each heading saying what belongs there (the built-ins' and presets' own; a generic one for the introduction and notes).")
 			.addToggle((t) => t.setValue(spec.hints).onChange((v) => (spec.hints = v)));
 		syncRows();
 
@@ -453,7 +457,8 @@ export class StructuredNoteModal extends Modal {
 							new Notice("Choose the note to copy.");
 							return;
 						}
-						if (spec.format !== "note" && !structuredTitles(spec).length) {
+						// A blank note is fine; a structure with every section deleted isn't.
+						if (spec.format !== "note" && spec.format !== "none" && !structuredTitles(spec).length) {
 							new Notice("The note needs at least one section.");
 							return;
 						}
