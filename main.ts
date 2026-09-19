@@ -430,6 +430,7 @@ export default class SectionCardsPlugin extends Plugin {
 		if (spec.format === "note" && spec.templatePath) {
 			// The copy starts with the template's remembered view; the level follows its headings.
 			await this.copyNoteState(spec.templatePath, file.path);
+			if (spec.savedLayout) await this.applySavedLayout(file.path, spec.savedLayout);
 			const stored = this.getStoredView(spec.templatePath);
 			await this.storeView(file.path, {
 				layout: stored?.layout ?? this.settings.layout,
@@ -447,7 +448,10 @@ export default class SectionCardsPlugin extends Plugin {
 		const def = specFormat(spec);
 		// A preset note that was arranged itself lends the copy its remembered view first
 		// (placements for headings kept as they were); the layout and level below win.
-		if (def?.path) await this.copyNoteState(def.path, file.path);
+		if (def?.path) {
+			await this.copyNoteState(def.path, file.path);
+			if (spec.savedLayout) await this.applySavedLayout(file.path, spec.savedLayout);
+		}
 		const view: ViewSettings = {
 			layout: def?.layout ?? this.settings.layout,
 			headingLevel: spec.level,
@@ -460,7 +464,8 @@ export default class SectionCardsPlugin extends Plugin {
 		};
 		await this.storeView(file.path, view);
 		await this.setContainsDates(file.path, false, view);
-		const placements = structuredPlacements(spec);
+		// A chosen saved layout already placed everything; the matrix layout is the default.
+		const placements = spec.savedLayout ? null : structuredPlacements(spec);
 		if (placements) await this.saveCustomGrid(file.path, placements, view, 1);
 		await this.openCardsView(file.path, undefined, "new");
 	}
