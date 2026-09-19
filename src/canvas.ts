@@ -278,3 +278,22 @@ export function applyCanvasLayout(entry: PerFileView, saved: SavedCanvasLayout):
 	if (saved.backgroundSaturation !== undefined) entry.backgroundSaturation = saved.backgroundSaturation;
 	else delete entry.backgroundSaturation;
 }
+
+/** Whether two layouts arrange and dress the canvas the same (savedAt aside). */
+export function canvasLayoutEquals(a: SavedCanvasLayout, b: SavedCanvasLayout): boolean {
+	const ak = Object.keys(a.customGrid);
+	const bk = Object.keys(b.customGrid);
+	if (ak.length !== bk.length) return false;
+	for (const key of ak) {
+		const r = a.customGrid[key];
+		const s = b.customGrid[key];
+		if (!s || r.x !== s.x || r.y !== s.y || r.w !== s.w || r.h !== s.h) return false;
+	}
+	return (
+		(a.customZoom ?? 1) === (b.customZoom ?? 1) &&
+		a.backgroundImage === b.backgroundImage &&
+		a.backgroundDim === b.backgroundDim &&
+		a.backgroundBrightness === b.backgroundBrightness &&
+		a.backgroundSaturation === b.backgroundSaturation
+	);
+}

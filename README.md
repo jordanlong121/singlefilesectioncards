@@ -92,7 +92,9 @@ chevron beside **Clear layout** folds the tray to a slim strip (with a count of 
 still off the canvas) and opens it again; the Images and Links canvases fold the same way.
 **Saved layouts** (the row beneath) name the current arrangement — placements, zoom, and the
 note's background — so a note can switch between, say, a "SWOT" grid and a "Timeline" strip;
-pick one from the dropdown to apply it, save again under the same name to update it.
+pick one from the dropdown to apply it, save again under the same name to update it. Once
+the canvas drifts from the applied layout its name wears an asterisk, and clearing the
+canvas, switching layouts, or leaving the Custom Grid first asks whether to save.
 
 ![Custom Grid](screenshots/custom.png)
 

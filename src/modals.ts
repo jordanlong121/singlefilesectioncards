@@ -1356,3 +1356,37 @@ export class EditBlockModal extends Modal {
 		this.contentEl.empty();
 	}
 }
+
+/** A saved layout has changed since it was saved, and the canvas is about to be
+ * cleared, switched, or left: save it first, go on without saving, or stay. */
+export class SavedLayoutChangesModal extends Modal {
+	private readonly name: string;
+	private readonly onChoice: (choice: "save" | "discard" | "cancel") => void;
+
+	constructor(app: App, name: string, onChoice: (choice: "save" | "discard" | "cancel") => void) {
+		super(app);
+		this.name = name;
+		this.onChoice = onChoice;
+	}
+
+	private choose(choice: "save" | "discard" | "cancel"): void {
+		this.close();
+		this.onChoice(choice);
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "Save layout changes?" });
+		contentEl.createEl("p", {
+			text: `The layout “${this.name}” has changed since it was saved. Save the current arrangement and background to it first?`,
+		});
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.choose("cancel")))
+			.addButton((b) => b.setButtonText("Don't save").setDestructive().onClick(() => this.choose("discard")))
+			.addButton((b) => b.setButtonText("Save").setCta().onClick(() => this.choose("save")));
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
