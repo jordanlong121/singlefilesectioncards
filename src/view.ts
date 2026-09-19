@@ -4633,7 +4633,7 @@ export class SectionCardsView extends ItemView {
 		addHeading("Note");
 		menu.addItem((item) =>
 			item
-				.setTitle("New note from template…")
+				.setTitle("New note…")
 				.setIcon("layout-template")
 				.onClick(() => this.plugin.promptStructuredNote()),
 		);

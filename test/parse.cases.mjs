@@ -2139,3 +2139,9 @@ t("presets: a note's headings, italic hints, kept bodies, and frontmatter keys b
   const quiet = structuredNoteContent({ ...spec, hints: false }, "W", "YYYY-MM-DD");
   assert.ok(!quiet.includes("Wins") && quiet.includes("- [ ] one change"));
 });
+
+t("new note: the None template is blank, or just the sections and optional parts typed in", () => {
+  assert.equal(structuredNoteContent({ format: "none", level: 2, sections: [], intro: false, notes: false, hints: true }, "Blank", "YYYY-MM-DD"), "");
+  const md = structuredNoteContent({ format: "none", level: 2, sections: ["Ideas", "Links"], intro: true, notes: false, hints: false }, "Scratch", "YYYY-MM-DD");
+  assert.equal(md, "## Introduction\n\n## Ideas\n\n## Links\n");
+});
