@@ -391,19 +391,16 @@ above it. The **Flip-over button** setting (on by default) turns the whole featu
 The toolbar button beside **+ New card** holds the open note's new-card options: a template
 note, and the note's own heading-name format.
 
-## Structured notes
-
-☰ → **New structured note…** (also a command) is a wizard for notes with a well-known shape:
-a **Kanban board**, a **SWOT analysis**, an **Eisenhower matrix**, or a **GTD** system. Pick
-the format, name the note, choose the heading level, edit the section names, and switch on an
-**Introduction** section, an **Additional notes** section, and a one-line hint under each
-heading. The note is written with one heading per section and opens as cards in the layout
-that suits it: columns side by side for a board, a 2×2 canvas for a matrix, the wall for GTD.
-
 ## Templates
 
-A template pre-fills the body of every new card, so a daily-notes file can start each day with
-the same skeleton. Pick one via the new-card options button ("Choose template note…") — one
+Two kinds, side by side under ☰ → **Templates**: a card template that pre-fills every new card
+in a note, and a wizard that makes a whole new note from a built-in structure or a copy of one
+of your notes. Both fill the same placeholders.
+
+### Card templates
+
+A card template pre-fills the body of every new card, so a daily-notes file can start each day
+with the same skeleton. Pick one via the new-card options button ("Choose template note…") — one
 template per note, stored in the plugin's data, never in your notes; the button wears the
 accent color while one is set. On **+ New card** the template is read, its placeholders filled
 in, and the new card opens for editing.
@@ -436,6 +433,19 @@ creating the card `2026-08-20, Thursday` produces:
 - [ ] Review Thursday's plan
 - [ ] Shutdown checklist (2026-08-20, Thursday)
 ```
+
+
+### New note from template
+
+☰ → **Templates → New note from template…** (also a command) creates a note with a well-known
+shape: a **Kanban board**, a **SWOT analysis**, an **Eisenhower matrix**, or a **GTD** system —
+or a copy of **a note from the vault**, so any note you write can serve as a template. Pick the
+template, name the note, choose the heading level (a vault note's is read from its headings),
+edit the section names, and switch on an **Introduction** section, an **Additional notes**
+section, and a one-line hint under each heading. The placeholders above are filled — `{{title}}`
+is the note's name. The note opens as cards in the layout that suits it: columns side by side
+for a board, a 2×2 canvas for a matrix, the wall for GTD, and a copied note's own remembered
+view, placements included.
 
 ## Dates, per note
 

@@ -30,7 +30,7 @@ import { CardRect, SavedCanvasLayout, snapshotCanvasLayout, applyCanvasLayout } 
 import { BACKGROUND_DIM_DEFAULT } from "./src/background";
 import { TextInputModal, NoteLibraryModal } from "./src/modals";
 import { SectionCardsSettingTab } from "./src/settings-tab";
-import { StructuredNoteModal, StructuredSpec, structuredFormat, structuredNoteMarkdown, structuredPlacements, structuredNotePath } from "./src/structured";
+import { StructuredNoteModal, StructuredSpec, structuredFormat, structuredNoteContent, structuredPlacements, structuredNotePath } from "./src/structured";
 import { SectionCardsView } from "./src/view";
 
 export * from "./src/settings";
@@ -94,7 +94,7 @@ export default class SectionCardsPlugin extends Plugin {
 
 		this.addCommand({
 			id: "new-structured-note",
-			name: "New structured note",
+			name: "New note from template",
 			callback: () => this.promptStructuredNote(),
 		});
 
@@ -383,15 +383,17 @@ export default class SectionCardsPlugin extends Plugin {
 	 * another tab, so any number of cards tabs — including several of the same note — can
 	 * be open at once. (Obsidian's native "Duplicate tab" also works on cards tabs.)
 	 */
-	/** The structured-note wizard; a created note opens as cards in its format's layout. */
+	/** The new-note-from-template wizard; a created note opens as cards in its template's layout. */
 	promptStructuredNote(): void {
 		new StructuredNoteModal(this, (name, spec) => void this.createStructuredNote(name, spec)).open();
 	}
 
 	/**
-	 * Write a structured note from the wizard's choices and open it as cards: the
-	 * format's layout and the chosen level remembered for the note, Dates off, and — for
-	 * a matrix — the sections placed as quadrants on the Custom Grid.
+	 * Write a note from the wizard's choices and open it as cards. A built-in format: its
+	 * layout and the chosen level remembered for the note, Dates off, and — for a matrix —
+	 * the sections placed as quadrants on the Custom Grid. A vault note as the template:
+	 * its body copied, placeholders filled, and its remembered view (layout, level,
+	 * placements, colors, pins) copied along.
 	 */
 	async createStructuredNote(name: string, spec: StructuredSpec): Promise<void> {
 		const path = structuredNotePath(this.app, this.settings.filePath, name);
@@ -399,6 +401,16 @@ export default class SectionCardsPlugin extends Plugin {
 			new Notice(`“${path}” already exists.`);
 			return;
 		}
+		let templateBody = "";
+		if (spec.format === "note") {
+			const template = spec.templatePath ? this.app.vault.getAbstractFileByPath(spec.templatePath) : null;
+			if (!(template instanceof TFile)) {
+				new Notice("The template note wasn't found.");
+				return;
+			}
+			templateBody = await this.app.vault.cachedRead(template);
+		}
+		const noteName = path.split("/").pop()?.replace(/\.md$/, "") ?? name;
 		// Never a new folder: a name with a folder/ must name one that exists.
 		const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
 		if (folder && !(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) {
@@ -407,14 +419,31 @@ export default class SectionCardsPlugin extends Plugin {
 		}
 		let file: TFile;
 		try {
-			file = await this.app.vault.create(path, structuredNoteMarkdown(spec));
+			file = await this.app.vault.create(path, structuredNoteContent(spec, noteName, this.getNewCardFormat(path), templateBody));
 		} catch (err) {
 			new Notice(`Couldn't create “${path}”: ${err instanceof Error ? err.message : String(err)}`);
 			return;
 		}
+		if (spec.format === "note" && spec.templatePath) {
+			// The copy starts with the template's remembered view; the level follows its headings.
+			await this.copyNoteState(spec.templatePath, file.path);
+			const stored = this.getStoredView(spec.templatePath);
+			await this.storeView(file.path, {
+				layout: stored?.layout ?? this.settings.layout,
+				headingLevel: spec.level,
+				sortOrder: stored?.sortOrder ?? "doc",
+				hierarchy: stored?.hierarchy ?? false,
+				sections: stored?.sections ?? false,
+				starredOnly: false,
+				taskFilter: stored?.taskFilter ?? "all",
+				groupBy: stored?.groupBy ?? "none",
+			});
+			await this.openCardsView(file.path, undefined, "new");
+			return;
+		}
 		const def = structuredFormat(spec.format);
 		const view: ViewSettings = {
-			layout: def.layout,
+			layout: def?.layout ?? this.settings.layout,
 			headingLevel: spec.level,
 			sortOrder: "doc",
 			hierarchy: false,
