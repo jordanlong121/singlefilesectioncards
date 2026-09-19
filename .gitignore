@@ -3,3 +3,4 @@ test/.tmp/
 *.log
 .DS_Store
 harness-out/
+sample-vault/.obsidian/
