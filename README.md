@@ -393,9 +393,9 @@ note, and the note's own heading-name format.
 
 ## Templates
 
-Two kinds, side by side under ☰ → **Templates**: a card template that pre-fills every new card
-in a note, and a wizard that makes a whole new note from a built-in structure or a copy of one
-of your notes. Both fill the same placeholders.
+Two kinds: a card template that pre-fills every new card in a note (☰ → Card → **Card template
+for this note…**), and a wizard that makes a whole new note from a built-in structure or a copy
+of one of your notes (☰ → Note → **New note from template…**). Both fill the same placeholders.
 
 ### Card templates
 
@@ -437,7 +437,7 @@ creating the card `2026-08-20, Thursday` produces:
 
 ### New note from template
 
-☰ → **Templates → New note from template…** (also a command) creates a note with a well-known
+☰ → Note → **New note from template…** (also a command) creates a note with a well-known
 shape: a **Kanban board**, a **SWOT analysis**, an **Eisenhower matrix**, or a **GTD** system —
 or a copy of **a note from the vault**, so any note you write can serve as a template. Pick the
 template, name the note, choose the heading level (a vault note's is read from its headings),
