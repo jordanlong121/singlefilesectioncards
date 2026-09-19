@@ -1,4 +1,4 @@
-import { addIcon, MarkdownView, Notice, Platform, Plugin, WorkspaceLeaf, TFile, debounce, normalizePath } from "obsidian";
+import { addIcon, MarkdownView, Notice, Platform, Plugin, WorkspaceLeaf, TFile, TFolder, debounce, normalizePath } from "obsidian";
 import {
 	VIEW_TYPE_SECTION_CARDS,
 	DECK_ICON,

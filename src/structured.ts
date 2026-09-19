@@ -219,7 +219,7 @@ export class StructuredNoteModal extends Modal {
 
 		new Setting(contentEl)
 			.setName("Note name")
-			.setDesc("Created in the default new-note folder; include a folder/ to place it.")
+			.setDesc("Created in the default new-note folder; include an existing folder/ to place it there.")
 			.addText((t) => {
 				nameInput = t.inputEl;
 				t.setValue(name).onChange((value) => {
