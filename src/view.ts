@@ -21,7 +21,7 @@ import {
 	type ViewStateResult,
 } from "obsidian";
 import { createEmbeddedEditor, type EmbeddedEditor } from "../editor-embed";
-import { DECK_BACKGROUND_KEY,
+import { LAYOUT_ICONS, DECK_BACKGROUND_KEY,
 	VIEW_TYPE_SECTION_CARDS,
 	INITIAL_RENDER_COUNT,
 	DEFERRED_RENDER_BATCH,
@@ -380,7 +380,9 @@ export class SectionCardsView extends ItemView {
 	/** Opens the jump-to-date picker — stored so the hamburger menu can trigger it too. */
 	private openJumpPicker: (() => void) | null = null;
 	/** The Layout dropdown, so refresh can grey out Calendar in date-less notes. */
-	private layoutSelect: HTMLSelectElement | null = null;
+	/** The toolbar's layout button (beside the note button) and its open picker, if any. */
+	private layoutBtn: HTMLElement | null = null;
+	private layoutPopover: HTMLElement | null = null;
 	/** Whether ANY heading level of the note has date headings (Calendar picks its
 	 * own level, so this is broader than the current level's noteHasDates). */
 	private hasAnyDates = false;
@@ -774,12 +776,76 @@ export class SectionCardsView extends ItemView {
 		this.updateToolbarOffset();
 	}
 
-	/** Grey the layout dropdown's date options in/out as the note's headings change. */
+	/** The layout picker's date tiles follow the note's headings; an open picker redraws. */
 	private syncCalendarOption(): void {
-		for (const value of ["calendar", "heatmap"]) {
-			const option = this.layoutSelect?.querySelector<HTMLOptionElement>(`option[value="${value}"]`);
-			if (option) option.disabled = !this.calendarSelectable();
+		if (this.layoutPopover && this.layoutBtn) this.openLayoutPicker(this.layoutBtn);
+	}
+
+	/**
+	 * The layout picker: a grid of tiles under the toolbar's layout button, one per
+	 * layout offered in this note — icon and name, the current one lit, the Calendar and
+	 * Heatmap greyed out until the note has date headings. Closes on a pick, Escape, or a
+	 * click elsewhere. (Hiding layouts from a note stays with ☰ → Layouts.)
+	 */
+	private openLayoutPicker(anchor: HTMLElement): void {
+		this.closeLayoutPicker();
+		const pop = this.contentEl.createDiv({ cls: "sfsc-layout-pop" });
+		pop.setAttr("role", "menu");
+		const dated = this.calendarSelectable();
+		for (const [value, label, hint] of LAYOUT_OPTIONS) {
+			if (!this.layoutEnabled(value)) continue;
+			const tile = pop.createEl("button", { cls: "sfsc-layout-tile" });
+			tile.setAttr("role", "menuitemradio");
+			tile.setAttr("aria-checked", String(value === this.layout));
+			tile.setAttr("title", hint);
+			tile.toggleClass("is-active", value === this.layout);
+			const [icon, fallback] = LAYOUT_ICONS[value];
+			SectionCardsView.setIconOr(tile.createSpan({ cls: "sfsc-layout-tile-icon" }), icon, fallback);
+			tile.createSpan({ cls: "sfsc-layout-tile-label", text: label });
+			if ((value === "calendar" || value === "heatmap") && !dated && value !== this.layout) {
+				tile.toggleAttribute("disabled", true);
+				tile.setAttr("title", `${hint} — needs date headings`);
+			}
+			tile.addEventListener("click", () => {
+				this.closeLayoutPicker();
+				if (value !== this.layout) this.setLayout(value);
+			});
 		}
+		// Under the button, within the pane.
+		const host = this.contentEl.getBoundingClientRect();
+		const at = anchor.getBoundingClientRect();
+		pop.setCssStyles({ top: `${at.bottom - host.top + 4}px`, left: `${Math.max(8, at.left - host.left)}px` });
+		this.layoutPopover = pop;
+		anchor.addClass("is-open");
+		const onDown = (evt: PointerEvent) => {
+			const target = evt.target as Node | null;
+			if (pop.contains(target) || anchor.contains(target)) return;
+			this.closeLayoutPicker();
+		};
+		const onKey = (evt: KeyboardEvent) => {
+			if (evt.key !== "Escape") return;
+			evt.preventDefault();
+			this.closeLayoutPicker();
+			anchor.focus();
+		};
+		const doc = this.contentEl.doc;
+		doc.addEventListener("pointerdown", onDown, true);
+		doc.addEventListener("keydown", onKey, true);
+		this.layoutPopoverCleanup = () => {
+			doc.removeEventListener("pointerdown", onDown, true);
+			doc.removeEventListener("keydown", onKey, true);
+		};
+		(pop.querySelector<HTMLElement>(".sfsc-layout-tile.is-active") ?? pop.querySelector<HTMLElement>(".sfsc-layout-tile"))?.focus();
+	}
+
+	private layoutPopoverCleanup: (() => void) | null = null;
+
+	private closeLayoutPicker(): void {
+		this.layoutPopoverCleanup?.();
+		this.layoutPopoverCleanup = null;
+		this.layoutPopover?.remove();
+		this.layoutPopover = null;
+		this.layoutBtn?.removeClass("is-open");
 	}
 
 	/** The Calendar layout implies Dates, so the toggle hides once it's on there — but
@@ -3906,6 +3972,26 @@ export class SectionCardsView extends ItemView {
 			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path), true).open();
 		});
 
+		// The layout, right of the note: the current one's icon and name, opening a grid
+		// of every layout (L still cycles). The Deck has no layout to pick.
+		this.closeLayoutPicker();
+		this.layoutBtn = null;
+		if (!this.deckMode) {
+			const layoutBtn = cluster.createEl("button", { cls: "section-cards-layout-btn" });
+			const current = LAYOUT_OPTIONS.find(([value]) => value === this.layout);
+			const [icon, fallback] = LAYOUT_ICONS[this.layout];
+			SectionCardsView.setIconOr(layoutBtn.createSpan({ cls: "section-cards-layout-btn-icon" }), icon, fallback);
+			layoutBtn.createSpan({ cls: "section-cards-layout-btn-label", text: current?.[1] ?? this.layout });
+			setIcon(layoutBtn.createSpan({ cls: "section-cards-layout-btn-chevron" }), "chevron-down");
+			layoutBtn.setAttr("aria-label", "Card layout (L cycles)");
+			layoutBtn.setAttr("aria-haspopup", "true");
+			layoutBtn.addEventListener("click", () => {
+				if (this.layoutPopover) this.closeLayoutPicker();
+				else this.openLayoutPicker(layoutBtn);
+			});
+			this.layoutBtn = layoutBtn;
+		}
+
 		if (this.deckMode) {
 			// The Deck's own sort — the rest of the toolbar is note-specific and
 			// stands down, but ordering the thumbnails belongs here.
@@ -4252,26 +4338,6 @@ export class SectionCardsView extends ItemView {
 				this.app.workspace.requestSaveLayout();
 			});
 		}
-
-		// Layout sits rightmost of the dropdowns: everything between it and the pane
-		// edge is fixed-width, so it stays put when the Sort options change widths
-		// (the Calendar's do) or a mid-bar control comes and goes.
-		const layoutWrap = cluster.createDiv({ cls: "section-cards-control" });
-		layoutWrap.setAttr("aria-label", "Card layout (L cycles)");
-		layoutWrap.createSpan({ text: "Layout", cls: "section-cards-label" });
-		const layoutSelect = layoutWrap.createEl("select", { cls: "dropdown" });
-		this.layoutSelect = layoutSelect;
-		layoutSelect.setAttr("aria-label", "Card layout (L cycles)");
-		for (const [value, label, hint] of LAYOUT_OPTIONS) {
-			if (!this.layoutEnabled(value)) continue; // switched off for this note
-			const option = layoutSelect.createEl("option", { text: label, value });
-			option.title = hint;
-			// Calendar is greyed out in notes with no date headings at any level
-			// (refresh keeps this current; the current layout stays selectable).
-			if (value === "calendar" || value === "heatmap") option.disabled = !this.calendarSelectable();
-		}
-		layoutSelect.value = this.layout;
-		layoutSelect.addEventListener("change", () => this.setLayout(layoutSelect.value as Layout));
 
 		const templateBtn = cluster.createEl("button", { cls: "section-cards-icon-btn section-cards-template-btn" });
 		this.templateBtn = templateBtn;

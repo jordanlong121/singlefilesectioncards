@@ -115,6 +115,23 @@ export interface BackgroundStore {
 /** The pseudo-path the Deck's background is read and written under (never a vault path). */
 export const DECK_BACKGROUND_KEY = "\u0000deck";
 
+/** A Lucide icon per layout (and an older name to fall back to), for the toolbar's picker. */
+export const LAYOUT_ICONS: Record<Layout, [string, string]> = {
+	grid: ["layout-grid", "grid"],
+	aligned: ["grid-2x2", "layout-grid"],
+	tight: ["layout-dashboard", "layout-grid"],
+	tasks: ["list-checks", "check-square"],
+	horizontal: ["rows-3", "rows"],
+	vertical: ["columns-3", "columns"],
+	rolodex: ["gallery-horizontal", "book-open"],
+	planner: ["notebook-pen", "clipboard-list"],
+	custom: ["shapes", "move"],
+	images: ["image", "image"],
+	links: ["link", "link"],
+	calendar: ["calendar", "calendar"],
+	heatmap: ["activity", "bar-chart-2"],
+};
+
 export type DeckSort = "recent" | "name-asc" | "name-desc" | "modified" | "created";
 
 export const DECK_SORT_LABELS: [DeckSort, string][] = [
