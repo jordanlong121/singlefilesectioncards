@@ -281,6 +281,8 @@ interface PickerSpec {
 	buttonIcon?: string;
 	value: string;
 	columns?: number;
+	/** Small text-only tiles in one row (the heading levels): the label says it all. */
+	compact?: boolean;
 	options: PickerOption[];
 	onPick: (value: string) => void;
 }
@@ -835,14 +837,16 @@ export class SectionCardsView extends ItemView {
 		this.closePicker();
 		const pop = this.contentEl.createDiv({ cls: "sfsc-picker-pop" });
 		pop.setAttr("role", "menu");
-		pop.setCssProps({ "--sfsc-picker-cols": String(spec.columns ?? 3) });
+		pop.toggleClass("is-compact", !!spec.compact);
+		const columns = spec.compact ? spec.options.length : (spec.columns ?? 3);
+		pop.setCssProps({ "--sfsc-picker-cols": String(columns) });
 		for (const option of spec.options) {
 			const tile = pop.createEl("button", { cls: "sfsc-picker-tile" });
 			tile.setAttr("role", "menuitemradio");
 			tile.setAttr("aria-checked", String(option.value === spec.value));
 			if (option.hint) tile.setAttr("title", option.hint);
 			tile.toggleClass("is-active", option.value === spec.value);
-			SectionCardsView.setIconOr(tile.createSpan({ cls: "sfsc-picker-tile-icon" }), option.icon, option.fallback ?? option.icon);
+			if (!spec.compact) SectionCardsView.setIconOr(tile.createSpan({ cls: "sfsc-picker-tile-icon" }), option.icon, option.fallback ?? option.icon);
 			tile.createSpan({ cls: "sfsc-picker-tile-label", text: option.label });
 			if (option.disabled) tile.toggleAttribute("disabled", true);
 			tile.addEventListener("click", () => {
@@ -853,7 +857,8 @@ export class SectionCardsView extends ItemView {
 		// Under the button, within the pane (pulled left if it would run past the edge).
 		const host = this.contentEl.getBoundingClientRect();
 		const at = anchor.getBoundingClientRect();
-		const width = (spec.columns ?? 3) * 84 + ((spec.columns ?? 3) - 1) * 6 + 18;
+		const tileW = spec.compact ? 40 : 84;
+		const width = columns * tileW + (columns - 1) * 6 + 18;
 		const left = Math.max(8, Math.min(at.left - host.left, host.width - width - 8));
 		pop.setCssStyles({ top: `${at.bottom - host.top + 4}px`, left: `${left}px` });
 		this.pickerPopover = pop;
@@ -4395,7 +4400,7 @@ export class SectionCardsView extends ItemView {
 			ariaLabel: "Heading level shown as cards (keys 1–6)",
 			buttonIcon: "heading",
 			value: String(this.headingLevel),
-			columns: 3,
+			compact: true,
 			options: this.levelOptionValues().map((l) => ({ value: String(l), label: `H${l}`, icon: `heading-${l}`, fallback: "heading" })),
 			onPick: (value) => void this.changeHeadingLevel(Number(value)),
 		});

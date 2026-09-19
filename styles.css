@@ -371,7 +371,21 @@ body.sfsc-flat-cards .section-cards-view {
 	max-width: 100%;
 }
 
-body.is-phone .sfsc-picker-pop {
+/* Compact: small text-only tiles in one row (the heading levels). */
+.sfsc-picker-pop.is-compact {
+	grid-template-columns: repeat(var(--sfsc-picker-cols, 6), 40px);
+	gap: 4px;
+	padding: 6px;
+}
+
+.sfsc-picker-pop.is-compact .sfsc-picker-tile {
+	height: 30px;
+	padding: 2px 4px;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+}
+
+body.is-phone .sfsc-picker-pop:not(.is-compact) {
 	grid-template-columns: repeat(3, 84px);
 }
 
