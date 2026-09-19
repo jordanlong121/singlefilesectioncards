@@ -4578,6 +4578,12 @@ export class SectionCardsView extends ItemView {
 				.setIcon("library")
 				.onClick(() => new NoteLibraryModal(this.plugin, (path) => void this.navigateTo(path)).open()),
 		);
+		menu.addItem((item) =>
+			item
+				.setTitle("New structured note…")
+				.setIcon("layout-template")
+				.onClick(() => this.plugin.promptStructuredNote()),
+		);
 		// What each heading level of this note holds — a year, month, week, day, or
 		// text — which the Day Planner's arrows follow.
 		menu.addItem((item) =>

@@ -1,4 +1,4 @@
-import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare, bareMonthIndex, firstDueTaskIndex, plannerColumnSplit, plannerCardWeight } from "./.tmp/main.js";
+import { parseSections, sortSections, applyPinned, insertIntoSection, insertAfterBlock, insertionLine, detectDirection, normalizeHeading, isTodayTitle, titleHasDate, applyTemplatePlaceholders, toggleTaskLine, taskLineIndexes, resolveViewSettings, wheelDeltaToPixels, canScrollVertically, splitLinktext, pickHeadingLevel, planCardReuse, trimTrailingBlankLines, sectionDeleteRange, computeTabEdit, moveSection, EditorHistory, sectionBlocks, movableBlocks, moveBlock, moveBlockBetween, rectsCollide, findFreeSpot, snapRect, sectionFromEdited, unfiledSection, parseCards, UNFILED_KEY, propertiesSection, propertiesMarkdown, PROPERTIES_KEY, parseYamlProperties, setYamlProperty, yamlScalar, removeBlock, bodyForRender, hexToTriplet, normalizePalette, PALETTE_PRESETS, contrastForeground, parseAncestorHeadings, hierarchyColumnItems, HIER_GAP_KEY, openTaskCount, headingLevelsIn, groupByAncestor, blockStarred, toggleStarInLine, sectionHasStar, starInfo, titleToIso, dateHeadingLevel, titleDetectDate, mergeSections, retitledDateTitle, backgroundLightLayer, backgroundDesatLayer, gradientStops, gradientCss, gradientEndpoints , imageLinksIn, imageLinkSpans, urlLinksIn, heatmapDays, heatmapStreaks, deckExcerpt, sortTasksLayout, firstBodyTag, sectionTaskCount, splitCardFaces, flipMarkerLine, pickNearViewport, dueTaskSummary, groupCards, plannerBlockKey, plannerCards, wholeNoteSection, parsePeriod, shiftPeriod, formatPeriod, detectLevelSetup, alphanumericCompare, bareMonthIndex, firstDueTaskIndex, plannerColumnSplit, plannerCardWeight, structuredNoteMarkdown, structuredPlacements, structuredTitles, STRUCTURED_FORMATS } from "./.tmp/main.js";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
@@ -2031,3 +2031,35 @@ t("plannerCardWeight: lines, wrapped long lines, a subcard title, or the saved h
   assert.equal(plannerCardWeight(lines, { kind: "sub", start: 1, end: 5, title: "Sub" }, 130), 5);
 });
 
+t("structured notes: one heading per section at the level, hints as an italic line, intro and notes optional", () => {
+  const spec = { format: "kanban", level: 2, sections: ["To do", "Doing", "Done"], intro: true, notes: true, hints: true };
+  const md = structuredNoteMarkdown(spec);
+  assert.deepEqual(structuredTitles(spec), ["Introduction", "To do", "Doing", "Done", "Additional notes"]);
+  const headings = md.split("\n").filter((l) => l.startsWith("#"));
+  assert.deepEqual(headings, ["## Introduction", "## To do", "## Doing", "## Done", "## Additional notes"]);
+  assert.ok(md.includes("## Doing\n*Work under way right now"), "a renamed section keeps its position's hint");
+  const bare = structuredNoteMarkdown({ ...spec, intro: false, notes: false, hints: false, level: 3 });
+  assert.equal(bare, "### To do\n\n### Doing\n\n### Done\n");
+  assert.equal(parseSections(L(md), 2).length, 5, "the note parses back into five cards");
+});
+
+t("structured notes: every format's defaults produce a note with its sections", () => {
+  for (const def of STRUCTURED_FORMATS) {
+    const spec = { format: def.id, level: 2, sections: def.sections.map((s) => s.title), intro: false, notes: false, hints: true };
+    const titles = parseSections(L(structuredNoteMarkdown(spec)), 2).map((s) => s.title);
+    assert.deepEqual(titles, def.sections.map((s) => s.title), def.id);
+  }
+});
+
+t("structured notes: a matrix places its quadrants 2×2 with intro and notes as bands; others place nothing", () => {
+  const spec = { format: "swot", level: 2, sections: ["Strengths", "Weaknesses", "Opportunities", "Threats"], intro: true, notes: true, hints: false };
+  const p = structuredPlacements(spec);
+  assert.deepEqual(Object.keys(p), ["## Introduction", "## Strengths", "## Weaknesses", "## Opportunities", "## Threats", "## Additional notes"]);
+  assert.equal(p["## Strengths"].y, p["## Weaknesses"].y, "top row");
+  assert.equal(p["## Opportunities"].x, p["## Strengths"].x, "left column");
+  assert.ok(p["## Introduction"].y < p["## Strengths"].y && p["## Additional notes"].y > p["## Threats"].y);
+  const rects = Object.values(p);
+  for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) assert.ok(!rectsCollide(rects[i], rects[j]), "no overlap");
+  assert.ok(rects.every((r) => r.x % 24 === 0 && r.y % 24 === 0 && r.w % 24 === 0 && r.h % 24 === 0), "on the snap grid");
+  assert.equal(structuredPlacements({ ...spec, format: "kanban" }), null);
+});
