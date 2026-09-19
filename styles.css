@@ -2579,6 +2579,10 @@ body.is-phone .sfsc-planner-title {
 	font-size: var(--font-ui-smaller);
 }
 
+.section-cards-tray-layout-select.is-dirty {
+	font-style: italic;
+}
+
 .section-cards-tray-layout-btn:disabled {
 	opacity: 0.4;
 	cursor: not-allowed;

@@ -145,7 +145,7 @@ import {
 	periodUnit,
 	detectLevelSetup,
 } from "./periods";
-import {
+import { snapshotCanvasLayout, canvasLayoutEquals,
 	pickNearViewport,
 	CardRect,
 	CUSTOM_SNAP,
@@ -191,7 +191,7 @@ import {
 	GradientBackgroundModal,
 	BACKGROUND_EXTENSIONS,
 } from "./background";
-import { ConfirmActionModal,
+import { SavedLayoutChangesModal, ConfirmActionModal,
 	FileSuggestModal,
 	ConfirmDeleteModal,
 	SwitchToDocumentOrderModal,
@@ -425,6 +425,8 @@ export class SectionCardsView extends ItemView {
 	private customPlacements: Record<string, CardRect> = {};
 	/** Images canvas: placements for the current note, keyed by image path/URL. */
 	private imagePlacements: Record<string, CardRect> = {};
+	/** The saved-layouts switcher in the Custom Grid tray, for the "changed" mark. */
+	private savedLayoutSelect: HTMLSelectElement | null = null;
 	/** Which note's image placements are loaded (like placementsLoadedFor for cards). */
 	private imagesLoadedFor: string | null = null;
 	/** The Images canvas's preview tiles, in document order. Rebuilt every render. */
@@ -492,12 +494,9 @@ export class SectionCardsView extends ItemView {
 		} else if (this.layout === "links") {
 			void this.plugin.saveLinksGrid(file.path, { ...this.linkPlacements }, this.viewSettings(), this.linksZoom);
 		} else {
-			void this.plugin.saveCustomGrid(
-				file.path,
-				{ ...this.customPlacements },
-				this.viewSettings(),
-				this.customZoom,
-			);
+			void this.plugin
+				.saveCustomGrid(file.path, { ...this.customPlacements }, this.viewSettings(), this.customZoom)
+				.then(() => this.syncSavedLayoutDirty());
 		}
 	};
 	/** The block (task/paragraph) being dragged between cards, if any. */
@@ -737,6 +736,15 @@ export class SectionCardsView extends ItemView {
 	/** Switch layouts — the dropdown, the L cycle, and the wall's right-click menu. */
 	private setLayout(next: Layout): void {
 		if (this.sticky) return;
+		// Leaving the Custom Grid with a saved layout changed: offer to save it first.
+		if (this.layout === "custom" && next !== "custom") {
+			this.confirmSavedLayoutChanges(() => this.switchLayout(next));
+			return;
+		}
+		this.switchLayout(next);
+	}
+
+	private switchLayout(next: Layout): void {
 		this.layout = next;
 		this.rememberView();
 		this.applyLayoutClass();
@@ -7010,6 +7018,7 @@ export class SectionCardsView extends ItemView {
 		// The tray only rebuilds when its contents or order actually changed.
 		// Today's date is part of the signature so the highlight rolls over at midnight.
 		const signature = `custom|${this.sortOrder}|${this.todayKeys()?.iso ?? ""}|${unplacedKeys.join("\u0000")}`;
+		this.syncSavedLayoutDirty();
 		if (signature === this.traySignature) return;
 		this.traySignature = signature;
 		this.rebuildTray(unplacedKeys);
@@ -8049,8 +8058,17 @@ export class SectionCardsView extends ItemView {
 		for (const name of names) select.createEl("option", { value: name, text: name });
 		select.value = active && saved[active] ? active : "";
 		select.setAttr("aria-label", "Switch to a saved layout");
+		this.savedLayoutSelect = select;
 		select.addEventListener("change", () => {
-			if (select.value) void this.plugin.applySavedLayout(this.filePath, select.value);
+			const chosen = select.value;
+			if (!chosen) return;
+			this.confirmSavedLayoutChanges(
+				() => void this.plugin.applySavedLayout(this.filePath, chosen),
+				() => {
+					select.value = active && saved[active] ? active : "";
+					this.syncSavedLayoutDirty();
+				},
+			);
 		});
 		const iconBtn = (icon: string, label: string, onClick: () => void) => {
 			const btn = row.createEl("button", { cls: "section-cards-tray-toggle section-cards-tray-layout-btn" });
@@ -8095,6 +8113,58 @@ export class SectionCardsView extends ItemView {
 		const syncDelete = () => del.toggleAttribute("disabled", !select.value);
 		syncDelete();
 		select.addEventListener("change", syncDelete);
+		this.syncSavedLayoutDirty();
+	}
+
+	/** The active saved layout and whether the canvas has drifted from it (placements,
+	 * zoom, or background); null when no saved layout is active. */
+	private savedLayoutState(): { name: string; dirty: boolean } | null {
+		const name = this.plugin.getActiveSavedLayout(this.filePath);
+		if (!name) return null;
+		const saved = this.plugin.getSavedLayouts(this.filePath)[name];
+		const entry = this.plugin.settings.perFile?.[this.filePath];
+		if (!saved || !entry) return null;
+		return { name, dirty: !canvasLayoutEquals(snapshotCanvasLayout(entry), saved) };
+	}
+
+	/** Mark the switcher's active entry with an asterisk while the canvas has unsaved changes. */
+	private syncSavedLayoutDirty(): void {
+		const select = this.savedLayoutSelect;
+		if (!select?.isConnected) return;
+		const state = this.savedLayoutState();
+		for (const option of Array.from(select.options)) {
+			if (!option.value) continue;
+			option.text = state?.dirty && option.value === state.name ? `${option.value} *` : option.value;
+		}
+		select.toggleClass("is-dirty", !!state?.dirty);
+		select.setAttr("title", state?.dirty ? `“${state.name}” has changed since it was saved` : "");
+	}
+
+	/**
+	 * Before clearing the canvas, switching saved layouts, or leaving the Custom Grid:
+	 * with the active saved layout changed, ask to save it (Save / Don't save / Cancel).
+	 * `then` runs after a save or a discard; `cancelled` when the user stays.
+	 */
+	private confirmSavedLayoutChanges(then: () => void, cancelled?: () => void): void {
+		const state = this.savedLayoutState();
+		if (!state?.dirty) {
+			then();
+			return;
+		}
+		new SavedLayoutChangesModal(this.app, state.name, (choice) => {
+			if (choice === "cancel") {
+				cancelled?.();
+				return;
+			}
+			if (choice === "save") {
+				void this.plugin.saveCanvasLayout(this.filePath, state.name, this.viewSettings()).then(() => {
+					this.syncSavedLayoutDirty();
+					then();
+				});
+				return;
+			}
+			then();
+		}).open();
 	}
 
 	/** Fold or open the tray, remembered per note; the tray redraws on the refresh. */
@@ -8115,7 +8185,7 @@ export class SectionCardsView extends ItemView {
 				new Notice("The canvas is already clear.");
 				return;
 			}
-			new ConfirmClearModal(this.app, placed, noun, () => this.clearCanvas()).open();
+			this.confirmSavedLayoutChanges(() => new ConfirmClearModal(this.app, placed, noun, () => this.clearCanvas()).open());
 		});
 		const foldBtn = actions.createEl("button", { cls: "section-cards-tray-toggle" });
 		setIcon(foldBtn, "chevron-right");
