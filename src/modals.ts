@@ -796,10 +796,6 @@ export class ShortcutsModal extends Modal {
 				grid.createDiv({ cls: "sfsc-shortcuts-desc", text: desc });
 			}
 		}
-		contentEl.createEl("p", {
-			cls: "sfsc-shortcuts-note",
-			text: "The plain keys work while a cards view is focused and no card editor is open.",
-		});
 	}
 
 	onClose(): void {
