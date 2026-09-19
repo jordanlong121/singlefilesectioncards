@@ -4122,6 +4122,7 @@ export class SectionCardsView extends ItemView {
 				options: DECK_SORT_LABELS.map(([value, label]) => ({ value, label, icon: DECK_SORT_ICONS[value][0], fallback: DECK_SORT_ICONS[value][1] })),
 				onPick: (value) => {
 					this.plugin.settings.deckSort = value as DeckSort;
+					this.buildToolbar(); // the picker shows the new order
 					void this.plugin.saveSettings().then(() => this.refresh());
 				},
 			});
@@ -4371,6 +4372,7 @@ export class SectionCardsView extends ItemView {
 			onPick: (value) => {
 				this.sortOrder = value as SortOrder;
 				this.rememberView();
+				this.buildToolbar(); // the picker shows the new order
 				void this.refresh().then(() => {
 					this.revealSelection(); // a selected card follows the re-sort into view
 					this.app.workspace.requestSaveLayout();
