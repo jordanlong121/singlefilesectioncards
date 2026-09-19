@@ -104,6 +104,17 @@ export const LAYOUT_OPTIONS: [Layout, string, string][] = [
 
 /** How the Deck orders its note thumbnails. "recent" is the working-set order:
  * pinned notes first, then most recently opened. */
+/** The fields a background is made of, as stored on a note's entry or on the Deck. */
+export interface BackgroundStore {
+	backgroundImage?: string;
+	backgroundDim?: number;
+	backgroundBrightness?: number;
+	backgroundSaturation?: number;
+}
+
+/** The pseudo-path the Deck's background is read and written under (never a vault path). */
+export const DECK_BACKGROUND_KEY = "\u0000deck";
+
 export type DeckSort = "recent" | "name-asc" | "name-desc" | "modified" | "created";
 
 export const DECK_SORT_LABELS: [DeckSort, string][] = [
@@ -192,6 +203,9 @@ export interface SectionCardsSettings {
 	deckCount: number;
 	/** How the Deck's thumbnails are ordered. */
 	deckSort: DeckSort;
+	/** The Deck's own background (image, veil, brightness, saturation) — a look of its
+	 * own, apart from whichever note the toolbar's picker holds. */
+	deckBackground?: BackgroundStore;
 	/** Notes recently opened in the cards view, newest first — the right-click menu's
 	 * quick-switch section shows the top of this list. */
 	recentFiles: string[];

@@ -21,7 +21,7 @@ import {
 	type ViewStateResult,
 } from "obsidian";
 import { createEmbeddedEditor, type EmbeddedEditor } from "../editor-embed";
-import {
+import { DECK_BACKGROUND_KEY,
 	VIEW_TYPE_SECTION_CARDS,
 	INITIAL_RENDER_COUNT,
 	DEFERRED_RENDER_BATCH,
@@ -3878,7 +3878,9 @@ export class SectionCardsView extends ItemView {
 
 		const fileBtn = cluster.createEl("button", { cls: "section-cards-file-btn" });
 		fileBtn.setAttr("aria-label", "Pick a different note (O)");
-		fileBtn.createSpan({ text: this.filePath || "(no file)" });
+		// The Deck stands for no one note: the button reads as empty until one is picked.
+		fileBtn.toggleClass("is-empty", this.deckMode);
+		fileBtn.createSpan({ text: this.deckMode ? "Choose a note…" : this.filePath || "(no file)" });
 		fileBtn.addEventListener("click", () => {
 			new FileSuggestModal(this.app, this.plugin, (path) => void this.navigateTo(path), true).open();
 		});
@@ -4829,6 +4831,10 @@ export class SectionCardsView extends ItemView {
 
 	/** The Background actions themselves: picker, live sliders, remove. */
 	private addBackgroundOptions(menu: Menu, base: ViewSettings): void {
+		// The Deck's background is its own, not the picker's note's; a generated image
+		// still lands in the attachment folder of a real note.
+		const target = this.backgroundKey();
+		const attachTo = this.deckMode ? this.plugin.settings.filePath : this.filePath;
 		menu.addItem((item) =>
 			item
 				.setTitle("Select background…")
@@ -4837,24 +4843,24 @@ export class SectionCardsView extends ItemView {
 					new SelectBackgroundModal(this.app, {
 						fromVault: () => {
 							new BackgroundSuggestModal(this.app, (file) => {
-								void this.plugin.setBackgroundImage(this.filePath, file.path, base);
+								void this.plugin.setBackgroundImage(target, file.path, base);
 							}).open();
 						},
 						fromLocal: () => this.pickLocalBackground(base),
 						fromInternet: () => {
-							new DownloadBackgroundModal(this.app, this.filePath, (path) => {
-								void this.plugin.setBackgroundImage(this.filePath, path, base);
+							new DownloadBackgroundModal(this.app, attachTo, (path) => {
+								void this.plugin.setBackgroundImage(target, path, base);
 							}).open();
 						},
 						fromGradient: () => {
-							new GradientBackgroundModal(this.app, this.filePath, (path) => {
-								void this.plugin.setBackgroundImage(this.filePath, path, base);
+							new GradientBackgroundModal(this.app, attachTo, (path) => {
+								void this.plugin.setBackgroundImage(target, path, base);
 							}).open();
 						},
 					}).open();
 				}),
 		);
-		if (this.plugin.getBackgroundImage(this.filePath)) {
+		if (this.plugin.getBackgroundImage(target)) {
 			// The adjustment sliders live right in the menu: each previews live while
 			// dragging and saves on release. Events stop at the row so the menu stays
 			// open while they're being used.
@@ -4891,14 +4897,14 @@ export class SectionCardsView extends ItemView {
 					);
 				});
 			};
-			const adjust = this.plugin.getBackgroundAdjust(this.filePath);
+			const adjust = this.plugin.getBackgroundAdjust(target);
 			sliderItem(
 				"Transparency",
 				"sun-dim",
 				100,
-				this.plugin.getBackgroundDim(this.filePath),
+				this.plugin.getBackgroundDim(target),
 				(value) => this.contentEl.setCssProps({ "--sfsc-bg-veil": String(value / 100) }),
-				(value) => void this.plugin.setBackgroundDim(this.filePath, value, base),
+				(value) => void this.plugin.setBackgroundDim(target, value, base),
 			);
 			sliderItem(
 				"Brightness",
@@ -4906,7 +4912,7 @@ export class SectionCardsView extends ItemView {
 				200,
 				adjust.brightness,
 				(value) => this.contentEl.setCssProps({ "--sfsc-bg-light": backgroundLightLayer(value) }),
-				(value) => void this.plugin.setBackgroundAdjust(this.filePath, { brightness: value }, base),
+				(value) => void this.plugin.setBackgroundAdjust(target, { brightness: value }, base),
 			);
 			sliderItem(
 				"Saturation",
@@ -4914,13 +4920,13 @@ export class SectionCardsView extends ItemView {
 				100,
 				adjust.saturation,
 				(value) => this.contentEl.setCssProps({ "--sfsc-bg-desat": backgroundDesatLayer(value) }),
-				(value) => void this.plugin.setBackgroundAdjust(this.filePath, { saturation: value }, base),
+				(value) => void this.plugin.setBackgroundAdjust(target, { saturation: value }, base),
 			);
 			menu.addItem((item) =>
 				item
 					.setTitle("Remove background")
 					.setIcon("x")
-					.onClick(() => void this.plugin.setBackgroundImage(this.filePath, null, base)),
+					.onClick(() => void this.plugin.setBackgroundImage(target, null, base)),
 			);
 		}
 	}
@@ -4963,8 +4969,14 @@ export class SectionCardsView extends ItemView {
 	}
 
 	/** Show or clear the note's background image behind the card wall. */
+	/** Whose background the pane shows and the Background menu edits: the note's, or —
+	 * while the Deck is showing — the Deck's own. */
+	private backgroundKey(): string {
+		return this.deckMode ? DECK_BACKGROUND_KEY : this.filePath;
+	}
+
 	private applyBackground(): void {
-		this.stampBackground(this.contentEl, this.filePath);
+		this.stampBackground(this.contentEl, this.backgroundKey());
 	}
 
 	/**

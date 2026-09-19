@@ -17,6 +17,8 @@ import {
 	contrastForegroundLight,
 	normalizePalette,
 	DEFAULT_SETTINGS,
+	BackgroundStore,
+	DECK_BACKGROUND_KEY,
 } from "./src/settings";
 import { mo, parseSections, applyTemplatePlaceholders } from "./src/sections";
 import { isTodayTitle, dateHeadingCounts, bestDateLevel } from "./src/dates";
@@ -783,17 +785,28 @@ export default class SectionCardsPlugin extends Plugin {
 	}
 
 	/** Vault path of a note's background image, or null when it has none. */
+	/**
+	 * Where a background lives: a note's per-file entry, or — under DECK_BACKGROUND_KEY —
+	 * the Deck's own store, so the Deck keeps a look of its own apart from any note. With
+	 * `base` the note's entry is created if missing (a write); without, null when absent.
+	 */
+	private backgroundStore(path: string, base?: ViewSettings): BackgroundStore | null {
+		if (path === DECK_BACKGROUND_KEY) return (this.settings.deckBackground ??= {});
+		if (!path) return null;
+		if (!base) return this.settings.perFile?.[path] ?? null;
+		this.settings.perFile = this.settings.perFile ?? {};
+		return (this.settings.perFile[path] ??= { ...base });
+	}
+
 	getBackgroundImage(path: string): string | null {
-		return this.settings.perFile?.[path]?.backgroundImage ?? null;
+		return this.backgroundStore(path)?.backgroundImage ?? null;
 	}
 
 	async setBackgroundImage(path: string, imagePath: string | null, base: ViewSettings): Promise<void> {
-		if (!path) return;
-		this.settings.perFile = this.settings.perFile ?? {};
-		const current = this.settings.perFile[path] ?? { ...base };
+		const current = this.backgroundStore(path, base);
+		if (!current) return;
 		if (imagePath) current.backgroundImage = imagePath;
 		else delete current.backgroundImage;
-		this.settings.perFile[path] = current;
 		await this.saveSettings();
 		this.refreshAllViews();
 	}
@@ -806,23 +819,21 @@ export default class SectionCardsPlugin extends Plugin {
 	/** The note's own stored veil strength, or null when it follows the default —
 	 * which styles.css owns, so a Style Settings override can supply it. */
 	getBackgroundDimOverride(path: string): number | null {
-		return this.settings.perFile?.[path]?.backgroundDim ?? null;
+		return this.backgroundStore(path)?.backgroundDim ?? null;
 	}
 
 	async setBackgroundDim(path: string, value: number, base: ViewSettings): Promise<void> {
-		if (!path) return;
-		this.settings.perFile = this.settings.perFile ?? {};
-		const current = this.settings.perFile[path] ?? { ...base };
+		const current = this.backgroundStore(path, base);
+		if (!current) return;
 		if (value === BACKGROUND_DIM_DEFAULT) delete current.backgroundDim;
 		else current.backgroundDim = value;
-		this.settings.perFile[path] = current;
 		await this.saveSettings();
 		this.refreshAllViews();
 	}
 
 	/** Background image brightness and saturation, in percent (100 = untouched). */
 	getBackgroundAdjust(path: string): { brightness: number; saturation: number } {
-		const entry = this.settings.perFile?.[path];
+		const entry = this.backgroundStore(path);
 		return { brightness: entry?.backgroundBrightness ?? 100, saturation: entry?.backgroundSaturation ?? 100 };
 	}
 
@@ -831,9 +842,8 @@ export default class SectionCardsPlugin extends Plugin {
 		patch: { brightness?: number; saturation?: number },
 		base: ViewSettings,
 	): Promise<void> {
-		if (!path) return;
-		this.settings.perFile = this.settings.perFile ?? {};
-		const current = this.settings.perFile[path] ?? { ...base };
+		const current = this.backgroundStore(path, base);
+		if (!current) return;
 		if (patch.brightness !== undefined) {
 			if (patch.brightness === 100) delete current.backgroundBrightness;
 			else current.backgroundBrightness = patch.brightness;
@@ -842,7 +852,6 @@ export default class SectionCardsPlugin extends Plugin {
 			if (patch.saturation === 100) delete current.backgroundSaturation;
 			else current.backgroundSaturation = patch.saturation;
 		}
-		this.settings.perFile[path] = current;
 		await this.saveSettings();
 		this.refreshAllViews();
 	}

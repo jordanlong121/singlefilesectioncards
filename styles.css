@@ -250,6 +250,12 @@ body.sfsc-flat-cards .section-cards-view {
 
 /* Obsidian's buttons are inline-flex, so the ellipsis has to live on the name
    itself: a long name trails off at the end instead of being clipped at both sides. */
+/* In the Deck the picker names no note. */
+.section-cards-file-btn.is-empty > span {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
 .section-cards-file-btn > span {
 	min-width: 0;
 	overflow: hidden;
