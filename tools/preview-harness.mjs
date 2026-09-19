@@ -154,6 +154,7 @@ function toolbarHtml(layout, mode = "default") {
 	<button class="section-cards-icon-btn section-cards-menu-btn">${MENU_ICON}</button>
 	<button class="section-cards-icon-btn section-cards-deck-btn is-active">${DECK_ICON}</button>
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
+	<button class="section-cards-layout-btn${process.env.LAYOUT_POP ? " is-open" : ""}"><span class="section-cards-layout-btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg></span><span class="section-cards-layout-btn-label">${LAYOUT_LABELS[layout]}</span><span class="section-cards-layout-btn-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m6 9 6 6 6-6"/></svg></span></button>
 	<div class="section-cards-control section-cards-level-control"><span class="section-cards-label">Card level</span><select class="dropdown"${["calendar", "heatmap"].includes(layout) ? " disabled" : ""}><option>H${LEVEL}</option></select></div>
 	<div class="section-cards-control section-cards-filter"><input type="text" class="section-cards-filter-input" placeholder="Filter…" spellcheck="false"><button class="section-cards-filter-clear"></button></div>
 	<div class="section-cards-spacer"></div>
@@ -170,7 +171,6 @@ function toolbarHtml(layout, mode = "default") {
 	<div class="section-cards-control section-cards-mode-control"><span class="section-cards-label">View mode</span><div class="section-cards-segmented">${seg("Default", "default")}${seg("Hierarchy", "hier")}${seg("Dividers", "sections")}</div></div>
 	<div class="section-cards-control section-cards-sort-control"><span class="section-cards-label">Sort</span><select class="dropdown"><option>${(layout === "calendar" ? CAL_SORT_LABELS : SORT_LABELS)[SORT]}</option></select></div>
 	${layout === "tasks" ? `<div class="section-cards-control"><span class="section-cards-label">Tasks</span><select class="dropdown"><option>All</option></select></div>` : ""}
-	<div class="section-cards-control"><span class="section-cards-label">Layout</span><select class="dropdown"><option>${LAYOUT_LABELS[layout]}</option></select></div>
 	<button class="section-cards-icon-btn section-cards-template-btn">${TEMPLATE_ICON}</button>
 	<button class="section-cards-icon-btn">↻</button>
 	<button class="section-cards-help-btn">?</button>
@@ -810,6 +810,7 @@ function pageHtml(layout, { withMenu = false, mode = "default", background = nul
 	const view = `<div class="workspace-leaf-content" data-type="section-cards-view">
 <div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}${sticky ? " is-sticky" : ""}${process.env.TRAY === "hidden" && ["custom", "images", "links"].includes(layout) ? " is-tray-collapsed" : ""}${background ? " has-sfsc-bg" : ""}"${background ? ` style="--sfsc-bg-image: url('${background}.svg')"` : ""}>
 ${toolbarHtml(layout, mode)}
+${process.env.LAYOUT_POP ? `<div class="sfsc-layout-pop" style="top: 86px; left: 130px">${Object.entries(LAYOUT_LABELS).map(([v, l]) => `<button class="sfsc-layout-tile${v === layout ? " is-active" : ""}"${["calendar","heatmap"].includes(v) && process.env.LAYOUT_POP === "undated" ? " disabled" : ""}><span class="sfsc-layout-tile-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg></span><span class="sfsc-layout-tile-label">${l}</span></button>`).join("")}</div>` : ""}
 ${sticky ? stickyHeadHtml() : ""}
 ${gridHtml(layout, mode)}
 </div>

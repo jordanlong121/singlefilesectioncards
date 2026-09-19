@@ -256,6 +256,120 @@ body.sfsc-flat-cards .section-cards-view {
 	font-style: italic;
 }
 
+/* The layout button beside the note: the current layout's icon and name, a chevron. */
+.section-cards-layout-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 180px;
+	padding: 4px 8px 4px 8px;
+	font-size: calc(var(--font-ui-smaller, 12px) * 0.95);
+	font-weight: 600;
+	color: var(--text-normal);
+	box-shadow: none;
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--interactive-normal);
+}
+
+.section-cards-layout-btn:hover,
+.section-cards-layout-btn.is-open {
+	background-color: var(--interactive-hover);
+}
+
+.section-cards-layout-btn-icon svg,
+.section-cards-layout-btn-chevron svg {
+	width: 14px;
+	height: 14px;
+}
+
+.section-cards-layout-btn-icon {
+	color: var(--interactive-accent);
+	display: inline-flex;
+}
+
+.section-cards-layout-btn-chevron {
+	color: var(--text-muted);
+	display: inline-flex;
+}
+
+.section-cards-layout-btn-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The layout picker: a grid of tiles dropped under the button. */
+.sfsc-layout-pop {
+	position: absolute;
+	z-index: 60;
+	display: grid;
+	grid-template-columns: repeat(4, 84px);
+	gap: 6px;
+	padding: 8px;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 8px);
+	box-shadow: var(--shadow-s, 0 4px 18px rgba(0, 0, 0, 0.25));
+}
+
+.sfsc-layout-tile {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	height: 68px;
+	padding: 6px 4px;
+	font-size: calc(var(--font-ui-smaller, 12px) * 0.9);
+	font-weight: 500;
+	line-height: 1.1;
+	text-align: center;
+	color: var(--text-normal);
+	background-color: var(--background-secondary);
+	border: 1px solid transparent;
+	border-radius: var(--radius-s, 6px);
+	box-shadow: none;
+}
+
+.sfsc-layout-tile:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.sfsc-layout-tile.is-active {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.sfsc-layout-tile:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.sfsc-layout-tile-icon {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+
+.sfsc-layout-tile.is-active .sfsc-layout-tile-icon {
+	color: var(--interactive-accent);
+}
+
+.sfsc-layout-tile-icon svg {
+	width: 20px;
+	height: 20px;
+}
+
+.sfsc-layout-tile-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 100%;
+}
+
+body.is-phone .sfsc-layout-pop {
+	grid-template-columns: repeat(3, 84px);
+}
+
 .section-cards-file-btn > span {
 	min-width: 0;
 	overflow: hidden;
