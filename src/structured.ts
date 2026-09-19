@@ -329,6 +329,9 @@ export class StructuredNoteModal extends Modal {
 		let savedDropdown!: { selectEl: HTMLSelectElement; addOption: (v: string, l: string) => unknown; setValue: (v: string) => unknown };
 		let layoutDropdown!: { setValue: (v: string) => unknown };
 		let layoutTouched = false;
+		let introRow!: Setting;
+		let notesRow!: Setting;
+		let hintsRow!: Setting;
 		let presets: StructuredFormatDef[] = [];
 
 		// The layout the new note opens in: the template's own until the user picks one.
@@ -357,9 +360,15 @@ export class StructuredNoteModal extends Modal {
 		};
 
 		// The rows that only make sense for one kind of template.
-		// Only the vault-note kind needs the note row; sections are always editable.
+		// Only the vault-note kind needs the note row; sections are always editable. An
+		// existing note's headings are taken as they are — no introduction, notes, or hints
+		// added around them — so those rows step aside for it.
 		const syncRows = () => {
-			templateRow.settingEl.toggleClass("is-hidden", spec.format !== "note");
+			const fromNote = spec.format === "note";
+			templateRow.settingEl.toggleClass("is-hidden", !fromNote);
+			introRow.settingEl.toggleClass("is-hidden", fromNote);
+			notesRow.settingEl.toggleClass("is-hidden", fromNote);
+			hintsRow.settingEl.toggleClass("is-hidden", fromNote);
 			syncSavedLayouts();
 		};
 
@@ -465,11 +474,11 @@ export class StructuredNoteModal extends Modal {
 				});
 			});
 
-		new Setting(contentEl)
+		introRow = new Setting(contentEl)
 			.setName("Introduction")
 			.setDesc("A first section for what the note is for.")
 			.addToggle((t) => t.setValue(spec.intro).onChange((v) => (spec.intro = v)));
-		new Setting(contentEl)
+		notesRow = new Setting(contentEl)
 			.setName("Additional notes")
 			.setDesc("A last section for whatever doesn't fit.")
 			.addToggle((t) => t.setValue(spec.notes).onChange((v) => (spec.notes = v)));
@@ -501,7 +510,7 @@ export class StructuredNoteModal extends Modal {
 				});
 			});
 
-		new Setting(contentEl)
+		hintsRow = new Setting(contentEl)
 			.setName("Hints")
 			.setDesc("One italic line under each heading saying what belongs there (the built-ins' and presets' own; a generic one for the introduction and notes).")
 			.addToggle((t) => t.setValue(spec.hints).onChange((v) => (spec.hints = v)));
@@ -529,7 +538,7 @@ export class StructuredNoteModal extends Modal {
 							return;
 						}
 						this.close();
-						this.onCreate(trimmed, spec);
+						this.onCreate(trimmed, spec.format === "note" ? { ...spec, intro: false, notes: false, hints: false } : spec);
 					}),
 			);
 	}
