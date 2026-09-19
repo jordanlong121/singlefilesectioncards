@@ -51,8 +51,15 @@ If this plugin is useful to you, you can support its development:
   folds to a slim bar and comes back with a click.
 - **The Deck wears backgrounds.** Each tile shows its note's own background, and the Deck has a
   background of its own, apart from any note's.
-- **The ☰ menu in two groups**, Card and Note; the Calendar opens on today; editing a card looks
-  like the card; the `?` dialog groups its shortcuts.
+- **A bar for text a level leaves out.** Pick a card level only part of the note uses and a bar
+  along the bottom says how many lines sit under other headings without a card, with a button
+  to the level that holds them and one for the Hierarchy view (see [Text a level leaves
+  out](#text-a-level-leaves-out)). The Card level picker lists just the levels the note has.
+- **Faster on big notes.** A 1,000-card note opens in about half a second; icons, action strips,
+  and card bodies are built lazily as they come into view.
+- **The ☰ menu in two groups**, Card and Note (Reload from file moved there from the toolbar);
+  the Calendar opens on today; editing a card looks like the card; the `?` dialog groups its
+  shortcuts.
 
 ## What it does
 
@@ -551,8 +558,11 @@ prompt offers to create it (template applied, default placement).
     undated notes* setting instead, creating it if needed — or, with that setting empty, just opens. The single-file stand-in for the core Daily notes plugin's "Open today's
     daily note"; give it that command's hotkey under Settings → Hotkeys.
   - `Single File Section Cards: Open section cards (default note)`
+  - `Single File Section Cards: Open section cards in a new tab`
   - `Single File Section Cards: Open section cards for the active note`
   - `Single File Section Cards: Create new card`
+  - `Single File Section Cards: New note` — the [New note wizard](#new-note)
+  - `Single File Section Cards: Manage notes` — the [notes manager](#manage-notes)
 - The toolbar button switches notes: your default note, notes you've viewed as cards, and recently
   opened notes lead the list, with the rest of the vault's notes below them — type to search
   everything by name or path.
@@ -565,6 +575,7 @@ prompt offers to create it (template applied, default placement).
 | Cards button on notes | A deck icon in every note's top-right that opens the note as cards in the same tab (on by default) |
 | Reopen remembered notes as cards | A note you've viewed as cards before opens in the cards view instead of the editor; a card's ↗ button still reaches the editor (off by default) |
 | Heading level | Which heading rank becomes a card (H1–H6) |
+| Only list heading levels the note contains | The toolbar's Card level picker offers just the levels the open note uses (every level when the note has no headings) |
 | Show unfiled text as a card / Unfiled card title | Text above the first heading (below any properties) becomes its own card, with a display-only title (off by default) |
 | Show properties as a card / Properties card title | The note's properties (frontmatter) become the first card, as a table of names and values; editing the card edits the raw properties text. Display-only title (off by default) |
 | Jump to today's card | Scroll to today's card when a note opens in the view (on by default; needs the note's Dates checkbox) |
@@ -585,6 +596,13 @@ prompt offers to create it (template applied, default placement).
 | Cross out nested items | Whether ticking a task also strikes through the items nested beneath it |
 | Star emoji | The emoji "Add star" writes at the start of a line, matched by the starred-only view (default ⭐) |
 | Card height | Maximum card height before the body scrolls |
+| Card text size / Divider text size | Scale the text on cards (titles, bodies, editors) and, separately, on the divider bars, relative to the theme |
+| Date detection format | An extra moment pattern that marks a heading as a date, with `*` wildcards for text around it (`*MMMM D, YYYY*`) |
+| Start the week on | First day of the Calendar layout's weeks: the language default, Sunday, or Monday |
+| Toolbar | Full, or Compact on one line with icons only (also switchable by right-clicking the toolbar) |
+| Deck thumbnails | How many notes the Deck shows: pinned notes first, then the most recently opened |
+| Card editor | Live preview, source mode, or a plain text box when editing a card |
+| Save edits when leaving a card | An open editor commits its changes when the wall re-renders under it (switching notes or layouts, opening the Deck, an outside change) instead of discarding them |
 
 ## Install
 
