@@ -995,6 +995,13 @@ export class SectionCardsView extends ItemView {
 		// chevron only hides it).
 		this.trayToggleBtn = zoomBar.createEl("button", { cls: "section-cards-tray-fold" });
 		this.trayToggleBtn.addEventListener("click", () => void this.setTrayCollapsed(!this.plugin.getTrayCollapsed(this.filePath)));
+		// And where the column was: a small "Show list" button in the canvas's top-right
+		// corner, shown only while the tray is folded (CSS), so the way back is in sight.
+		const restore = this.contentEl.createEl("button", { cls: "section-cards-tray-restore" });
+		setIcon(restore.createSpan({ cls: "section-cards-tray-restore-icon" }), "panel-right-open");
+		restore.createSpan({ text: "Show list" });
+		restore.setAttr("aria-label", "Show the list of what isn't on the canvas");
+		restore.addEventListener("click", () => void this.setTrayCollapsed(false));
 		this.syncTrayToggle();
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
 			if (evt.key !== "Escape") return;
