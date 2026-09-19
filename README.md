@@ -35,6 +35,25 @@ If this plugin is useful to you, you can support its development:
 
 <a href="https://buymeacoffee.com/zippydo"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="42"></a>
 
+## New in 2.0
+
+- **New note wizard.** ☰ → Note → **New note…** makes a blank note, or one shaped as a Kanban
+  board, a SWOT analysis, an Eisenhower matrix, or a GTD system — or a copy of any note in the
+  vault. Section names are editable, an Introduction and Additional notes are a toggle each,
+  and a one-line hint can sit under every heading. Any note with `cards-preset: true` in its
+  properties joins the list as a preset of your own (see [Templates](#templates)).
+- **Saved layouts.** Name a Custom Grid arrangement — placements, zoom, and the note's
+  background — and switch between the note's saved layouts from the tray, the toolbar's Layout
+  picker, or the New note wizard. A changed layout wears an asterisk and asks before it's lost
+  (see [Custom Grid](#custom-grid)).
+- **A toolbar of pickers.** Layout, Card level, View mode, Sort, and Group are buttons that open
+  a grid of icon tiles; the Layout picker sits beside the note's name. The tray beside a canvas
+  folds to a slim bar and comes back with a click.
+- **The Deck wears backgrounds.** Each tile shows its note's own background, and the Deck has a
+  background of its own, apart from any note's.
+- **The ☰ menu in two groups**, Card and Note; the Calendar opens on today; editing a card looks
+  like the card; the `?` dialog groups its shortcuts.
+
 ## What it does
 
 - **One card per heading.** Pick which level becomes a card (H1–H6). Multiple layouts, sort
@@ -47,7 +66,7 @@ If this plugin is useful to you, you can support its development:
   (or a title bar's menu). Ctrl/⌘-click makes a card big. Arrow keys walk the cards; Enter
   edits, Space selects, Shift+arrow extends.
 - **Group by.** Divider bars over buckets — first tag, date, open tasks, stars, or length —
-  from the toolbar's Group dropdown. Collapse any card to its title bar; both are remembered.
+  from the toolbar's Group picker. Collapse any card to its title bar; both are remembered.
 - **Plays with the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin.**
   Ticking a checkbox uses its toggle (recurring tasks recur), and the right-click menu gains its
   create/edit dialogs.
@@ -55,11 +74,14 @@ If this plugin is useful to you, you can support its development:
   button turns it over to the answer, definition, or notes behind (see [Card Flip](#card-flip)).
 - **Make it yours.** Apply custom card colors and background images (remembered per note),
   and tune the look with the [Style Settings](https://github.com/mgmeyers/obsidian-style-settings) plugin.
+- **Arrange freely, and keep the arrangements.** The Custom Grid canvas places sections where
+  you drop them; save an arrangement under a name and switch between saved layouts at will.
 - **Navigate as cards.** Wikilinks open the linked note's card wall, the ↗ button opens the section in a
   normal editor.
-- **Templates and dates.** New cards can start from a template note.
+- **Templates.** New cards can start from a template note, and new notes from the New note
+  wizard's built-in structures, your preset notes, or a copy of any note.
 - **Deck.** The toolbar's deck button (or `D`) flips the view to thumbnails of your pinned
-  and most recent card notes — click one to hop over.
+  and most recent card notes, each wearing its note's background — click one to hop over.
 - **Pick or create a note.** The toolbar's note button (or `O`) opens a picker of recent notes
   that searches the vault as you type. Type a title that isn't a note yet and the last row
   offers to create it (`Shift+Enter`, or the footer's "Create new note…" button), in Obsidian's default new-note folder —
@@ -349,11 +371,16 @@ forget the remembered view, or delete the note.
 
 ## The menu, and per-note backgrounds
 
-The ☰ button at the toolbar's left end collects the per-note controls, including
-**Background**: give the note's card wall an image — from the vault, your computer, or a
-URL (downloaded once into the attachment folder) — with live sliders for transparency,
-brightness, and saturation, all remembered per note. That one URL download is the plugin's
-only network access; everything else works fully offline.
+The ☰ button at the toolbar's left end (or `M`) collects the controls in two groups. **Card**:
+New card, the note's card template, Flip all cards over and back, Highlight today's card, and
+**Background**. **Note**: New note, Manage notes, Document setup, Reload from file, then the
+Layouts row, the Dates group, and Settings. In the Deck the note-specific items step aside and
+Background edits the Deck's own backdrop.
+
+**Background** gives the note's card wall an image — from the vault, your computer, or a URL
+(downloaded once into the attachment folder) — or a generated gradient, with live sliders for
+transparency, brightness, and saturation, all remembered per note. That one URL download is the
+plugin's only network access; everything else works fully offline.
 
 ## Style Settings
 
