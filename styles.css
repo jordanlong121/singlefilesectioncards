@@ -2548,52 +2548,20 @@ body.is-phone .sfsc-planner-title {
 	height: 16px;
 }
 
-/* Collapsed: the tray column is a slim strip holding the open button and the count of
-   what isn't on the canvas; the canvas takes the width. Remembered per note. */
+/* Folded: the tray column is gone and the canvas takes the width; the zoom bar's
+   panel button brings it back. Remembered per note. */
 .is-tray-collapsed.is-layout-custom,
 .is-tray-collapsed.is-layout-images,
 .is-tray-collapsed.is-layout-links {
-	grid-template-columns: 1fr 36px;
+	grid-template-columns: 1fr;
 }
 
 .is-tray-collapsed .section-cards-tray {
-	padding: 6px 4px;
-	overflow: hidden;
+	display: none;
 }
 
-.is-tray-collapsed .section-cards-tray-toggle {
-	width: 28px;
-	height: 28px;
-}
-
-/* Saved layouts: switcher, save, delete — a row under Clear layout. */
-.section-cards-tray-layouts {
-	display: flex;
-	gap: 4px;
-	margin-bottom: 8px;
-}
-
-.section-cards-tray-layout-select {
-	flex: 1 1 auto;
-	min-width: 0;
-	font-size: var(--font-ui-smaller);
-}
-
-.section-cards-tray-layout-select.is-dirty {
-	font-style: italic;
-}
-
-.section-cards-tray-layout-btn:disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
-}
-
-.section-cards-tray-count {
-	margin-top: 6px;
-	text-align: center;
-	font-size: var(--font-ui-smaller);
-	font-weight: 600;
-	color: var(--text-muted);
+.section-cards-tray-fold.is-active {
+	color: var(--interactive-accent);
 }
 
 .section-cards-tray-clear {
