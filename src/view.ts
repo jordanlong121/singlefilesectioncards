@@ -457,6 +457,8 @@ export class SectionCardsView extends ItemView {
 	private placementsLoadedFor: string | null = null;
 	/** Which note has already had its today-card jump, so later refreshes don't re-scroll. */
 	private todayJumpedFor: string | null = null;
+	/** Which note the Calendar has landed on today for, this visit to the layout. */
+	private calendarJumpedFor: string | null = null;
 	/** Set while the today-card jump may still need re-aiming after deferred bodies land. */
 	private todayJumpPending = false;
 	/** How many pinned cards lead the grid itself (0 when they're in the sticky band). */
@@ -747,6 +749,7 @@ export class SectionCardsView extends ItemView {
 	}
 
 	private switchLayout(next: Layout): void {
+		if (next !== "calendar") this.calendarJumpedFor = null; // the next visit lands on today again
 		this.layout = next;
 		this.rememberView();
 		this.applyLayoutClass();
@@ -3440,6 +3443,7 @@ export class SectionCardsView extends ItemView {
 
 		// Shared by every blank day cell: three handlers total, not three per day.
 		const blankIso = (evt: Event) => (evt.currentTarget as HTMLElement).dataset.scIso;
+		const todayIso = mo().format("YYYY-MM-DD");
 		const onBlankClick = (evt: MouseEvent) => {
 			const iso = blankIso(evt);
 			if (iso) this.promptCreateDateCard(iso);
@@ -3478,6 +3482,7 @@ export class SectionCardsView extends ItemView {
 				} else {
 					// An empty day offers to start its card — same dialog as jump-to-date.
 					const blank = grid.createDiv({ cls: "sc-cal-blank", text: String(day) });
+					if (iso === todayIso) blank.addClass("is-today"); // today with no card yet: the ring still marks it
 					blank.setAttr("role", "button");
 					blank.setAttr("aria-label", `Create a card for ${iso}`);
 					blank.dataset.scIso = iso;
@@ -5741,7 +5746,19 @@ export class SectionCardsView extends ItemView {
 
 		// Calendar: interleave the date-ordered cards with month labels and blank day
 		// cells, so grid auto-placement puts every day in its weekday column.
-		if (calendar) this.layoutCalendar(isoByHeading);
+		if (calendar) {
+			this.layoutCalendar(isoByHeading);
+			// Opening the Calendar on a dated note lands on today — the card, or the empty
+			// cell — once per note per visit to the layout (switchLayout resets it).
+			if (this.containsDates && this.calendarJumpedFor !== file.path) {
+				this.calendarJumpedFor = file.path;
+				const iso = mo().format("YYYY-MM-DD");
+				this.gridEl
+					.querySelector<HTMLElement>(`.section-card.is-today, .sc-cal-blank[data-sc-iso="${iso}"]`)
+					?.scrollIntoView({ block: "center" });
+				this.todayJumpedFor = file.path; // the first-render jump would aim at the same card
+			}
+		}
 		if (this.layout === "rolodex") this.layoutRolodex();
 		if (this.layout === "planner") this.layoutPlanner();
 		else this.clearPlanner();
