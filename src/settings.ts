@@ -214,6 +214,8 @@ export interface PerFileView extends ViewSettings {
 	planner?: Record<string, Record<string, PlannerSlot>>;
 	/** Layouts switched off for this note: left out of the dropdown, the menus, and the L cycle. */
 	hiddenLayouts?: Layout[];
+	/** The canvases' tray (the list of what isn't on the canvas) folded to a slim strip. */
+	trayCollapsed?: boolean;
 	/** Document setup: what each heading level holds (☰ → Document setup…). */
 	levels?: DocumentLevels;
 	/** Headings pinned to the top of the card wall, in the order they were pinned. */

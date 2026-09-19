@@ -710,6 +710,21 @@ export default class SectionCardsPlugin extends Plugin {
 		return this.settings.perFile?.[path]?.containsDates;
 	}
 
+	/** Whether the canvases' tray is folded to a slim strip for this note. */
+	getTrayCollapsed(path: string): boolean {
+		return !!this.settings.perFile?.[path]?.trayCollapsed;
+	}
+
+	async setTrayCollapsed(path: string, collapsed: boolean, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (collapsed) current.trayCollapsed = true;
+		else delete current.trayCollapsed;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
 	async setContainsDates(path: string, value: boolean, base: ViewSettings): Promise<void> {
 		if (!path) return;
 		this.settings.perFile = this.settings.perFile ?? {};

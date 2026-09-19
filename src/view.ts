@@ -1329,6 +1329,7 @@ export class SectionCardsView extends ItemView {
 
 	/** The layout lives as a class on the view root so CSS can restyle grid *and* scrolling. */
 	private applyLayoutClass(): void {
+		this.contentEl.toggleClass("is-tray-collapsed", this.plugin.getTrayCollapsed(this.filePath));
 		for (const name of [
 			"grid",
 			"aligned",
@@ -7808,6 +7809,7 @@ export class SectionCardsView extends ItemView {
 	 * a tray full of loading pages would be pure weight). */
 	private rebuildLinksTray(unplacedKeys: string[]): void {
 		this.trayEl.empty();
+		if (this.buildTrayCollapsed("link", unplacedKeys.length)) return;
 		this.buildTrayControls("link", "Drag a link onto the canvas");
 		for (const key of unplacedKeys) {
 			const link = this.linksByKey.get(key);
@@ -7984,6 +7986,31 @@ export class SectionCardsView extends ItemView {
 	}
 
 	/** Permanent tray controls, shared by both canvases: Clear, the sorts, the hint. */
+	/**
+	 * The tray folded to a slim strip: a button to open it again and the count of what
+	 * isn't on the canvas. True when that's what was drawn (the caller draws nothing else).
+	 */
+	private buildTrayCollapsed(noun: string, count: number): boolean {
+		if (!this.plugin.getTrayCollapsed(this.filePath)) return false;
+		const btn = this.trayEl.createEl("button", { cls: "section-cards-tray-toggle" });
+		setIcon(btn, "chevron-left");
+		btn.setAttr("aria-label", `Show the ${noun} list (${count} not on the canvas)`);
+		btn.addEventListener("click", () => void this.setTrayCollapsed(false));
+		if (count) {
+			const n = this.trayEl.createDiv({ cls: "section-cards-tray-count", text: String(count) });
+			n.setAttr("aria-label", `${count} ${noun}${count === 1 ? "" : "s"} not on the canvas`);
+		}
+		return true;
+	}
+
+	/** Fold or open the tray, remembered per note; the tray redraws on the refresh. */
+	private async setTrayCollapsed(collapsed: boolean): Promise<void> {
+		await this.plugin.setTrayCollapsed(this.filePath, collapsed, this.viewSettings());
+		this.contentEl.toggleClass("is-tray-collapsed", collapsed);
+		this.traySignature = null;
+		await this.refresh();
+	}
+
 	private buildTrayControls(noun: string, hint: string): void {
 		const actions = this.trayEl.createDiv({ cls: "section-cards-tray-actions" });
 		const clearBtn = actions.createEl("button", { cls: "section-cards-tray-clear", text: "Clear layout" });
@@ -7996,6 +8023,10 @@ export class SectionCardsView extends ItemView {
 			}
 			new ConfirmClearModal(this.app, placed, noun, () => this.clearCanvas()).open();
 		});
+		const foldBtn = actions.createEl("button", { cls: "section-cards-tray-toggle" });
+		setIcon(foldBtn, "chevron-right");
+		foldBtn.setAttr("aria-label", `Hide the ${noun} list`);
+		foldBtn.addEventListener("click", () => void this.setTrayCollapsed(true));
 		const sortRow = this.trayEl.createDiv({ cls: "section-cards-tray-sorts" });
 		const sorts: [SortOrder, string][] = [
 			["asc", "A→Z"],
@@ -8018,6 +8049,7 @@ export class SectionCardsView extends ItemView {
 
 	private rebuildTray(unplacedKeys: string[]): void {
 		this.trayEl.empty();
+		if (this.buildTrayCollapsed("section", unplacedKeys.length)) return;
 		this.buildTrayControls("section", "Drag a section onto the canvas");
 		const today = this.todayKeys();
 		const trayColors = this.plugin.getCardColors(this.filePath);
@@ -8051,6 +8083,7 @@ export class SectionCardsView extends ItemView {
 	/** The Images tray: a thumbnail-and-name tile per unplaced image. */
 	private rebuildImagesTray(unplacedKeys: string[]): void {
 		this.trayEl.empty();
+		if (this.buildTrayCollapsed("image", unplacedKeys.length)) return;
 		this.buildTrayControls("image", "Drag an image onto the canvas");
 		for (const key of unplacedKeys) {
 			const image = this.imagesByKey.get(key);
