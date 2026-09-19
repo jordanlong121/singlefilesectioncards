@@ -429,7 +429,7 @@ export default class SectionCardsPlugin extends Plugin {
 			if (spec.savedLayout) await this.applySavedLayout(file.path, spec.savedLayout);
 			const stored = this.getStoredView(spec.templatePath);
 			await this.storeView(file.path, {
-				layout: stored?.layout ?? this.settings.layout,
+				layout: spec.layout ?? stored?.layout ?? this.settings.layout,
 				headingLevel: spec.level,
 				sortOrder: stored?.sortOrder ?? "doc",
 				hierarchy: stored?.hierarchy ?? false,
@@ -449,7 +449,7 @@ export default class SectionCardsPlugin extends Plugin {
 			if (spec.savedLayout) await this.applySavedLayout(file.path, spec.savedLayout);
 		}
 		const view: ViewSettings = {
-			layout: def?.layout ?? this.settings.layout,
+			layout: spec.layout ?? def?.layout ?? this.settings.layout,
 			headingLevel: spec.level,
 			sortOrder: "doc",
 			hierarchy: false,
