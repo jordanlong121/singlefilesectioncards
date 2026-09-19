@@ -353,7 +353,7 @@ export class StructuredNoteModal extends Modal {
 			.addDropdown((dd) => {
 				dd.addOption("none", "None");
 				for (const f of STRUCTURED_FORMATS) dd.addOption(f.id, f.label);
-				dd.addOption("note", "The headings of a note in the vault…");
+				dd.addOption("note", "Existing note (headings only)");
 				// Preset notes join the list once read — after the built-ins, before "any note".
 				void listPresets(this.plugin.app).then((found) => {
 					presets = found;
