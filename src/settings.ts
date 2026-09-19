@@ -139,6 +139,24 @@ export const LAYOUT_ICONS: Record<Layout, [string, string]> = {
 	heatmap: ["activity", "bar-chart-2"],
 };
 
+/** Icons for the Deck's sort picker and the Group picker (name, older fallback). */
+export const DECK_SORT_ICONS: Record<string, [string, string]> = {
+	recent: ["clock", "clock"],
+	"name-asc": ["arrow-down-a-z", "sort-asc"],
+	"name-desc": ["arrow-up-z-a", "sort-desc"],
+	modified: ["file-pen", "edit"],
+	created: ["file-plus", "file-plus"],
+};
+
+export const GROUP_BY_ICONS: Record<string, [string, string]> = {
+	none: ["minus", "minus"],
+	tag: ["tag", "tag"],
+	date: ["calendar-days", "calendar"],
+	tasks: ["list-checks", "check-square"],
+	stars: ["star", "star"],
+	length: ["ruler", "align-left"],
+};
+
 export type DeckSort = "recent" | "name-asc" | "name-desc" | "modified" | "created";
 
 export const DECK_SORT_LABELS: [DeckSort, string][] = [
