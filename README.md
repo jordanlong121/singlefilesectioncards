@@ -382,6 +382,15 @@ above it. The **Flip-over button** setting (on by default) turns the whole featu
 The toolbar button beside **+ New card** holds the open note's new-card options: a template
 note, and the note's own heading-name format.
 
+## Structured notes
+
+☰ → **New structured note…** (also a command) is a wizard for notes with a well-known shape:
+a **Kanban board**, a **SWOT analysis**, an **Eisenhower matrix**, or a **GTD** system. Pick
+the format, name the note, choose the heading level, edit the section names, and switch on an
+**Introduction** section, an **Additional notes** section, and a one-line hint under each
+heading. The note is written with one heading per section and opens as cards in the layout
+that suits it: columns side by side for a board, a 2×2 canvas for a matrix, the wall for GTD.
+
 ## Templates
 
 A template pre-fills the body of every new card, so a daily-notes file can start each day with

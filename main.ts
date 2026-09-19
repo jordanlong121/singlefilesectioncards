@@ -28,6 +28,7 @@ import { CardRect } from "./src/canvas";
 import { BACKGROUND_DIM_DEFAULT } from "./src/background";
 import { TextInputModal, NoteLibraryModal } from "./src/modals";
 import { SectionCardsSettingTab } from "./src/settings-tab";
+import { StructuredNoteModal, StructuredSpec, structuredFormat, structuredNoteMarkdown, structuredPlacements, structuredNotePath } from "./src/structured";
 import { SectionCardsView } from "./src/view";
 
 export * from "./src/settings";
@@ -44,6 +45,7 @@ export * from "./src/editing";
 export * from "./src/background";
 export * from "./src/modals";
 export * from "./src/settings-tab";
+export * from "./src/structured";
 export * from "./src/view";
 
 export default class SectionCardsPlugin extends Plugin {
@@ -86,6 +88,12 @@ export default class SectionCardsPlugin extends Plugin {
 			id: "manage-notes",
 			name: "Manage notes",
 			callback: () => new NoteLibraryModal(this, (path) => void this.openCardsView(path)).open(),
+		});
+
+		this.addCommand({
+			id: "new-structured-note",
+			name: "New structured note",
+			callback: () => this.promptStructuredNote(),
 		});
 
 		this.addCommand({
@@ -373,6 +381,49 @@ export default class SectionCardsPlugin extends Plugin {
 	 * another tab, so any number of cards tabs — including several of the same note — can
 	 * be open at once. (Obsidian's native "Duplicate tab" also works on cards tabs.)
 	 */
+	/** The structured-note wizard; a created note opens as cards in its format's layout. */
+	promptStructuredNote(): void {
+		new StructuredNoteModal(this, (name, spec) => void this.createStructuredNote(name, spec)).open();
+	}
+
+	/**
+	 * Write a structured note from the wizard's choices and open it as cards: the
+	 * format's layout and the chosen level remembered for the note, Dates off, and — for
+	 * a matrix — the sections placed as quadrants on the Custom Grid.
+	 */
+	async createStructuredNote(name: string, spec: StructuredSpec): Promise<void> {
+		const path = structuredNotePath(this.app, this.settings.filePath, name);
+		if (this.app.vault.getAbstractFileByPath(path)) {
+			new Notice(`“${path}” already exists.`);
+			return;
+		}
+		let file: TFile;
+		try {
+			const folder = path.slice(0, path.lastIndexOf("/"));
+			if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+			file = await this.app.vault.create(path, structuredNoteMarkdown(spec));
+		} catch (err) {
+			new Notice(`Couldn't create “${path}”: ${err instanceof Error ? err.message : String(err)}`);
+			return;
+		}
+		const def = structuredFormat(spec.format);
+		const view: ViewSettings = {
+			layout: def.layout,
+			headingLevel: spec.level,
+			sortOrder: "doc",
+			hierarchy: false,
+			sections: false,
+			starredOnly: false,
+			taskFilter: "all",
+			groupBy: "none",
+		};
+		await this.storeView(file.path, view);
+		await this.setContainsDates(file.path, false, view);
+		const placements = structuredPlacements(spec);
+		if (placements) await this.saveCustomGrid(file.path, placements, view, 1);
+		await this.openCardsView(file.path, undefined, "new");
+	}
+
 	/**
 	 * Stickies: one card on its own in a popout window, so it stays at hand while other
 	 * notes are worked on. The view carries the card's heading in its state, so the
