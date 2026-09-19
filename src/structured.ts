@@ -165,8 +165,8 @@ export const STRUCTURED_FORMATS: StructuredFormatDef[] = [
 	},
 ];
 
-/** A built-in format by id; null for "note" (a vault note as the template). */
-export function structuredFormat(id: StructuredFormat | "note"): StructuredFormatDef | null {
+/** A built-in format by id; null for anything else ("none", "note", a preset id). */
+export function structuredFormat(id: string): StructuredFormatDef | null {
 	return STRUCTURED_FORMATS.find((f) => f.id === id) ?? null;
 }
 
