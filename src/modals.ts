@@ -746,32 +746,55 @@ export class ShortcutsModal extends Modal {
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.createEl("h3", { text: "Keyboard shortcuts" });
-		const rows: [string, string][] = [
-			["1–6", "Show that heading level as cards"],
-			["L / Shift+L", "Cycle the layouts forwards / backwards"],
-			["V", "Cycle the view modes: default / hierarchy / dividers"],
-			["D", "Show or hide the Deck of notes"],
-			["M", "Open the ☰ menu"],
-			[", / .", "Previous / next heading in the Hierarchy and Dividers view modes, or card in the Rolodex"],
-			["S", "Show only starred lines / show everything"],
-			["↑ ↓ ← →", "Move the keyboard focus between cards (Shift extends the selection)"],
-			["Enter / Space", "Edit the focused card / select or deselect it"],
-			["Click a title bar", "Select that card; Shift+click selects the run from it; click empty space to clear"],
-			[`${MOD_LABEL}+click`, "Make the card big"],
-			[`${MOD_LABEL}+A`, "Select every visible card"],
-			["F", "Flip the card under the pointer over / back"],
-			["Shift+F", "Flip every card back to the front"],
-			["N", "New card"],
-			["O", "Open a different note"],
-			[`${MOD_LABEL}+F`, "Jump to the filter box"],
-			["Esc", "Clear the filter, or close a maximized card"],
-			[`${MOD_LABEL}+Enter`, "Save the card being edited"],
-			[`${MOD_LABEL}+T`, "In a card editor: edit the task on the cursor line, or create one there (Tasks plugin)"],
+		const groups: [string, [string, string][]][] = [
+			[
+				"Cards",
+				[
+					["N", "New card"],
+					["Click a title bar", "Select that card; Shift+click selects the run from it; click empty space to clear"],
+					[`${MOD_LABEL}+A`, "Select every visible card"],
+					["↑ ↓ ← →", "Move the keyboard focus between cards (Shift extends the selection)"],
+					["Enter / Space", "Edit the focused card / select or deselect it"],
+					[`${MOD_LABEL}+click`, "Make the card big"],
+					["F", "Flip the card under the pointer over / back"],
+					["Shift+F", "Flip every card back to the front"],
+				],
+			],
+			[
+				"Editing a card",
+				[
+					[`${MOD_LABEL}+Enter`, "Save the card being edited"],
+					[`${MOD_LABEL}+T`, "Edit the task on the cursor line, or create one there (Tasks plugin)"],
+					["Esc", "Cancel the edit; elsewhere, clear the filter or close a big card"],
+				],
+			],
+			[
+				"Layout and view",
+				[
+					["1–6", "Show that heading level as cards"],
+					["L / Shift+L", "Cycle the layouts forwards / backwards"],
+					["V", "Cycle the view modes: default / hierarchy / dividers"],
+					[", / .", "Previous / next heading in the Hierarchy and Dividers view modes, or card in the Rolodex and Day Planner"],
+					["S", "Show only starred lines / show everything"],
+					[`${MOD_LABEL}+F`, "Jump to the filter box"],
+				],
+			],
+			[
+				"Notes",
+				[
+					["O", "Open a different note"],
+					["D", "Show or hide the Deck of notes"],
+					["M", "Open the ☰ menu"],
+				],
+			],
 		];
 		const grid = contentEl.createDiv({ cls: "sfsc-shortcuts" });
-		for (const [key, desc] of rows) {
-			grid.createEl("kbd", { cls: "sfsc-shortcuts-key", text: key });
-			grid.createDiv({ cls: "sfsc-shortcuts-desc", text: desc });
+		for (const [title, rows] of groups) {
+			grid.createDiv({ cls: "sfsc-shortcuts-group", text: title });
+			for (const [key, desc] of rows) {
+				grid.createEl("kbd", { cls: "sfsc-shortcuts-key", text: key });
+				grid.createDiv({ cls: "sfsc-shortcuts-desc", text: desc });
+			}
 		}
 		contentEl.createEl("p", {
 			cls: "sfsc-shortcuts-note",
