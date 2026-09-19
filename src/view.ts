@@ -279,11 +279,13 @@ interface PickerSpec {
 	ariaLabel: string;
 	/** A fixed icon for the button (sort, group); unset, the current option's icon shows (layout). */
 	buttonIcon?: string;
-	value: string;
+	/** The current choice, or a getter read when the button is built and when it opens. */
+	value: string | (() => string);
 	columns?: number;
 	/** Small text-only tiles in one row (the heading levels): the label says it all. */
 	compact?: boolean;
-	options: PickerOption[];
+	/** The choices, or a getter read each time the picker opens (levels change with the note). */
+	options: PickerOption[] | (() => PickerOption[]);
 	onPick: (value: string) => void;
 }
 
@@ -818,11 +820,13 @@ export class SectionCardsView extends ItemView {
 	 */
 	private buildPicker(host: HTMLElement, spec: PickerSpec): HTMLElement {
 		const btn = host.createEl("button", { cls: `sfsc-picker-btn ${spec.cls}` });
-		const current = spec.options.find((o) => o.value === spec.value);
-		const icon = spec.buttonIcon ?? current?.icon ?? spec.options[0]?.icon ?? "chevron-down";
+		const options = typeof spec.options === "function" ? spec.options() : spec.options;
+		const value = typeof spec.value === "function" ? spec.value() : spec.value;
+		const current = options.find((o) => o.value === value);
+		const icon = spec.buttonIcon ?? current?.icon ?? options[0]?.icon ?? "chevron-down";
 		const fallback = spec.buttonIcon ? spec.buttonIcon : (current?.fallback ?? icon);
 		SectionCardsView.setIconOr(btn.createSpan({ cls: "sfsc-picker-btn-icon" }), icon, fallback);
-		btn.createSpan({ cls: "sfsc-picker-btn-label", text: current?.label ?? spec.value });
+		btn.createSpan({ cls: "sfsc-picker-btn-label", text: current?.label ?? value });
 		setIcon(btn.createSpan({ cls: "sfsc-picker-btn-chevron" }), "chevron-down");
 		btn.setAttr("aria-label", current ? `${spec.ariaLabel}: ${current.label}` : spec.ariaLabel);
 		btn.setAttr("aria-haspopup", "true");
@@ -838,20 +842,23 @@ export class SectionCardsView extends ItemView {
 		const pop = this.contentEl.createDiv({ cls: "sfsc-picker-pop" });
 		pop.setAttr("role", "menu");
 		pop.toggleClass("is-compact", !!spec.compact);
-		const columns = spec.compact ? spec.options.length : (spec.columns ?? 3);
+		// Read now, not when the button was built: the note's levels may have changed since.
+		const options = typeof spec.options === "function" ? spec.options() : spec.options;
+		const value = typeof spec.value === "function" ? spec.value() : spec.value;
+		const columns = spec.compact ? Math.max(1, options.length) : (spec.columns ?? 3);
 		pop.setCssProps({ "--sfsc-picker-cols": String(columns) });
-		for (const option of spec.options) {
+		for (const option of options) {
 			const tile = pop.createEl("button", { cls: "sfsc-picker-tile" });
 			tile.setAttr("role", "menuitemradio");
-			tile.setAttr("aria-checked", String(option.value === spec.value));
+			tile.setAttr("aria-checked", String(option.value === value));
 			if (option.hint) tile.setAttr("title", option.hint);
-			tile.toggleClass("is-active", option.value === spec.value);
+			tile.toggleClass("is-active", option.value === value);
 			if (!spec.compact) SectionCardsView.setIconOr(tile.createSpan({ cls: "sfsc-picker-tile-icon" }), option.icon, option.fallback ?? option.icon);
 			tile.createSpan({ cls: "sfsc-picker-tile-label", text: option.label });
 			if (option.disabled) tile.toggleAttribute("disabled", true);
 			tile.addEventListener("click", () => {
 				this.closePicker();
-				if (option.value !== spec.value) spec.onPick(option.value);
+				if (option.value !== value) spec.onPick(option.value);
 			});
 		}
 		// Under the button, within the pane (pulled left if it would run past the edge).
@@ -4392,16 +4399,16 @@ export class SectionCardsView extends ItemView {
 	 * which level that is but greys out (the 1–6 keys are guarded the same way). */
 	private populateLevelOptions(): void {
 		const host = this.levelHost;
-		if (!host?.isConnected) return;
+		if (!host) return;
 		host.empty();
 		this.levelOptionsShown = this.levelOptionValues().join(",");
 		const btn = this.buildPicker(host, {
 			cls: "section-cards-level-btn",
 			ariaLabel: "Heading level shown as cards (keys 1–6)",
 			buttonIcon: "heading",
-			value: String(this.headingLevel),
+			value: () => String(this.headingLevel),
 			compact: true,
-			options: this.levelOptionValues().map((l) => ({ value: String(l), label: `H${l}`, icon: `heading-${l}`, fallback: "heading" })),
+			options: () => this.levelOptionValues().map((l) => ({ value: String(l), label: `H${l}`, icon: `heading-${l}`, fallback: "heading" })),
 			onPick: (value) => void this.changeHeadingLevel(Number(value)),
 		});
 		if (this.isDateLayout()) {
