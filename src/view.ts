@@ -4657,34 +4657,40 @@ export class SectionCardsView extends ItemView {
 		menu.addSeparator();
 		this.addLayoutItems(menu);
 
-		menu.addSeparator();
-		addHeading("Dates");
-		if (this.hasDateHeadings) {
-			menu.addItem((item) =>
-				item
-					.setTitle("Jump to a date's card…")
-					.setIcon("calendar-days")
-					.onClick(() => this.openJumpPicker?.()),
-			);
-		}
-		if (this.containsDates && this.dateHideApplies()) {
-			// Relative to today; today's own card always shows, undated cards too. Not on
-			// the Calendar/Heatmap, whose grids place every day, nor the Day Planner.
-			const hide = this.plugin.getDateHide(this.filePath);
-			menu.addItem((item) =>
-				item
-					.setTitle("Hide future dates")
-					.setIcon("calendar-arrow-down")
-					.setChecked(hide.future)
-					.onClick(() => void this.plugin.setDateHide(this.filePath, { future: !hide.future }, base)),
-			);
-			menu.addItem((item) =>
-				item
-					.setTitle("Hide past dates")
-					.setIcon("calendar-arrow-up")
-					.setChecked(hide.past)
-					.onClick(() => void this.plugin.setDateHide(this.filePath, { past: !hide.past }, base)),
-			);
+		// Dates: only when there's something to offer — a jump needs date headings, the
+		// hides a dated note on a layout they apply to.
+		const showHides = this.containsDates && this.dateHideApplies();
+		if (this.hasDateHeadings || showHides) {
+			menu.addSeparator();
+			addHeading("Dates");
+			if (this.hasDateHeadings) {
+				menu.addItem((item) =>
+					item
+						.setTitle("Jump to a date's card…")
+						.setIcon("calendar-days")
+						.onClick(() => this.openJumpPicker?.()),
+				);
+			}
+			if (showHides) {
+				// Relative to today; today's own card always shows, undated cards too. Not on
+				// the Calendar/Heatmap, whose grids place every day, nor the Day Planner.
+				const hide = this.plugin.getDateHide(this.filePath);
+				menu.addItem((item) =>
+					item
+						.setTitle("Hide future dates")
+						.setIcon("calendar-arrow-down")
+						.setChecked(hide.future)
+						.onClick(() => void this.plugin.setDateHide(this.filePath, { future: !hide.future }, base)),
+				);
+				menu.addItem((item) =>
+					item
+						.setTitle("Hide past dates")
+						.setIcon("calendar-arrow-up")
+						.setChecked(hide.past)
+						.onClick(() => void this.plugin.setDateHide(this.filePath, { past: !hide.past }, base)),
+				);
+			}
+
 		}
 
 		menu.addSeparator();
