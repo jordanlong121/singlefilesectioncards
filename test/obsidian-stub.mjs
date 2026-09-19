@@ -8,6 +8,11 @@ export class Notice {}
 export class MarkdownView {}
 export class Setting {}
 export class TFile {}
+export class TFolder {
+	constructor(path = "") {
+		this.path = path;
+	}
+}
 export class WorkspaceLeaf {}
 export const MarkdownRenderer = {};
 export const App = {};
