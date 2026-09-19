@@ -4917,6 +4917,10 @@ export class SectionCardsView extends ItemView {
 						(item as MenuItem & { dom?: HTMLElement }).dom?.addClass("sfsc-menu-hidden-layout");
 						return;
 					}
+					// The layout's icon, as in the toolbar's picker (an older name as fallback).
+					const [icon, fallback] = LAYOUT_ICONS[value];
+					item.setIcon(icon);
+					if (!(item as MenuItem & { iconEl?: HTMLElement }).iconEl?.querySelector("svg")) item.setIcon(fallback);
 					item
 						.setTitle(label)
 						.setChecked(this.layout === value)
