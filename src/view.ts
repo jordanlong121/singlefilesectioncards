@@ -4587,23 +4587,36 @@ export class SectionCardsView extends ItemView {
 				.setDisabled(this.deckMode)
 				.onClick(() => this.promptNewCard()),
 		);
-		menu.addItem((item) =>
-			item
-				.setTitle("Use template…")
-				.setIcon("layout-template")
-				.onClick(() => this.openTemplateMenu(evt, this.templateBtn ?? this.toolbarEl)),
-		);
+		// Templates: the card template this note's new cards start from, and new notes
+		// made from a built-in structure or a copy of a vault note.
+		const templateItems = (m: Menu) => {
+			m.addItem((item) =>
+				item
+					.setTitle("Card template for this note…")
+					.setIcon("file-plus-2")
+					.onClick(() => this.openTemplateMenu(evt, this.templateBtn ?? this.toolbarEl)),
+			);
+			m.addItem((item) =>
+				item
+					.setTitle("New note from template…")
+					.setIcon("layout-template")
+					.onClick(() => this.plugin.promptStructuredNote()),
+			);
+		};
+		if (SectionCardsView.submenuSupported()) {
+			menu.addItem((item) => {
+				item.setTitle("Templates").setIcon("layout-template");
+				templateItems((item as MenuItem & { setSubmenu: () => Menu }).setSubmenu());
+			});
+		} else {
+			SectionCardsView.addMenuHeading(menu, "Templates");
+			templateItems(menu);
+		}
 		menu.addItem((item) =>
 			item
 				.setTitle("Manage notes…")
 				.setIcon("library")
 				.onClick(() => new NoteLibraryModal(this.plugin, (path) => void this.navigateTo(path)).open()),
-		);
-		menu.addItem((item) =>
-			item
-				.setTitle("New structured note…")
-				.setIcon("layout-template")
-				.onClick(() => this.plugin.promptStructuredNote()),
 		);
 		// What each heading level of this note holds — a year, month, week, day, or
 		// text — which the Day Planner's arrows follow.

@@ -4757,7 +4757,11 @@ body.is-phone .section-cards-label {
 	background-color: var(--interactive-accent);
 }
 
-/* ---------- New structured note wizard ---------- */
+/* ---------- New note from template wizard ---------- */
+.sfsc-structured-modal .setting-item.is-hidden {
+	display: none;
+}
+
 .sfsc-structured-desc {
 	margin: -4px 0 10px;
 	font-size: var(--font-ui-small);

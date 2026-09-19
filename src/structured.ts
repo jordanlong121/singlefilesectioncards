@@ -1,11 +1,14 @@
-// Structured notes: a wizard that creates a note pre-shaped as a Kanban board, a SWOT
-// analysis, an Eisenhower matrix, or a GTD system — one card per section, at the chosen
-// heading level, with optional Introduction and Additional notes sections.
+// New note from template: a wizard that creates a note pre-shaped as a Kanban board, a
+// SWOT analysis, an Eisenhower matrix, or a GTD system — one card per section, at the
+// chosen heading level — or as a copy of any note in the vault, with the card templates'
+// placeholders filled in and optional Introduction and Additional notes sections.
 
-import { App, Modal, Notice, Setting, normalizePath } from "obsidian";
+import { App, Modal, Notice, Setting, TFile, normalizePath } from "obsidian";
 import type SectionCardsPlugin from "../main";
 import { Layout } from "./settings";
 import { CardRect, CUSTOM_SNAP } from "./canvas";
+import { applyTemplatePlaceholders, headingLevelsIn } from "./sections";
+import { FileSuggestModal } from "./modals";
 
 export type StructuredFormat = "kanban" | "swot" | "eisenhower" | "gtd";
 
@@ -88,13 +91,16 @@ export const STRUCTURED_FORMATS: StructuredFormatDef[] = [
 	},
 ];
 
-export function structuredFormat(id: StructuredFormat): StructuredFormatDef {
-	return STRUCTURED_FORMATS.find((f) => f.id === id) ?? STRUCTURED_FORMATS[0];
+/** A built-in format by id; null for "note" (a vault note as the template). */
+export function structuredFormat(id: StructuredFormat | "note"): StructuredFormatDef | null {
+	return STRUCTURED_FORMATS.find((f) => f.id === id) ?? null;
 }
 
-/** What the wizard collected. `sections` are the titles as edited, in order. */
+/** What the wizard collected. `sections` are the titles as edited, in order; with the
+ * "note" format the body comes from `templatePath` instead. */
 export interface StructuredSpec {
-	format: StructuredFormat;
+	format: StructuredFormat | "note";
+	templatePath?: string;
 	level: number;
 	sections: string[];
 	intro: boolean;
@@ -112,29 +118,49 @@ export function structuredTitles(spec: StructuredSpec): string[] {
 }
 
 /**
- * The note's markdown: one heading per section at the chosen level, a blank line
- * between sections, and — with hints on — one italic line under each heading saying
- * what belongs there (the format's own for its sections, a generic one for the two
- * optional ones; a renamed section keeps its position's hint). The hint sits between
- * blank lines, so it stays a paragraph of its own: a task added above it (Quick Add at
- * the top, a drop) doesn't swallow it as a continuation, and it moves and deletes alone.
+ * The note's markdown. A built-in format: one heading per section at the chosen level,
+ * a blank line between sections, and — with hints on — one italic line under each
+ * heading saying what belongs there (the format's own for its sections, a generic one
+ * for the two optional ones; a renamed section keeps its position's hint). The hint
+ * sits between blank lines, so it stays a paragraph of its own: a task added above it
+ * (Quick Add at the top, a drop) doesn't swallow it as a continuation, and it moves and
+ * deletes alone. The "note" format: the template note's body as it is, the optional
+ * sections around it.
  */
-export function structuredNoteMarkdown(spec: StructuredSpec): string {
+export function structuredNoteMarkdown(spec: StructuredSpec, templateBody = ""): string {
 	const def = structuredFormat(spec.format);
 	const hashes = "#".repeat(Math.min(6, Math.max(1, spec.level)));
 	const hintFor = (title: string, index: number): string | null => {
 		if (!spec.hints) return null;
 		if (title === INTRO_TITLE) return "What this note is for, and how to use it.";
 		if (title === NOTES_TITLE) return "Anything that doesn't fit the sections above.";
-		return def.sections[index]?.hint ?? null;
+		return def?.sections[index]?.hint ?? null;
 	};
-	const own = spec.sections.map((s) => s.trim()).filter(Boolean);
 	const blocks: string[] = [];
 	const push = (title: string, hint: string | null) => blocks.push(hint ? `${hashes} ${title}\n\n*${hint}*\n` : `${hashes} ${title}\n`);
 	if (spec.intro) push(INTRO_TITLE, hintFor(INTRO_TITLE, -1));
-	own.forEach((title, i) => push(title, hintFor(title, i)));
+	if (spec.format === "note") {
+		const body = templateBody.replace(/^\s*\n/, "").trimEnd();
+		if (body) blocks.push(`${body}\n`);
+	} else {
+		spec.sections
+			.map((s) => s.trim())
+			.filter(Boolean)
+			.forEach((title, i) => push(title, hintFor(title, i)));
+	}
 	if (spec.notes) push(NOTES_TITLE, hintFor(NOTES_TITLE, -1));
 	return blocks.join("\n");
+}
+
+/** The note as written: the markdown with the card templates' placeholders filled —
+ * {{title}} is the note's name, {{date}} and {{time}} now. */
+export function structuredNoteContent(spec: StructuredSpec, noteName: string, headingFormat: string, templateBody = ""): string {
+	return applyTemplatePlaceholders(structuredNoteMarkdown(spec, templateBody), noteName, headingFormat);
+}
+
+/** The heading level a template note's cards live at: its shallowest heading, else `fallback`. */
+export function templateNoteLevel(body: string, fallback: number): number {
+	return headingLevelsIn(body.split(/\r?\n/))[0] ?? fallback;
 }
 
 /**
@@ -144,7 +170,7 @@ export function structuredNoteMarkdown(spec: StructuredSpec): string {
  */
 export function structuredPlacements(spec: StructuredSpec): Record<string, CardRect> | null {
 	const def = structuredFormat(spec.format);
-	if (!def.matrix) return null;
+	if (!def?.matrix) return null;
 	const hashes = "#".repeat(Math.min(6, Math.max(1, spec.level)));
 	const unit = CUSTOM_SNAP;
 	const quadW = unit * 14;
@@ -168,8 +194,9 @@ export function structuredPlacements(spec: StructuredSpec): Record<string, CardR
 	return out;
 }
 
-/** The wizard: pick a format, name the note, choose the heading level, edit the
- * sections, and switch the Introduction, Additional notes, and hints on or off. */
+/** The wizard: pick a built-in format or a note from the vault, name the note, choose
+ * the heading level, edit the sections, and switch the Introduction, Additional notes,
+ * and hints on or off. */
 export class StructuredNoteModal extends Modal {
 	private readonly plugin: SectionCardsPlugin;
 	private readonly onCreate: (name: string, spec: StructuredSpec) => void;
@@ -183,9 +210,9 @@ export class StructuredNoteModal extends Modal {
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.addClass("sfsc-structured-modal");
-		contentEl.createEl("h3", { text: "New structured note" });
+		contentEl.createEl("h3", { text: "New note from template" });
 
-		let def = STRUCTURED_FORMATS[0];
+		let def: StructuredFormatDef | null = STRUCTURED_FORMATS[0];
 		const spec: StructuredSpec = {
 			format: def.id,
 			level: 2,
@@ -196,26 +223,67 @@ export class StructuredNoteModal extends Modal {
 		};
 		let name = def.noteName;
 		let nameTouched = false;
+		const NOTE_DESC = "A copy of a note in the vault, its {{title}}, {{date}}, and {{time}} placeholders filled in.";
 
 		let description!: HTMLElement;
 		let nameInput!: HTMLInputElement;
 		let sectionsInput!: HTMLInputElement;
+		let levelDropdown!: { setValue: (v: string) => unknown };
+		let templateRow!: Setting;
+		let sectionsRow!: Setting;
+		let hintsRow!: Setting;
 
-		new Setting(contentEl).setName("Format").addDropdown((dd) => {
+		// The rows that only make sense for one kind of template.
+		const syncRows = () => {
+			const fromNote = spec.format === "note";
+			templateRow.settingEl.toggleClass("is-hidden", !fromNote);
+			sectionsRow.settingEl.toggleClass("is-hidden", fromNote);
+			hintsRow.settingEl.toggleClass("is-hidden", fromNote);
+		};
+
+		new Setting(contentEl).setName("Template").addDropdown((dd) => {
 			for (const f of STRUCTURED_FORMATS) dd.addOption(f.id, f.label);
-			dd.setValue(def.id).onChange((value) => {
-				def = structuredFormat(value as StructuredFormat);
-				spec.format = def.id;
-				spec.sections = def.sections.map((s) => s.title);
-				sectionsInput.value = spec.sections.join(", ");
-				description.setText(def.description);
-				if (!nameTouched) {
+			dd.addOption("note", "A note from the vault…");
+			dd.setValue(def?.id ?? "note").onChange((value) => {
+				def = structuredFormat(value as StructuredFormat | "note");
+				spec.format = def?.id ?? "note";
+				if (def) {
+					spec.sections = def.sections.map((s) => s.title);
+					sectionsInput.value = spec.sections.join(", ");
+				}
+				description.setText(def?.description ?? NOTE_DESC);
+				if (!nameTouched && def) {
 					name = def.noteName;
 					nameInput.value = name;
 				}
+				syncRows();
 			});
 		});
 		description = contentEl.createEl("p", { cls: "sfsc-structured-desc", text: def.description });
+
+		templateRow = new Setting(contentEl)
+			.setName("Template note")
+			.setDesc("No note chosen yet.")
+			.addButton((b) =>
+				b.setButtonText("Choose…").onClick(() => {
+					new FileSuggestModal(this.plugin.app, this.plugin, (path) => {
+						spec.templatePath = path;
+						templateRow.setDesc(path);
+						const file = this.plugin.app.vault.getAbstractFileByPath(path);
+						if (file instanceof TFile) {
+							if (!nameTouched) {
+								name = file.basename;
+								nameInput.value = name;
+							}
+							// The copy's cards live where the template's headings do.
+							void this.plugin.app.vault.cachedRead(file).then((body) => {
+								spec.level = templateNoteLevel(body, spec.level);
+								levelDropdown.setValue(String(spec.level));
+							});
+						}
+					}).open();
+				}),
+			);
 
 		new Setting(contentEl)
 			.setName("Note name")
@@ -232,11 +300,12 @@ export class StructuredNoteModal extends Modal {
 			.setName("Heading level")
 			.setDesc("Each section is a heading at this level — and a card.")
 			.addDropdown((dd) => {
-				for (const level of [1, 2, 3]) dd.addOption(String(level), `Heading ${level}`);
+				for (const level of [1, 2, 3, 4, 5, 6]) dd.addOption(String(level), `Heading ${level}`);
 				dd.setValue(String(spec.level)).onChange((value) => (spec.level = Number(value)));
+				levelDropdown = dd;
 			});
 
-		new Setting(contentEl)
+		sectionsRow = new Setting(contentEl)
 			.setName("Sections")
 			.setDesc("Comma-separated, in order. Rename or add; a matrix reads best with four.")
 			.addText((t) => {
@@ -254,10 +323,11 @@ export class StructuredNoteModal extends Modal {
 			.setName("Additional notes")
 			.setDesc("A last section for whatever doesn't fit.")
 			.addToggle((t) => t.setValue(spec.notes).onChange((v) => (spec.notes = v)));
-		new Setting(contentEl)
+		hintsRow = new Setting(contentEl)
 			.setName("Hints")
 			.setDesc("One italic line under each heading saying what belongs there.")
 			.addToggle((t) => t.setValue(spec.hints).onChange((v) => (spec.hints = v)));
+		syncRows();
 
 		new Setting(contentEl)
 			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
@@ -271,7 +341,11 @@ export class StructuredNoteModal extends Modal {
 							new Notice("Give the note a name.");
 							return;
 						}
-						if (!structuredTitles(spec).length) {
+						if (spec.format === "note" && !spec.templatePath) {
+							new Notice("Choose the note to copy.");
+							return;
+						}
+						if (spec.format !== "note" && !structuredTitles(spec).length) {
 							new Notice("The note needs at least one section.");
 							return;
 						}
