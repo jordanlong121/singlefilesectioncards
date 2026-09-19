@@ -425,6 +425,8 @@ export class SectionCardsView extends ItemView {
 	private customPlacements: Record<string, CardRect> = {};
 	/** Images canvas: placements for the current note, keyed by image path/URL. */
 	private imagePlacements: Record<string, CardRect> = {};
+	/** The zoom bar's tray button: hides the tray column, or brings it back. */
+	private trayToggleBtn: HTMLElement | null = null;
 	/** The saved-layouts switcher in the Custom Grid tray, for the "changed" mark. */
 	private savedLayoutSelect: HTMLSelectElement | null = null;
 	/** Which note's image placements are loaded (like placementsLoadedFor for cards). */
@@ -989,6 +991,11 @@ export class SectionCardsView extends ItemView {
 		const zoomIn = zoomBar.createEl("button", { text: "+" });
 		zoomIn.setAttr("aria-label", "Zoom in");
 		zoomIn.addEventListener("click", () => this.setCanvasZoom(this.canvasZoom() + 0.1));
+		// The tray column folds away entirely; this is the way back (the tray's own
+		// chevron only hides it).
+		this.trayToggleBtn = zoomBar.createEl("button", { cls: "section-cards-tray-fold" });
+		this.trayToggleBtn.addEventListener("click", () => void this.setTrayCollapsed(!this.plugin.getTrayCollapsed(this.filePath)));
+		this.syncTrayToggle();
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
 			if (evt.key !== "Escape") return;
 			// An open card editor's own Escape handling wins (textarea or live preview).
@@ -1338,6 +1345,7 @@ export class SectionCardsView extends ItemView {
 	/** The layout lives as a class on the view root so CSS can restyle grid *and* scrolling. */
 	private applyLayoutClass(): void {
 		this.contentEl.toggleClass("is-tray-collapsed", this.plugin.getTrayCollapsed(this.filePath));
+		this.syncTrayToggle();
 		for (const name of [
 			"grid",
 			"aligned",
@@ -7842,7 +7850,7 @@ export class SectionCardsView extends ItemView {
 	 * a tray full of loading pages would be pure weight). */
 	private rebuildLinksTray(unplacedKeys: string[]): void {
 		this.trayEl.empty();
-		if (this.buildTrayCollapsed("link", unplacedKeys.length)) return;
+		if (this.trayHidden()) return;
 		this.buildTrayControls("link", "Drag a link onto the canvas");
 		for (const key of unplacedKeys) {
 			const link = this.linksByKey.get(key);
@@ -8018,22 +8026,20 @@ export class SectionCardsView extends ItemView {
 		this.canvasExtentEl.setCssStyles({ left: `${w - 1}px`, top: `${h - 1}px` });
 	}
 
-	/** Permanent tray controls, shared by both canvases: Clear, the sorts, the hint. */
-	/**
-	 * The tray folded to a slim strip: a button to open it again and the count of what
-	 * isn't on the canvas. True when that's what was drawn (the caller draws nothing else).
-	 */
-	private buildTrayCollapsed(noun: string, count: number): boolean {
-		if (!this.plugin.getTrayCollapsed(this.filePath)) return false;
-		const btn = this.trayEl.createEl("button", { cls: "section-cards-tray-toggle" });
-		setIcon(btn, "chevron-left");
-		btn.setAttr("aria-label", `Show the ${noun} list (${count} not on the canvas)`);
-		btn.addEventListener("click", () => void this.setTrayCollapsed(false));
-		if (count) {
-			const n = this.trayEl.createDiv({ cls: "section-cards-tray-count", text: String(count) });
-			n.setAttr("aria-label", `${count} ${noun}${count === 1 ? "" : "s"} not on the canvas`);
-		}
-		return true;
+	/** The tray is folded away for this note: its column is hidden, so nothing is drawn
+	 * in it (the zoom bar's panel button brings it back). */
+	private trayHidden(): boolean {
+		return this.plugin.getTrayCollapsed(this.filePath);
+	}
+
+	/** The zoom bar's panel button says what it does: hide the list, or show it. */
+	private syncTrayToggle(): void {
+		const btn = this.trayToggleBtn;
+		if (!btn) return;
+		const hidden = this.trayHidden();
+		SectionCardsView.setIconOr(btn, hidden ? "panel-right-open" : "panel-right-close", hidden ? "chevron-left" : "chevron-right");
+		btn.setAttr("aria-label", hidden ? "Show the list of what isn't on the canvas" : "Hide the list");
+		btn.toggleClass("is-active", hidden);
 	}
 
 	/** A saved layout was applied to this note: drop the cached placements and redraw. */
@@ -8167,14 +8173,16 @@ export class SectionCardsView extends ItemView {
 		}).open();
 	}
 
-	/** Fold or open the tray, remembered per note; the tray redraws on the refresh. */
+	/** Fold the tray away or bring it back, remembered per note; the tray redraws on the refresh. */
 	private async setTrayCollapsed(collapsed: boolean): Promise<void> {
 		await this.plugin.setTrayCollapsed(this.filePath, collapsed, this.viewSettings());
 		this.contentEl.toggleClass("is-tray-collapsed", collapsed);
+		this.syncTrayToggle();
 		this.traySignature = null;
 		await this.refresh();
 	}
 
+	/** Permanent tray controls, shared by both canvases: Clear, the sorts, the hint. */
 	private buildTrayControls(noun: string, hint: string): void {
 		const actions = this.trayEl.createDiv({ cls: "section-cards-tray-actions" });
 		const clearBtn = actions.createEl("button", { cls: "section-cards-tray-clear", text: "Clear layout" });
@@ -8214,7 +8222,7 @@ export class SectionCardsView extends ItemView {
 
 	private rebuildTray(unplacedKeys: string[]): void {
 		this.trayEl.empty();
-		if (this.buildTrayCollapsed("section", unplacedKeys.length)) return;
+		if (this.trayHidden()) return;
 		this.buildTrayControls("section", "Drag a section onto the canvas");
 		const today = this.todayKeys();
 		const trayColors = this.plugin.getCardColors(this.filePath);
@@ -8248,7 +8256,7 @@ export class SectionCardsView extends ItemView {
 	/** The Images tray: a thumbnail-and-name tile per unplaced image. */
 	private rebuildImagesTray(unplacedKeys: string[]): void {
 		this.trayEl.empty();
-		if (this.buildTrayCollapsed("image", unplacedKeys.length)) return;
+		if (this.trayHidden()) return;
 		this.buildTrayControls("image", "Drag an image onto the canvas");
 		for (const key of unplacedKeys) {
 			const image = this.imagesByKey.get(key);
