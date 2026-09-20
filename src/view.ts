@@ -519,6 +519,10 @@ export class SectionCardsView extends ItemView {
 		onUp: (evt: PointerEvent) => void;
 	} | null = null;
 	private swallowNextClick = false;
+	/** Whether the press behind the current click began inside the open editor's card. A
+	 * text selection dragged out past the card's edge ends with a click on the common
+	 * ancestor — the grid, the tray — which must not count as a click-away. */
+	private pressInOpenEditor = false;
 	/** Placement writes are immediate: a debounced save raced the next refresh's re-read.
 	 * Saves whichever canvas is active: the card placements or the image placements. */
 	private persistCanvas = (): void => {
@@ -1408,24 +1412,35 @@ export class SectionCardsView extends ItemView {
 			window.addEventListener("pointercancel", up);
 		});
 
+		// Where the press started decides whether the click that follows is a click-away:
+		// selecting text in the editor and letting go outside the card is not.
+		this.registerDomEvent(
+			this.contentEl,
+			"pointerdown",
+			(evt: PointerEvent) => {
+				const open = this.activeEditor;
+				this.pressInOpenEditor = !!open && (evt.target as HTMLElement | null)?.closest(".section-card") === open.card;
+			},
+			{ capture: true },
+		);
 		// Clicking empty grid/canvas space (any layout) or the tray settles the open
 		// editor, the same as clicking another card or the toolbar.
 		this.registerDomEvent(this.gridEl, "click", (evt: MouseEvent) => {
 			const open = this.activeEditor;
-			if (!open) return;
+			if (!open || this.pressInOpenEditor) return;
 			const insideCard = (evt.target as HTMLElement | null)?.closest(".section-card");
 			if (insideCard === open.card) return; // clicks inside the editor stay there
 			if (!insideCard) void open.finish(true); // another card's handler commits itself
 		});
 		this.registerDomEvent(this.trayEl, "click", () => {
 			const open = this.activeEditor;
-			if (open) void open.finish(true);
+			if (open && !this.pressInOpenEditor) void open.finish(true);
 		});
 		// Clicking anywhere in the hierarchy columns also settles an open editor —
 		// including column items, whose own handler may then hide the card.
 		this.registerDomEvent(this.hierEl, "click", () => {
 			const open = this.activeEditor;
-			if (open) void open.finish(true);
+			if (open && !this.pressInOpenEditor) void open.finish(true);
 		});
 
 		this.applyStoredView();
