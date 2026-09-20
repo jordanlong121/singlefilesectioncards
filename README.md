@@ -274,6 +274,13 @@ Enter opens that card's editor, Space selects or deselects it, and Shift+arrow e
 selection as it moves. In the Rolodex and the Day Planner, left and right step to the
 neighbouring card.
 
+## The action strip
+
+Hovering a card's title bar reveals its buttons just beneath it — quick add, color, delete, make
+big, sticky, open in the note, and flip. They sit over the body's first line, so the strip ends
+with an arrow that sends it to the card's bottom edge instead (and back again), leaving the first
+line free to read and click. The move lasts while the note is open.
+
 ## Collapsing cards
 
 The chevron in a title bar's action strip (or **Collapse card** in its right-click menu) folds a

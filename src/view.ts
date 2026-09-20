@@ -578,6 +578,11 @@ export class SectionCardsView extends ItemView {
 	private sectionBars: { el: HTMLElement; keys: string[] }[] = [];
 	/** Collapsed Sections groups, keyed by ancestor heading raw. In-memory, per note. */
 	private collapsedSections = new Set<string>();
+	/** Cards whose action strip the user sent to the bottom edge, by heading. A nudge to
+	 * reach the line the strip covers, not a preference: it lasts as long as the note is
+	 * in view. */
+	private actionsBottom = new Set<string>();
+	private actionsBottomFile: string | null = null;
 	/** Which note's collapsed set is loaded; a different note starts expanded. */
 	private collapsedFile: string | null = null;
 	/** Open-task counts per parsed section. Sections are fresh objects every refresh,
@@ -1570,6 +1575,18 @@ export class SectionCardsView extends ItemView {
 	}
 
 	/** Sync a card's pinned look: the class plus the pin button's icon and label. */
+	/** Hang a card's action strip under its title bar or along its bottom edge, and set
+	 * the button that swaps the two to point the other way. */
+	private applyActionsBottom(card: HTMLElement, atBottom: boolean): void {
+		card.toggleClass("is-actions-bottom", atBottom);
+		const btn = card.querySelector<HTMLElement>(".section-card-movestrip");
+		if (!btn) return; // the strip builds on first hover; it reads the state then
+		btn.empty();
+		fastIcon(btn, atBottom ? "arrow-up-to-line" : "arrow-down-to-line");
+		if (!btn.querySelector("svg")) fastIcon(btn, atBottom ? "arrow-up" : "arrow-down");
+		btn.setAttr("aria-label", atBottom ? "Move these buttons back to the top" : "Move these buttons to the bottom");
+	}
+
 	private applyPinState(card: HTMLElement, pinned: boolean): void {
 		card.toggleClass("is-pinned", pinned);
 		const btn = card.querySelector<HTMLElement>(".section-card-pin");
@@ -5945,6 +5962,12 @@ export class SectionCardsView extends ItemView {
 			}
 		};
 
+		// The strip's position is a nudge for the note in view; another note starts clean.
+		if (this.actionsBottomFile !== file.path) {
+			this.actionsBottomFile = file.path;
+			this.actionsBottom.clear();
+		}
+
 		this.cardsByHeading.clear();
 		const claimed = new Set<number>();
 		const nextEntries: CardEntry[] = [];
@@ -5967,6 +5990,9 @@ export class SectionCardsView extends ItemView {
 			// Reused cards keep their old pin state; a pin toggle re-renders with the same raw.
 			const isPinned = pinnedKeys.has(section.headingRaw);
 			if (entry.el.hasClass("is-pinned") !== isPinned) this.applyPinState(entry.el, isPinned);
+			// A reused element may now hold a different card: match the strip to this one.
+			const atBottom = this.actionsBottom.has(section.headingRaw);
+			if (entry.el.hasClass("is-actions-bottom") !== atBottom) this.applyActionsBottom(entry.el, atBottom);
 			this.applyCardColor(entry.el, cardColors[section.headingRaw]);
 			queueBody(entry);
 			nextEntries.push(entry);
@@ -6419,6 +6445,22 @@ export class SectionCardsView extends ItemView {
 				void this.plugin.revealSection(file, holder.section.headingLine);
 			});
 			buildFlipButton?.();
+
+			// The strip hangs over the body's first line. This sends it to the card's
+			// bottom edge and back, so either end of the card can be read and clicked.
+			// On touch the strip sits in the title row and covers nothing.
+			if (!Platform.isMobile) {
+				const moveBtn = actions.createEl("button", { cls: "section-card-movestrip" });
+				moveBtn.addEventListener("click", (evt) => {
+					evt.stopPropagation();
+					const key = holder.section.headingRaw;
+					const atBottom = !this.actionsBottom.has(key);
+					if (atBottom) this.actionsBottom.add(key);
+					else this.actionsBottom.delete(key);
+					this.applyActionsBottom(card, atBottom);
+				});
+				this.applyActionsBottom(card, this.actionsBottom.has(holder.section.headingRaw));
+			}
 		};
 		card.addEventListener("pointerenter", ensureActions);
 		card.addEventListener("focusin", ensureActions);

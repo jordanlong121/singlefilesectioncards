@@ -3888,6 +3888,36 @@ body.theme-dark .section-card[data-sfsc-color] .section-card-actions {
 	visibility: visible;
 }
 
+/* "Move to the bottom": the strip leaves the title bar's underside for the card's
+   bottom edge, uncovering the body's first line. It stays a child of the header, so
+   the header stops being its containing block and the card becomes one — placed
+   canvas cards already are, and a maximized one is put back in charge of its strip. */
+.section-card.is-actions-bottom:not(.is-placed),
+.is-layout-custom .section-card.is-actions-bottom.is-placed.is-maximized {
+	position: relative;
+}
+
+.section-card.is-actions-bottom > .section-card-header {
+	position: static;
+}
+
+.section-card.is-actions-bottom .section-card-actions {
+	top: auto;
+	bottom: 0;
+}
+
+@media (hover: hover) {
+	/* The header's hover extension reaches under the title bar, where the strip no
+	   longer is; hovering anywhere on the card reveals it at the bottom instead. */
+	.section-card.is-actions-bottom > .section-card-header::after {
+		display: none;
+	}
+
+	.section-card.is-actions-bottom:hover .section-card-actions {
+		visibility: visible;
+	}
+}
+
 
 /* The pin lives at the title bar's right edge, always visible as a bare glyph —
    no button chrome in either state. Dim when unpinned, full-strength accent when
