@@ -190,7 +190,8 @@ its tasks and any deeper headings inside (a month shows its weeks, each week its
 lines above the first sub-heading form one card, named after the unfiled card. Drag a card to
 the other column or into a new order, resize it, tick its tasks, or send it to the next day by
 dropping it on an arrow — the note changes underneath, and the arrangement is remembered per
-note. Stepping onto a day with no card offers to create it or to skip to the nearest day that
+note. Right-click a card for its column, height, edit, and copy options, or **Delete card** to
+remove that sub-heading and everything beneath it. Stepping onto a day with no card offers to create it or to skip to the nearest day that
 has one.
 
 ![Day Planner](screenshots/planner.png)

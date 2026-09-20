@@ -563,6 +563,43 @@ export async function replaceRangeInFile(
 	return ok;
 }
 
+/**
+ * Delete a body-relative line range of a card — a Day Planner subcard, heading and all —
+ * after checking the text there is still what the view showed. A blank line the range
+ * leaves doubled (one above it, one below) is dropped so the neighbours don't drift apart.
+ */
+export async function deleteRangeInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	from: Section,
+	start: number,
+	end: number,
+	expectedText: string,
+): Promise<boolean> {
+	let ok = true;
+
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, from);
+		if (!target) {
+			ok = false;
+			return data;
+		}
+		const at = bodyStartLine(target) + start;
+		if (lines.slice(at, at + end - start).join("\n") !== expectedText) {
+			ok = false;
+			return data;
+		}
+		lines.splice(at, end - start);
+		if (at > 0 && at < lines.length && lines[at - 1].trim() === "" && lines[at].trim() === "") lines.splice(at, 1);
+		return lines.join(eol);
+	});
+
+	return ok;
+}
+
 /** Insert text right after a given movable block, verifying the block's text first. */
 export async function insertAfterBlockInFile(
 	app: App,

@@ -121,6 +121,7 @@ import {
 	insertAfterBlockInFile,
 	deleteSection,
 	deleteSectionsInFile,
+	deleteRangeInFile,
 	moveSectionsInFile,
 	insertSection,
 	writeSection,
@@ -3075,6 +3076,24 @@ export class SectionCardsView extends ItemView {
 						} catch {
 							new Notice("Couldn't access the clipboard.");
 						}
+					}),
+			);
+			// Delete the subcard — its heading and everything beneath — or the loose
+			// lines, after the same confirmation a card on the wall gets.
+			menu.addSeparator();
+			menu.addItem((mi) =>
+				mi
+					.setTitle("Delete card")
+					.setIcon("trash-2")
+					.setWarning(true)
+					.onClick(() => {
+						const name = card.kind === "sub" ? card.title || "(untitled)" : this.plannerLooseTitle();
+						new ConfirmDeleteModal(this.app, name, async () => {
+							const ok = await deleteRangeInFile(this.app, file, this.headingLevel, section, card.start, card.end, text);
+							if (ok) new Notice(`Deleted “${name}” from ${section.title || file.basename}`);
+							else new Notice("Couldn't find that text — the file changed on disk.");
+							await this.refresh();
+						}).open();
 					}),
 			);
 			menu.showAtMouseEvent(evt);
