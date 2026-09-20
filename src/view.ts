@@ -5580,7 +5580,10 @@ export class SectionCardsView extends ItemView {
 	private syncLevelBar(lines: string[]): void {
 		const bar = this.levelBarEl;
 		if (!bar) return;
-		const applies = !this.deckMode && !this.sticky && !this.isDateLayout() && this.layoutOwnsPlacement() === false;
+		// Not in the Deck, a sticky, the date grids (which place every day), or a canvas
+		// (which has its tray); the Rolodex and Day Planner do get it — one card at a time
+		// hides the rest of the note even more quietly than a sparse wall.
+		const applies = !this.deckMode && !this.sticky && !this.isDateLayout() && !this.isCanvasLayout();
 		const coverage = applies ? levelCoverage(lines, this.headingLevel) : null;
 		const key = `${this.filePath}:${this.headingLevel}`;
 		const show = !!coverage && coverage.hiddenLines > 0 && this.levelBarDismissed !== key;
@@ -5602,7 +5605,7 @@ export class SectionCardsView extends ItemView {
 			btn.setAttr("aria-label", `Switch the card level to H${best}, where most of that text sits`);
 			btn.addEventListener("click", () => void this.changeHeadingLevel(best));
 		}
-		if (!this.hierarchyOn) {
+		if (!this.hierarchyOn && !this.isSingleCardLayout()) {
 			const btn = bar.createEl("button", { text: "Hierarchy view" });
 			btn.setAttr("aria-label", "Show the headings above the cards as columns");
 			btn.addEventListener("click", () => {
@@ -6951,7 +6954,9 @@ export class SectionCardsView extends ItemView {
 		}
 		const key = SectionCardsView.blockKey(first);
 		if (!key) return true; // nothing distinctive to compare
-		const dom = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+		// The rendered text keeps characters the key drops — a literal ">" or "(…)", a
+		// #tag's hash — so it's normalised the same way before the comparison.
+		const dom = SectionCardsView.normalizeBlockText(el.textContent ?? "");
 		return dom.includes(key);
 	}
 
@@ -8701,13 +8706,17 @@ export class SectionCardsView extends ItemView {
 
 	/** Normalise a source line / DOM text for the drag-start sanity check. */
 	private static blockKey(text: string): string {
+		return SectionCardsView.normalizeBlockText(text.replace(/^\s*(?:[-*+]|\d+[.)])\s*(?:\[[ xX]\]\s*)?/, "")).slice(0, 24);
+	}
+
+	/** Text with markdown punctuation dropped and whitespace folded, lower-cased — applied
+	 * to the source line and the rendered text alike, so the two can be compared. */
+	private static normalizeBlockText(text: string): string {
 		return text
-			.replace(/^\s*(?:[-*+]|\d+[.)])\s*(?:\[[ xX]\]\s*)?/, "")
 			.replace(/[*_`~[\]()#|>]/g, "")
 			.replace(/\s+/g, " ")
 			.trim()
-			.toLowerCase()
-			.slice(0, 24);
+			.toLowerCase();
 	}
 
 	/** The elements currently wearing block-drop marks — tracked so clearing them
@@ -9255,9 +9264,19 @@ export class SectionCardsView extends ItemView {
 		bodyEl.empty();
 		bodyEl.setCssStyles({ maxHeight: "" });
 
-		// Pad with a newline so typing starts on a fresh line under the existing content
-		// (for a brand-new card, directly under its title). Trimmed back off on save.
-		const initial = section.raw + "\n";
+		// The editor holds the body only — the heading stays in the title bar above it, as
+		// it does when the card is rendered (the unfiled and properties cards have no
+		// heading, so their whole text is the body). Padded with a newline so typing
+		// starts on a fresh line under the existing content; trimmed back off on save.
+		const seed = section.unfiled ? section.raw : section.body;
+		const initial = seed.trim() ? seed + "\n" : "";
+		/** The editor's text as the section's raw text: heading line back on top. */
+		const toRaw = (value: string): string => {
+			if (section.unfiled) return trimTrailingBlankLines(value);
+			const body = trimTrailingBlankLines(value);
+			return body ? `${section.headingRaw}\n${body}` : section.headingRaw;
+		};
+		const originalRaw = trimTrailingBlankLines(section.raw);
 
 		let embedded: EmbeddedEditor | null = null;
 		let readValue: () => string = () => initial;
@@ -9278,14 +9297,9 @@ export class SectionCardsView extends ItemView {
 			const value = readValue();
 			embedded?.destroy();
 			// Saving re-renders the card, so remember to blow it back up afterwards.
-			// (The unfiled card's first line is body text, not a heading — its key is fixed.)
-			if (this.maximized?.card === card) {
-				const firstLine = value.split("\n")[0]?.trim();
-				this.pendingMaximizeHeading =
-					save && firstLine && !section.unfiled ? firstLine : section.headingRaw;
-			}
-			const edited = trimTrailingBlankLines(value);
-			if (save && edited !== section.raw) {
+			if (this.maximized?.card === card) this.pendingMaximizeHeading = section.headingRaw;
+			const edited = toRaw(value);
+			if (save && edited !== originalRaw) {
 				const written = await writeSection(this.app, file, this.headingLevel, section, edited);
 				if (written) new Notice(`Saved “${section.title}” to ${file.basename}`);
 			}
@@ -9297,7 +9311,7 @@ export class SectionCardsView extends ItemView {
 		// Cancel button stays an explicit discard.
 		const cancel = () => {
 			if (settled) return;
-			if (trimTrailingBlankLines(readValue()) === section.raw) {
+			if (toRaw(readValue()) === originalRaw) {
 				void finish(false);
 				return;
 			}
@@ -9364,8 +9378,8 @@ export class SectionCardsView extends ItemView {
 		// to this view until the editor settles.
 		const autosave = async () => {
 			if (settled) return;
-			const edited = trimTrailingBlankLines(readValue());
-			if (edited === section.raw) return;
+			const edited = toRaw(readValue());
+			if (edited === trimTrailingBlankLines(section.raw)) return;
 			if (!(await writeSection(this.app, file, this.headingLevel, section, edited))) return;
 			section = sectionFromEdited(section, edited);
 			if (!settled) this.editingKey = section.headingRaw;

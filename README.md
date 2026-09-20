@@ -538,7 +538,9 @@ Pick a card level that only some of the note uses — H4 in a note of H1 months,
 H3 days — and everything written under the other headings is off the wall. A bar along the
 pane's bottom then says how many lines of text sit under which levels without a card, with
 **Show H2** (or whichever level would hold the most) to switch, **Hierarchy view** to at least
-see those headings as columns, and a close button to dismiss it for that note and level.
+see those headings as columns, and a close button to dismiss it for that note and level. The
+Rolodex and Day Planner show it too, since one card at a time hides the rest of the note even
+more quietly.
 
 ## Jump to a date
 
