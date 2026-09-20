@@ -65,8 +65,9 @@ If this plugin is useful to you, you can support its development:
 
 - **One card per heading.** Pick which level becomes a card (H1–H6). Multiple layouts, sort
   orders, and per-card colors.
-- **Work directly on the cards.** Click a card to edit its markdown, tick task checkboxes (with
-  optional `✅` done dates), quick-add text or delete it. Pinned cards stay at the top.
+- **Work directly on the cards.** Click a card to edit its body (the heading stays in the title
+  bar; **Rename card…** changes it), tick task checkboxes (with optional `✅` done dates),
+  quick-add text or delete it. Pinned cards stay at the top.
 - **Drag and drop.** Reorder cards, or drag a task, paragraph, or image onto another card.
 - **Select many.** Click a title bar to select its card, Shift-click to select a run (or press
   `Ctrl/⌘+A`), then pin, color, flip, move, or delete them together from the bar that appears
