@@ -9,7 +9,7 @@ import {
   detectLevelSetup, movableBlocks, deckExcerpt, LAYOUT_OPTIONS, locateCard,
   insertSection, deleteSection, retitleSectionInFile, quickAddToSection, pasteAtSectionEnd, pasteAboveSubheadings,
   toggleTaskInFile, moveBlockInFile, deleteBlockInFile, replaceBlockInFile, insertAfterBlockInFile,
-  moveRangeInFile, replaceRangeInFile, moveSectionInFile, mergeSectionsInFile,
+  moveRangeInFile, replaceRangeInFile, deleteRangeInFile, moveSectionInFile, mergeSectionsInFile,
 } from "./.tmp/main.js";
 import { t, ta } from "./harness.mjs";
 import assert from "assert";
@@ -274,6 +274,20 @@ ta("write: delete a section removes exactly it", async () => {
   assert.equal(after.length, 5);
   assert.ok(!v.text.includes("cut grass"));
   assert.ok(v.text.includes("pack for GCXPO") && v.text.includes("get started"));
+});
+
+ta("write: delete a planner subcard removes its heading and lines, and the doubled blank", async () => {
+  const note = "## Day\n\n#### Tasks\n- [ ] one\n- [ ] two\n\n#### Notes\nsome notes\n\n#### Thought\na quote\n\n## Next day\n- [ ] later\n";
+  const v = fakeApp(note);
+  const day = cards(v.text, 2)[0];
+  const subs = plannerCards(day.body.split("\n"));
+  const notes = subs.find((c) => c.title === "Notes");
+  const text = day.body.split("\n").slice(notes.start, notes.end).join("\n");
+  assert.equal(await deleteRangeInFile(v.app, v.file, 2, day, notes.start, notes.end, text), true);
+  assert.ok(!v.text.includes("some notes") && !v.text.includes("#### Notes"));
+  assert.ok(v.text.includes("- [ ] two\n\n#### Thought"), "one blank line left between the neighbours");
+  assert.equal(cards(v.text, 2).length, 2, "the other cards stay");
+  assert.equal(await deleteRangeInFile(v.app, v.file, 2, day, notes.start, notes.end, text), false, "stale text is refused");
 });
 
 ta("write: rename a card rewrites only the heading line", async () => {
