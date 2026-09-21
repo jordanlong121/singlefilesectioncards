@@ -48,10 +48,7 @@ If this plugin is useful to you, you can support its development:
   (see [Custom Grid](#custom-grid)).
 - **A toolbar of pickers.**
 - **The Deck wears backgrounds.**
-- **A bar for text a level leaves out.** Pick a card level only part of the note uses and a bar
-  along the bottom says how many lines sit under other headings without a card, with a button
-  to the level that holds them and one for the Hierarchy view (see [Text a level leaves
-  out](#text-a-level-leaves-out)). The Card level picker lists just the levels the note has.
+- **A bar for text a level leaves out.**
 - **Faster on big notes.** A 1,000-card note opens in about half a second; icons, action strips,
   and card bodies are built lazily as they come into view.
 - **The ☰ menu in two groups**, Card and Note (Reload from file moved there from the toolbar);
