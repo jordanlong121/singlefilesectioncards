@@ -369,19 +369,20 @@ ${weeks.map((w) => `<div class="sc-heat-week"><div class="sc-heat-mlabel">${w.la
 /** The Deck: fictional pinned/recent notes as thumbnails, plus its own toolbar
  * (menu, note button, active deck toggle, the Deck sort, and ?). */
 const DECK_NOTES = [
-	{ name: "Daily Notes 2026", date: "Aug 6", meta: "Grid", excerpt: "Slow start — the espresso machine on the third floor is out again.\n09:00 team stand-up\ndraft the Q3 summary\nreply to the vendor quote" },
-	{ name: "Garden Planning", date: "Aug 4", meta: "Custom Grid", excerpt: "Raised beds get the morning sun, so tomatoes move east this year.\norder seed potatoes\nsketch the drip lines\ncompost turn, week 2" },
+	{ name: "Daily Notes 2026", date: "Aug 6", meta: "Grid", bg: "bg-sunset", excerpt: "Slow start — the espresso machine on the third floor is out again.\n09:00 team stand-up\ndraft the Q3 summary\nreply to the vendor quote" },
+	{ name: "Garden Planning", date: "Aug 4", meta: "Custom Grid", bg: "bg-meadow", excerpt: "Raised beds get the morning sun, so tomatoes move east this year.\norder seed potatoes\nsketch the drip lines\ncompost turn, week 2" },
 	{ name: "Trip Packing Lists", date: "Jul 28", meta: "Vertical", excerpt: "One list per trip, newest on the left.\npassports + printouts\ncamera, two batteries\nthe good walking shoes" },
-	{ name: "Reading Log", date: "Aug 2", meta: "Horizontal", excerpt: "A card per book, quotes underneath.\nfinished: The Sea of Tranquility\nnext: something short\nlibrary holds arrive Tuesday" },
-	{ name: "Sourdough Experiments", date: "Aug 5", meta: "Calendar", excerpt: "Hydration up to 78% this week.\nfeed at 8am and 6pm\nbatch 14: too dense, cut the rye\nbatch 15: best crumb yet" },
-	{ name: "Home Projects", date: "Jul 19", meta: "Grid Aligned", excerpt: "The hallway paint can wait; the gutter can't.\nclear the gutters before the rain\npatch the fence board\nmeasure for the shelf brackets" },
+	{ name: "Reading Log", date: "Aug 2", meta: "Horizontal", bg: "bg-plum", excerpt: "A card per book, quotes underneath.\nfinished: The Sea of Tranquility\nnext: something short\nlibrary holds arrive Tuesday" },
+	{ name: "Sourdough Experiments", date: "Aug 5", meta: "Calendar", bg: "bg-dunes", excerpt: "Hydration up to 78% this week.\nfeed at 8am and 6pm\nbatch 14: too dense, cut the rye\nbatch 15: best crumb yet" },
+	{ name: "Home Projects", date: "Jul 19", meta: "Grid Aligned", bg: "bg-forest", excerpt: "The hallway paint can wait; the gutter can't.\nclear the gutters before the rain\npatch the fence board\nmeasure for the shelf brackets" },
 ];
 
 function deckToolbarHtml() {
 	return `<div class="section-cards-toolbar is-compact">
 	<div class="section-cards-cluster section-cards-cluster-left">
 	<button class="section-cards-icon-btn section-cards-menu-btn">${MENU_ICON}</button>
-	<button class="section-cards-file-btn"><span>${esc(path.basename(notePath))}</span></button>
+	<button class="section-cards-icon-btn section-cards-deck-btn is-active">${DECK_ICON}</button>
+	<button class="section-cards-file-btn is-empty"><span>Choose a note…</span></button>
 	<div class="section-cards-control section-cards-sort-control"><button class="sfsc-picker-btn section-cards-sort-btn"><span class="sfsc-picker-btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg></span><span class="sfsc-picker-btn-label">Recent</span><span class="sfsc-picker-btn-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m6 9 6 6 6-6"/></svg></span></button></div>
 	</div>
 	<div class="section-cards-cluster section-cards-cluster-mid"></div>
@@ -393,14 +394,15 @@ function deckToolbarHtml() {
 
 function deckPageHtml() {
 	const tiles = DECK_NOTES.map(
-		({ name, meta, excerpt, date }) =>
-			`<div class="sfsc-deck-card" role="button" tabindex="0">` +
+		({ name, meta, excerpt, date, bg }) =>
+			`<div class="sfsc-deck-card${bg ? " has-sfsc-bg" : ""}"${bg ? ` style="--sfsc-bg-image: url('${bg}.svg')"` : ""} role="button" tabindex="0">` +
 			`<div class="sfsc-deck-head"><div class="sfsc-deck-title">${esc(name)}</div><div class="sfsc-deck-date">${esc(date)}</div></div>` +
 			`<div class="sfsc-deck-excerpt">${esc(excerpt)}</div>` +
 			`<div class="sfsc-deck-meta">${esc(meta)}</div></div>`,
 	).join("\n");
 	const grid = `<div class="section-cards-pinned"></div>\n<div class="section-cards-grid">\n${tiles}\n</div>\n<div class="section-cards-tray"></div>`;
-	return pageHtml("grid", {}).replace(/is-layout-grid/, "is-deck").replace(toolbarHtml("grid"), deckToolbarHtml()).replace(gridHtml("grid"), grid);
+	const background = pageBackground("deck");
+	return pageHtml("grid", { background }).replace(/is-layout-grid/, "is-deck").replace(toolbarHtml("grid"), deckToolbarHtml()).replace(gridHtml("grid"), grid);
 }
 
 function gridHtml(layout, mode = "default") {
@@ -758,6 +760,8 @@ const PAGE_BACKGROUNDS = {
 	sticky: "bg-sunset",
 	hierarchy: "bg-aurora",
 	dividers: "bg-dunes",
+	// The Deck's own background, which the tiles' note backgrounds sit on.
+	deck: "bg-ocean",
 	"context-menu": null,
 };
 

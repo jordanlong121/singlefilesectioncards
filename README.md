@@ -623,7 +623,10 @@ Yes!
 Yes! I use it everyday and want to make it the best I can.
 
 **Are there other plugins like it?**
-I don't know, that's why I wrote it.
+Not that I am aware of.
+
+**What if I prefer smaller files?**
+The plugin works with any file — the feature set just benefits larger ones more.
 
 **Do you need the [Single File Daily Notes](https://github.com/pranavmangal/obsidian-single-file-daily-notes) plugin for this to work?**
 No, but you should use it because it's cool.
