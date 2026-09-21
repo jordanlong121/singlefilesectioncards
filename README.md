@@ -49,8 +49,7 @@ If this plugin is useful to you, you can support its development:
 - **A toolbar of pickers.**
 - **The Deck wears backgrounds.**
 - **A bar for text a level leaves out.**
-- **Faster on big notes.** A 1,000-card note opens in about half a second; icons, action strips,
-  and card bodies are built lazily as they come into view.
+- **Faster on big notes.**
 - **The ☰ menu in two groups**, Card and Note (Reload from file moved there from the toolbar);
   the Calendar opens on today; editing a card looks like the card; the `?` dialog groups its
   shortcuts.
