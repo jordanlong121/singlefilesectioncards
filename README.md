@@ -46,11 +46,7 @@ If this plugin is useful to you, you can support its development:
   background — and switch between the note's saved layouts from the tray, the toolbar's Layout
   picker, or the New note wizard. A changed layout wears an asterisk and asks before it's lost
   (see [Custom Grid](#custom-grid)).
-- **A toolbar of pickers.**
-- **The Deck wears backgrounds.**
-- **A bar for text a level leaves out.**
-- **Faster on big notes.**
-- **A revamped menu.**
+- **Many user interface improvements.**
 
 ## What it does
 
