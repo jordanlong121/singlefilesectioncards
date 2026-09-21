@@ -46,11 +46,8 @@ If this plugin is useful to you, you can support its development:
   background — and switch between the note's saved layouts from the tray, the toolbar's Layout
   picker, or the New note wizard. A changed layout wears an asterisk and asks before it's lost
   (see [Custom Grid](#custom-grid)).
-- **A toolbar of pickers.** Layout, Card level, View mode, Sort, and Group are buttons that open
-  a grid of icon tiles; the Layout picker sits beside the note's name. The tray beside a canvas
-  folds to a slim bar and comes back with a click.
-- **The Deck wears backgrounds.** Each tile shows its note's own background, and the Deck has a
-  background of its own, apart from any note's.
+- **A toolbar of pickers.**
+- **The Deck wears backgrounds.**
 - **A bar for text a level leaves out.** Pick a card level only part of the note uses and a bar
   along the bottom says how many lines sit under other headings without a card, with a button
   to the level that holds them and one for the Hierarchy view (see [Text a level leaves
