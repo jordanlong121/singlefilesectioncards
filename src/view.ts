@@ -2992,6 +2992,7 @@ export class SectionCardsView extends ItemView {
 					}
 				});
 			}
+			this.wireLinkClicks(body, file);
 			this.wirePlannerItem(item, body, file, section, ctx);
 			return ctx;
 		});
@@ -6197,6 +6198,37 @@ export class SectionCardsView extends ItemView {
 		this.containerEl.querySelector<HTMLElement>(".view-header-title")?.setText(this.getDisplayText());
 	}
 
+	/**
+	 * Wikilinks inside markdown this plugin rendered: clicking one opens that note as
+	 * cards, in its own remembered view. Every surface that renders a body needs this —
+	 * Obsidian wires links for its own preview, embeds, and editor only, so a link on a
+	 * planner card or a card's back face would otherwise do nothing at all.
+	 */
+	private wireLinkClicks(el: HTMLElement, file: TFile, skip?: () => boolean): void {
+		el.addEventListener("click", (evt) => {
+			const anchor = (evt.target as HTMLElement | null)?.closest<HTMLAnchorElement>("a");
+			if (!anchor || skip?.()) return;
+			// Modifier-clicks keep Obsidian's own behaviour (new tab / new pane / editor).
+			if (evt.metaKey || evt.ctrlKey || evt.shiftKey || evt.altKey) return;
+			// External links belong to the browser.
+			if (anchor.hasClass("external-link") || /^[a-z]+:\/\//i.test(anchor.getAttribute("href") ?? "")) return;
+
+			const linktext = anchor.dataset.href ?? anchor.getAttribute("href");
+			if (!linktext) return;
+
+			const [linkpath, subpath] = splitLinktext(linktext);
+			const target = linkpath
+				? this.app.metadataCache.getFirstLinkpathDest(linkpath, this.filePath)
+				: file;
+			// Unresolved links, or links to anything that isn't a note, fall through to Obsidian.
+			if (!target || target.extension !== "md") return;
+
+			evt.preventDefault();
+			evt.stopPropagation();
+			void this.navigateTo(target.path, subpath);
+		});
+	}
+
 	private renderCard(file: TFile, section: Section, today: { iso: string; formatted: string } | null): CardEntry {
 		const holder = { section };
 		const scope = new Component();
@@ -6491,6 +6523,7 @@ export class SectionCardsView extends ItemView {
 			// It wears section-card-body too, so each layout's body styling carries over;
 			// the front stays the card's first .section-card-body for every lookup.
 			backEl = card.createDiv({ cls: "section-card-body section-card-back markdown-rendered" });
+			this.wireLinkClicks(backEl, file, () => card.hasClass("is-editing"));
 			this.applyBodyHeight(backEl);
 			buildFlipButton = () => {
 				const flipBtn = actions.createEl("button", { cls: "section-card-flip" });
@@ -6510,28 +6543,7 @@ export class SectionCardsView extends ItemView {
 		}
 
 		// A wikilink to another note opens that note as cards, in its own remembered view.
-		bodyEl.addEventListener("click", (evt) => {
-			const anchor = (evt.target as HTMLElement | null)?.closest<HTMLAnchorElement>("a");
-			if (!anchor || card.hasClass("is-editing")) return;
-			// Modifier-clicks keep Obsidian's own behaviour (new tab / new pane / editor).
-			if (evt.metaKey || evt.ctrlKey || evt.shiftKey || evt.altKey) return;
-			// External links belong to the browser.
-			if (anchor.hasClass("external-link") || /^[a-z]+:\/\//i.test(anchor.getAttribute("href") ?? "")) return;
-
-			const linktext = anchor.dataset.href ?? anchor.getAttribute("href");
-			if (!linktext) return;
-
-			const [linkpath, subpath] = splitLinktext(linktext);
-			const target = linkpath
-				? this.app.metadataCache.getFirstLinkpathDest(linkpath, this.filePath)
-				: file;
-			// Unresolved links, or links to anything that isn't a note, fall through to Obsidian.
-			if (!target || target.extension !== "md") return;
-
-			evt.preventDefault();
-			evt.stopPropagation();
-			void this.navigateTo(target.path, subpath);
-		});
+		this.wireLinkClicks(bodyEl, file, () => card.hasClass("is-editing"));
 
 		// Checkbox clicks toggle the task in the file instead of opening the editor.
 		bodyEl.addEventListener("click", (evt) => {
