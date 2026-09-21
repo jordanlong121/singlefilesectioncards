@@ -50,9 +50,7 @@ If this plugin is useful to you, you can support its development:
 - **The Deck wears backgrounds.**
 - **A bar for text a level leaves out.**
 - **Faster on big notes.**
-- **The ☰ menu in two groups**, Card and Note (Reload from file moved there from the toolbar);
-  the Calendar opens on today; editing a card looks like the card; the `?` dialog groups its
-  shortcuts.
+- **A revamped menu.**
 
 ## What it does
 
