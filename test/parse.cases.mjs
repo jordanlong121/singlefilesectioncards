@@ -296,44 +296,44 @@ t("sample vault: checkbox N maps to task line N for every card", () => {
 const DEFAULTS = { layout: "grid", headingLevel: 3, sortOrder: "asc" };
 
 t("a note with no saved view falls back to the defaults (grid)", () => {
-  assert.deepEqual(resolveViewSettings(undefined, {}, DEFAULTS), { ...DEFAULTS, hierarchy: false, sections: false, starredOnly: false, taskFilter: "all", groupBy: "none" });
+  assert.deepEqual(resolveViewSettings(undefined, {}, DEFAULTS), { ...DEFAULTS, hierarchy: false, sections: false, starredOnly: false, taskFilter: "all", groupBy: "none", calendarRange: "month" });
 });
 
 t("a note's saved view wins over restored tab state and defaults", () => {
   const saved = { layout: "vertical", headingLevel: 2, sortOrder: "desc", hierarchy: true, sections: false, starredOnly: true };
   const state = { layout: "tight", headingLevel: 4, sortOrder: "asc", hierarchy: false, sections: true, starredOnly: false };
-  assert.deepEqual(resolveViewSettings(saved, state, DEFAULTS), { ...saved, taskFilter: "all", groupBy: "none" });
+  assert.deepEqual(resolveViewSettings(saved, state, DEFAULTS), { ...saved, taskFilter: "all", groupBy: "none", calendarRange: "month" });
 });
 
 t("restored tab state is used when the note has no saved view", () => {
   const state = { layout: "aligned", headingLevel: 2, sortOrder: "desc", hierarchy: false, sections: true, starredOnly: true };
-  assert.deepEqual(resolveViewSettings(undefined, state, DEFAULTS), { ...state, taskFilter: "all", groupBy: "none" });
+  assert.deepEqual(resolveViewSettings(undefined, state, DEFAULTS), { ...state, taskFilter: "all", groupBy: "none", calendarRange: "month" });
 });
 
 t("partial saved views fall through field by field", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "horizontal" }, { sortOrder: "desc" }, DEFAULTS),
-    { layout: "horizontal", headingLevel: 3, sortOrder: "desc", hierarchy: false, sections: false, starredOnly: false, taskFilter: "all", groupBy: "none" },
+    { layout: "horizontal", headingLevel: 3, sortOrder: "desc", hierarchy: false, sections: false, starredOnly: false, taskFilter: "all", groupBy: "none", calendarRange: "month" },
   );
 });
 
 t("a stale 'hierarchy' layout becomes grid with the columns toggled on", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "hierarchy" }, {}, DEFAULTS),
-    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false, taskFilter: "all", groupBy: "none" },
+    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false, taskFilter: "all", groupBy: "none", calendarRange: "month" },
   );
 });
 
 t("a stale 'sections' layout becomes grid with the dividers toggled on", () => {
   assert.deepEqual(
     resolveViewSettings({ layout: "sections" }, {}, DEFAULTS),
-    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: false, sections: true, starredOnly: false, taskFilter: "all", groupBy: "none" },
+    { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: false, sections: true, starredOnly: false, taskFilter: "all", groupBy: "none", calendarRange: "month" },
   );
 });
 
 t("hierarchy and section dividers are never both on — the columns win", () => {
   const both = resolveViewSettings({ layout: "grid", hierarchy: true, sections: true }, {}, DEFAULTS);
-  assert.deepEqual(both, { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false, taskFilter: "all", groupBy: "none" });
+  assert.deepEqual(both, { layout: "grid", headingLevel: 3, sortOrder: "asc", hierarchy: true, sections: false, starredOnly: false, taskFilter: "all", groupBy: "none", calendarRange: "month" });
 });
 
 // ---------- wheel panning ----------

@@ -203,6 +203,39 @@ export function shiftIso(iso: string, delta: number): string {
 	return date.toISOString().slice(0, 10);
 }
 
+/** The weekday an ISO day falls on, 0 = Sunday … 6 = Saturday. Built locally: a
+ * calendar date's weekday, not an instant, so no UTC skew can shift it a day. */
+export function isoDow(iso: string): number {
+	const [y, m, d] = iso.split("-").map(Number);
+	return new Date(y, m - 1, d).getDay();
+}
+
+/** Saturday or Sunday — the pair the Calendar's Week range lays along the bottom. */
+export function isWeekendIso(iso: string): boolean {
+	const dow = isoDow(iso);
+	return dow === 0 || dow === 6;
+}
+
+/** The ISO day the week holding `iso` starts on, where `firstDow` is the weekday the
+ * week starts on (0 = Sunday, 1 = Monday, …) — the Calendar's Week range anchors here. */
+export function weekStartIso(iso: string, firstDow: number): string {
+	const back = (((isoDow(iso) - firstDow) % 7) + 7) % 7;
+	return shiftIso(iso, -back);
+}
+
+/** The seven ISO days of the week holding `iso`, in order from the week's first day. */
+export function weekDays(iso: string, firstDow: number): string[] {
+	const start = weekStartIso(iso, firstDow);
+	return Array.from({ length: 7 }, (_, i) => shiftIso(start, i));
+}
+
+/** An ISO day held inside a span (both ends inclusive); either end may be missing. */
+export function clampIso(iso: string, min?: string, max?: string): string {
+	if (min && iso < min) return min;
+	if (max && iso > max) return max;
+	return iso;
+}
+
 /** Current and longest runs of consecutive days with cards. The current streak
  * forgives a today that hasn't been written yet (it counts through yesterday). */
 export function heatmapStreaks(isoDays: Iterable<string>, todayIso: string): { current: number; longest: number } {

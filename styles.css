@@ -1075,10 +1075,204 @@ body.is-mobile .is-layout-tight .section-card-body {
 	display: none;
 }
 
-/* Filtered-out days keep their cell, so the other days hold their weekday columns. */
-.is-layout-calendar .section-cards-grid .section-card.is-filtered-out:not(.is-maximized) {
+/* Filtered-out days keep their cell, so the other days hold their weekday columns —
+   but a card with no cell of its own (a second section on the same date, a day outside
+   the Week or Day range) must stay gone, or the filter would hand it one. */
+.is-layout-calendar .section-cards-grid .section-card.is-filtered-out:not(.is-maximized):not(.is-cal-extra):not(.is-cal-outside) {
 	display: block;
 	visibility: hidden;
+}
+
+/* A day outside the Week or Day range: its card stays in the grid, so the reuse pass
+   keeps it and its rendered markdown, but it has no cell to sit on. */
+.is-layout-calendar .section-card.is-cal-outside {
+	display: none;
+}
+
+/* ---------- the Calendar's Week and Day ranges ----------
+   One range at a time under a row of arrows, filling the pane instead of scrolling
+   through the months. The cells stretch to the row rather than standing at the month
+   grid's fixed day height.
+
+   The pane becomes a flex column, as the Rolodex's does, so the grid can take
+   whatever the toolbar leaves — the base view is a plain scrolling block. */
+.workspace-leaf-content .view-content.section-cards-view.is-cal-week,
+.workspace-leaf-content .view-content.section-cards-view.is-cal-day {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+/* Nothing scrolls under it any more, so the toolbar is a plain first row. */
+.is-cal-week .section-cards-toolbar,
+.is-cal-day .section-cards-toolbar {
+	position: static;
+	flex: 0 0 auto;
+}
+
+.is-cal-week .section-cards-grid,
+.is-cal-day .section-cards-grid {
+	flex: 1 1 auto;
+	min-height: 0;
+	align-content: stretch;
+}
+
+/* The week takes the shape of a paper planner: the five weekdays across the top, the
+   weekend lying along the bottom in a shorter band of its own. Ten columns, so a
+   weekday cell spans two and a weekend day spans five.
+   Rows: the nav, the weekday names, the weekdays, the weekend's names, the weekend. */
+.is-cal-week .section-cards-grid {
+	grid-template-columns: repeat(10, minmax(0, 1fr));
+	grid-template-rows:
+		auto auto minmax(var(--sfsc-cal-cell, 112px), 1fr)
+		auto minmax(calc(var(--sfsc-cal-cell, 112px) * 0.7), 0.6fr);
+}
+
+.is-cal-week .sc-cal-dow,
+.is-cal-week .section-cards-grid .section-card,
+.is-cal-week .sc-cal-blank {
+	grid-column: span 2;
+}
+
+.is-cal-week .sc-cal-dow.is-wknd,
+.is-cal-week .section-cards-grid .section-card.is-cal-wknd,
+.is-cal-week .sc-cal-blank.is-cal-wknd {
+	grid-column: span 5;
+}
+
+/* The weekend band is shorter than a weekday column, so its cells must not carry the
+   full day-cell floor — that would push the band back to a weekday's height. */
+.is-cal-week .section-cards-grid .section-card.is-cal-wknd,
+.is-cal-week .sc-cal-blank.is-cal-wknd {
+	min-height: calc(var(--sfsc-cal-cell, 112px) * 0.7);
+}
+
+/* A little air between the weekdays and the weekend band, so the two read as two. */
+.is-cal-week .sc-cal-dow.is-wknd {
+	padding-top: 10px;
+}
+
+/* One day is one column, under its nav row. */
+.is-cal-day .section-cards-grid {
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-rows: auto minmax(calc(var(--sfsc-cal-cell, 112px) * 2), 1fr);
+}
+
+.is-cal-week .section-cards-grid .section-card,
+.is-cal-day .section-cards-grid .section-card,
+.is-cal-week .sc-cal-blank,
+.is-cal-day .sc-cal-blank {
+	height: 100%;
+	min-height: var(--sfsc-cal-cell, 112px);
+}
+
+.is-cal-day .section-cards-grid .section-card,
+.is-cal-day .sc-cal-blank {
+	min-height: calc(var(--sfsc-cal-cell, 112px) * 2);
+}
+
+/* Only the months scroll under their weekday names; one range holds still, and a
+   second sticky row would sit on top of the nav row's. */
+.is-cal-week .sc-cal-dow,
+.is-cal-day .sc-cal-dow {
+	position: static;
+}
+
+/* A day shown on its own is a card read at normal size — the month grid's shrunken
+   type, tight padding and half-size checkboxes are for fitting a month on a screen.
+   It edits on click like a card anywhere else, so it wears the ordinary cursor. */
+.is-cal-day .section-cards-grid .section-card {
+	cursor: default;
+}
+
+.is-cal-day .section-cards-grid .section-card .section-card-header {
+	padding: 0 12px;
+}
+
+.is-cal-day .section-cards-grid .section-card .section-card-title {
+	font-size: var(--font-ui-small);
+}
+
+.is-cal-day .section-cards-grid .section-card .section-card-body {
+	padding: 10px 12px 12px;
+	font-size: calc(var(--font-ui-small) * var(--sfsc-font-scale, 1));
+	overflow-y: auto;
+	--checkbox-size: inherit;
+}
+
+/* …and its lists indent as the other layouts' do (the rules below, which the layout
+   class holds off the calendar): markers outside, a hair of indent. The flush-left
+   markers of a day cell are there to buy width back, which a whole pane doesn't need. */
+.is-cal-day .section-cards-grid .section-card .section-card-body ul > li,
+.is-cal-day .section-cards-grid .section-card .section-card-body ol > li {
+	list-style-position: outside;
+	margin-inline-start: 0.8em;
+}
+
+.is-cal-day .section-cards-grid .section-card .section-card-body ol > li {
+	margin-inline-start: 2ch;
+}
+
+.is-cal-day .section-cards-grid .section-card .section-card-body ul > li.task-list-item {
+	margin-inline-start: calc(var(--checkbox-size, 1em) * 1.5);
+}
+
+/* A lone empty day is a big square: its offer sits in the middle of it, not tucked
+   into the corner where a month grid puts the day number. */
+.is-cal-day .sc-cal-blank {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	font-size: var(--font-ui-small);
+}
+
+/* The Week and Day ranges' header: an arrow either side of the range's name, and the
+   way back to today at the end. Pinned under the toolbar like the weekday names. */
+.sc-cal-nav {
+	grid-column: 1 / -1;
+	position: sticky;
+	top: var(--sc-toolbar-h, 0px);
+	z-index: 4;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 2px;
+	background-color: var(--sc-bar);
+	background-image: linear-gradient(var(--sc-header), var(--sc-header));
+}
+
+.sc-cal-nav-label {
+	flex: 1 1 auto;
+	text-align: center;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	color: var(--text-normal);
+	user-select: none;
+}
+
+/* Sized like the Day Planner's arrows, and left wearing the theme's button chrome
+   the way those are — a stripped-back button disappears under some themes. */
+.sc-cal-nav-arrow {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border-radius: 6px;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.sc-cal-nav-arrow:hover {
+	color: var(--text-normal);
+}
+
+.sc-cal-nav-today {
+	padding: 2px 8px;
+	font-size: var(--font-ui-smaller);
+	cursor: pointer;
 }
 
 /* ---------- section dividers (toolbar toggle) ----------

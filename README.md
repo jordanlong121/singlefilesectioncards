@@ -4,7 +4,7 @@
 
 [![A freeform canvas for sticky notes and brainstorming](screenshots/hero-canvas.png)](#custom-grid)
 
-[![Dated cards on a monthly calendar](screenshots/hero-calendar.png)](#calendar)
+[![Dated cards on a calendar — a month, a week, or a day](screenshots/hero-calendar.png)](#calendar)
 
 [![The note's images arranged freely on a canvas](screenshots/hero-images.png)](#images)
 
@@ -82,7 +82,7 @@ If this plugin is useful to you, you can support its development:
   offers to create it (`Shift+Enter`, or the footer's "Create new note…" button), in Obsidian's default new-note folder —
   or include a `folder/` to place it.
 - **Keyboard shortcuts.** `1`–`6` heading level, `L`/`Shift+L` layouts, `V` view modes, `D` deck, `M` menu,
-  `,`/`.` previous/next heading, `N` new card, `O` pick a note, `S` starred lines only,
+  `,`/`.` previous/next heading (week or day on the Calendar), `N` new card, `O` pick a note, `S` starred lines only,
   `F` flip the card under the pointer, `Shift+F` all cards face up, arrows move the card focus
   (Enter edits, Space selects), `Ctrl/⌘+A` select all, `Ctrl/⌘+F` filter, `Ctrl/⌘+T` a new task
   in a card editor via the Tasks plugin. Click `?` to show keyboard shortcuts.
@@ -197,11 +197,33 @@ to detected** forgets the saved rows.
 
 ### Calendar
 
-Date cards on a monthly grid, today highlighted — the layout opens on today's month, with
-today's cell ringed even when it has no card yet. Click an empty day to start its card, or
-drag a card onto another day to move it. Needs date headings.
+Date cards on a calendar grid, today highlighted — the layout opens on today, with today's
+cell ringed even when it has no card yet. Click an empty day to start its card, or drag a
+card onto another day to move it. Needs date headings.
 
-![Calendar](screenshots/calendar.png)
+A **range** picker in the toolbar says how much of the calendar one screen holds: a month,
+a week, or a day. The range is remembered per note.
+
+**Month** — every month between the first and last dated card, scrolling, under a pinned row
+of weekday names. The sort control orders the months.
+
+![The Calendar's Month range: August 2026 as a grid of day cards](screenshots/calendar.png)
+
+**Week** — one week in the shape of a paper planner: the five weekdays across the top, the
+weekend lying along the bottom in a band of its own, all of it filling the pane so a day's
+card shows most of itself rather than a corner. Both runs keep the week's own order, so a
+Sunday-first week has its weekend bracketing the weekdays rather than trailing them.
+
+![The Calendar's Week range: Monday to Friday across the top, Saturday and Sunday along the bottom](screenshots/calendar-week.png)
+
+**Day** — one day, filling the pane. It edits on click like a card in any other layout, where
+a month or week cell opens big first.
+
+![The Calendar's Day range: one day's card filling the pane](screenshots/calendar-day.png)
+
+Week and Day carry a row of arrows: ‹ and › walk a week (or a day) at a time — as do the
+`,` and `.` keys — and **Today** comes back once you've wandered off. They walk past the note's
+dated days too: that's how a day the note has never mentioned gets its card.
 
 ### Heatmap
 
@@ -260,7 +282,7 @@ them all (document order). Esc clears the selection.
 **Keyboard.** The arrow keys move a dashed focus ring to the nearest card in that direction;
 Enter opens that card's editor, Space selects or deselects it, and Shift+arrow extends the
 selection as it moves. In the Rolodex and the Day Planner, left and right step to the
-neighbouring card.
+neighbouring card; on the Calendar's Week and Day ranges, `,` and `.` walk the calendar.
 
 ## The action strip
 

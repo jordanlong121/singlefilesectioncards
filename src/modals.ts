@@ -774,7 +774,7 @@ export class ShortcutsModal extends Modal {
 					["1–6", "Show that heading level as cards"],
 					["L / Shift+L", "Cycle the layouts forwards / backwards"],
 					["V", "Cycle the view modes: default / hierarchy / dividers"],
-					[", / .", "Previous / next heading in the Hierarchy and Dividers view modes, or card in the Rolodex and Day Planner"],
+					[", / .", "Previous / next heading in the Hierarchy and Dividers view modes, card in the Rolodex and Day Planner, or week/day on the Calendar"],
 					["S", "Show only starred lines / show everything"],
 					[`${MOD_LABEL}+F`, "Jump to the filter box"],
 				],
