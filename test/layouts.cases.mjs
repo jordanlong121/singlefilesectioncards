@@ -7,6 +7,7 @@ import {
   snapRect, findFreeSpot, rectsCollide, plannerCards, plannerColumnSplit, plannerCardWeight,
   plannerBlockKey, wholeNoteSection, splitCardFaces, parsePeriod, shiftPeriod, formatPeriod,
   detectLevelSetup, movableBlocks, deckExcerpt, LAYOUT_OPTIONS, locateCard,
+  weekStartIso, weekDays, clampIso, isoDow, isWeekendIso, CALENDAR_RANGE_OPTIONS, CALENDAR_RANGE_ICONS,
   insertSection, deleteSection, retitleSectionInFile, quickAddToSection, pasteAtSectionEnd, pasteAboveSubheadings,
   toggleTaskInFile, moveBlockInFile, deleteBlockInFile, replaceBlockInFile, insertAfterBlockInFile,
   moveRangeInFile, replaceRangeInFile, deleteRangeInFile, moveSectionInFile, mergeSectionsInFile,
@@ -244,6 +245,58 @@ t("deck: the excerpt skips frontmatter", () => {
   const excerpt = deckExcerpt(senstar);
   assert.ok(!excerpt.includes("Status: Active"));
   assert.ok(excerpt.includes("September 2026") || excerpt.includes("2026-09-15"));
+});
+
+t("calendar ranges: week days from either week start, and the anchor's clamp", () => {
+  // 2026-08-19 is a Wednesday.
+  assert.equal(weekStartIso("2026-08-19", 0), "2026-08-16", "Sunday-first weeks start on the 16th");
+  assert.equal(weekStartIso("2026-08-19", 1), "2026-08-17", "Monday-first weeks start on the 17th");
+  assert.equal(weekStartIso("2026-08-16", 0), "2026-08-16", "a week's first day anchors itself");
+  assert.equal(weekStartIso("2026-08-16", 1), "2026-08-10", "…and belongs to the week before, Monday-first");
+  const week = weekDays("2026-08-19", 1);
+  assert.equal(week.length, 7);
+  assert.deepEqual([week[0], week[6]], ["2026-08-17", "2026-08-23"]);
+  // A week that crosses a month (and a year) boundary still runs seven days.
+  assert.deepEqual(weekDays("2027-01-01", 1), ["2026-12-28", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02", "2027-01-03"]);
+  // Today is pulled into the note's dated span, so the range opens on cards.
+  assert.equal(clampIso("2026-09-22", "2026-08-01", "2026-08-31"), "2026-08-31");
+  assert.equal(clampIso("2026-07-04", "2026-08-01", "2026-08-31"), "2026-08-01");
+  assert.equal(clampIso("2026-08-19", "2026-08-01", "2026-08-31"), "2026-08-19");
+  assert.equal(clampIso("2026-08-19"), "2026-08-19", "no span, no clamp");
+});
+
+t("the week range splits into five weekdays and a weekend, each run in the week's order", () => {
+  assert.equal(isoDow("2026-08-23"), 0, "Sunday");
+  assert.equal(isoDow("2026-08-22"), 6, "Saturday");
+  assert.ok(isWeekendIso("2026-08-22") && isWeekendIso("2026-08-23"));
+  assert.ok(!isWeekendIso("2026-08-21") && !isWeekendIso("2026-08-17"));
+  const WEEKDAYS = ["2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21"];
+  // Monday-first: the weekend is the week's last two days, and stays in that order.
+  const mon = weekDays("2026-08-19", 1);
+  assert.deepEqual(mon.filter((iso) => !isWeekendIso(iso)), WEEKDAYS);
+  assert.deepEqual(mon.filter(isWeekendIso), ["2026-08-22", "2026-08-23"]);
+  // Sunday-first: the same five run along the top, and the weekend brackets them —
+  // the week's first day left, its last day right.
+  const sun = weekDays("2026-08-19", 0);
+  assert.deepEqual(sun.filter((iso) => !isWeekendIso(iso)), WEEKDAYS);
+  assert.deepEqual(sun.filter(isWeekendIso), ["2026-08-16", "2026-08-22"]);
+});
+
+t("every calendar range has a label, a hint, and an icon with a fallback", () => {
+  assert.deepEqual(CALENDAR_RANGE_OPTIONS.map(([value]) => value), ["month", "week", "day"]);
+  assert.ok(CALENDAR_RANGE_OPTIONS.every(([value, label, hint]) => value && label && hint));
+  assert.ok(CALENDAR_RANGE_OPTIONS.every(([value]) => CALENDAR_RANGE_ICONS[value]?.length === 2));
+});
+
+// Every helper element the calendar builds straight into the grid has to be swept out
+// before the next render, or walking to the next week stacks up nav rows (it did).
+t("every calendar helper the grid builds is listed in refresh's stray sweep", () => {
+  const src = fs.readFileSync(fileURLToPath(new URL("../src/view.ts", import.meta.url)), "utf8");
+  const sweep = /querySelectorAll\(\s*"([^"]*sc-cal[^"]*)"/.exec(src)?.[1];
+  assert.ok(sweep, "the stray sweep selector is where the test expects it");
+  const built = new Set([...src.matchAll(/grid\.createDiv\(\{\s*cls: "(sc-cal-[a-z-]+)/g)].map((m) => m[1]));
+  assert.ok(built.size >= 4, `expected the dow, month, blank and nav helpers, saw ${[...built]}`);
+  for (const cls of built) assert.ok(sweep.includes(`.${cls}`), `${cls} is never swept between renders`);
 });
 
 t("every layout has a label and a hint; the planner is among them", () => {

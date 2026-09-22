@@ -105,7 +105,7 @@ export const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
 	["images", "Images", "Freeform canvas of the note's images: drag previews on from the tray, place and resize them"],
 	["links", "Links", "Freeform canvas of the note's web links: drag page previews on from the tray, place and resize them"],
-	["calendar", "Calendar", "Date cards on a monthly calendar grid — needs the Dates checkbox"],
+	["calendar", "Calendar", "Date cards on a calendar grid — a month, a week, or one day — needs the Dates checkbox"],
 	["heatmap", "Heatmap", "A year-at-a-glance activity graph of the dated cards — needs the Dates checkbox"],
 ];
 
@@ -155,6 +155,23 @@ export const GROUP_BY_ICONS: Record<string, [string, string]> = {
 	tasks: ["list-checks", "check-square"],
 	stars: ["star", "star"],
 	length: ["ruler", "align-left"],
+};
+
+/** How much of the calendar the Calendar layout shows at once. "month" is the
+ * scrolling wall of whole months; "week" and "day" show one range with arrows. */
+export type CalendarRange = "month" | "week" | "day";
+
+/** The range picker's choices: value, label, and the tooltip hint. */
+export const CALENDAR_RANGE_OPTIONS: [CalendarRange, string, string][] = [
+	["month", "Month", "Every month between the first and last dated card, scrolling"],
+	["week", "Week", "One week at a time, its seven days side by side (, and . step weeks)"],
+	["day", "Day", "One day at a time, filling the pane (, and . step days)"],
+];
+
+export const CALENDAR_RANGE_ICONS: Record<CalendarRange, [string, string]> = {
+	month: ["calendar", "calendar"],
+	week: ["calendar-range", "calendar-days"],
+	day: ["calendar-days", "calendar"],
 };
 
 export type DeckSort = "recent" | "name-asc" | "name-desc" | "modified" | "created";
@@ -321,6 +338,8 @@ export interface ViewSettings {
 	taskFilter?: TaskFilter;
 	/** Divider bars over buckets: first tag, date, open-task count, stars, or length. */
 	groupBy?: GroupBy;
+	/** Calendar layout: whole months, one week, or one day. */
+	calendarRange?: CalendarRange;
 }
 
 /** The Tasks layout's complete/incomplete filter. */
@@ -560,6 +579,7 @@ export function resolveViewSettings(
 		starredOnly: saved?.starredOnly ?? fromState.starredOnly ?? defaults.starredOnly ?? false,
 		taskFilter: saved?.taskFilter ?? fromState.taskFilter ?? defaults.taskFilter ?? "all",
 		groupBy: saved?.groupBy ?? fromState.groupBy ?? defaults.groupBy ?? "none",
+		calendarRange: saved?.calendarRange ?? fromState.calendarRange ?? defaults.calendarRange ?? "month",
 	};
 	// Hierarchy briefly shipped as a layout; stored views from then become grid + columns.
 	if ((resolved.layout as string) === "hierarchy") {

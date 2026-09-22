@@ -130,6 +130,10 @@ const LAYOUT_LABELS = { grid: "Grid", aligned: "Grid Aligned", tight: "Tight", t
 const SORT_LABELS = { asc: "A → Z", desc: "Z → A", doc: "Document order" };
 /* On the Calendar the sort control orders the months instead of the cards. */
 const CAL_SORT_LABELS = { asc: "Ascending", desc: "Descending", doc: "Ascending" };
+/* CAL_RANGE=month|week|day stages the Calendar's range picker — the whole scrolling
+   wall of months, one week, or one day. CAL_ANCHOR=<ISO> picks which one. */
+const CAL_RANGE = process.env.CAL_RANGE ?? "month";
+const CAL_RANGE_LABELS = { month: "Month", week: "Week", day: "Day" };
 
 const CAL_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-calendar-days"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`;
 const CHEVRON_LEFT = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-chevron-left"><path d="m15 18-6-6 6-6"/></svg>`;
@@ -169,7 +173,8 @@ function toolbarHtml(layout, mode = "default") {
 	<div class="section-cards-spacer"></div>
 	<button class="section-cards-new-btn mod-cta">${MOBILE ? "+" : "+ New card"}</button>
 	<div class="section-cards-control section-cards-mode-control"><button class="sfsc-picker-btn section-cards-mode-btn"><span class="sfsc-picker-btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><rect width="7" height="18" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg></span><span class="sfsc-picker-btn-label">${mode === "hier" ? "Hierarchy view" : mode === "sections" ? "Divider view" : "Default view"}</span><span class="sfsc-picker-btn-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m6 9 6 6 6-6"/></svg></span></button></div>
-	<div class="section-cards-control section-cards-sort-control"><button class="sfsc-picker-btn section-cards-sort-btn"><span class="sfsc-picker-btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg></span><span class="sfsc-picker-btn-label">${(layout === "calendar" ? CAL_SORT_LABELS : SORT_LABELS)[SORT]}</span><span class="sfsc-picker-btn-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m6 9 6 6 6-6"/></svg></span></button></div>
+	${layout === "calendar" ? `<div class="section-cards-control section-cards-calrange-control"><button class="sfsc-picker-btn section-cards-calrange-btn"><span class="sfsc-picker-btn-icon">${CAL_ICON}</span><span class="sfsc-picker-btn-label">${CAL_RANGE_LABELS[CAL_RANGE]}</span><span class="sfsc-picker-btn-chevron">${CHEVRON_ICON}</span></button></div>` : ""}
+	${layout === "calendar" && CAL_RANGE !== "month" ? "" : `<div class="section-cards-control section-cards-sort-control"><button class="sfsc-picker-btn section-cards-sort-btn"><span class="sfsc-picker-btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg></span><span class="sfsc-picker-btn-label">${(layout === "calendar" ? CAL_SORT_LABELS : SORT_LABELS)[SORT]}</span><span class="sfsc-picker-btn-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m6 9 6 6 6-6"/></svg></span></button></div>`}
 	<div class="section-cards-control section-cards-group-control"><button class="sfsc-picker-btn section-cards-group-btn"><span class="sfsc-picker-btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg></span><span class="sfsc-picker-btn-label">None</span><span class="sfsc-picker-btn-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m6 9 6 6 6-6"/></svg></span></button></div>
 	${layout === "tasks" ? `<div class="section-cards-control"><span class="section-cards-label">Tasks</span><select class="dropdown"><option>All</option></select></div>` : ""}
 	<button class="section-cards-icon-btn section-cards-template-btn">${TEMPLATE_ICON}</button>
@@ -192,8 +197,20 @@ const PLACEMENTS = process.env.PLACEMENTS
 
 const CHEVRON_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-chevron-down"><path d="m6 9 6 6 6-6"/></svg>`;
 
+/** The nav row the Week and Day ranges wear: an arrow each way, the range's name
+ * between them, and the way back once it has walked off today. */
+function calNavHtml(days) {
+	const at = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d); };
+	const label = days.length === 1
+		? at(days[0]).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+		: `${at(days[0]).toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${at(days[days.length - 1]).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+	const today = days.includes(TODAY) ? "" : `<button class="sc-cal-nav-today">Today</button>`;
+	return `<div class="sc-cal-nav"><button class="sc-cal-nav-arrow is-prev">${CHEVRON_LEFT}</button><div class="sc-cal-nav-label">${label}</div><button class="sc-cal-nav-arrow is-next">${CHEVRON_RIGHT}</button>${today}</div>`;
+}
+
 /** Replays layoutCalendar: a weekday header row, then per month a full-width label,
- * leading pads to the 1st's weekday column, and a cell per day — card or blank. */
+ * leading pads to the 1st's weekday column, and a cell per day — card or blank.
+ * CAL_RANGE=week|day narrows that to one range under a nav row instead. */
 function calendarHtml() {
 	const byIso = new Map();
 	for (const s of sections) {
@@ -211,7 +228,47 @@ function calendarHtml() {
 		months.push([year, month]);
 	}
 	if (SORT === "desc") months.reverse();
-	const parts = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((n) => `<div class="sc-cal-dow">${n}</div>`);
+	const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+	// Week and Day: one range, anchored on CAL_ANCHOR (today, held inside the note's span).
+	if (CAL_RANGE !== "month") {
+		const anchor = process.env.CAL_ANCHOR ?? (TODAY < isos[0] ? isos[0] : TODAY > isos[isos.length - 1] ? isos[isos.length - 1] : TODAY);
+		const shift = (iso, delta) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + delta); return d.toISOString().slice(0, 10); };
+		const dowOf = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d).getDay(); };
+		// WEEK_START=monday mirrors the plugin's "Start the week on" setting.
+		const firstDow = process.env.WEEK_START === "monday" ? 1 : 0;
+		const start = shift(anchor, -((dowOf(anchor) - firstDow + 7) % 7));
+		const days = CAL_RANGE === "week" ? Array.from({ length: 7 }, (_, i) => shift(start, i)) : [anchor];
+		const weekend = (iso) => dowOf(iso) === 0 || dowOf(iso) === 6;
+		const cell = (iso, wknd) => {
+			const s = byIso.get(iso);
+			const mark = wknd ? " is-cal-wknd" : "";
+			if (s) return cardHtml(s).replace('class="section-card', `class="section-card${mark}`);
+			const label = CAL_RANGE === "week" ? String(Number(iso.slice(8))) : "No card for this day yet — click to write one";
+			return `<div class="sc-cal-blank${mark}${iso === TODAY ? " is-today" : ""}" role="button">${label}</div>`;
+		};
+		if (CAL_RANGE !== "week") {
+			return `<div class="section-cards-pinned"></div>
+<div class="section-cards-grid">
+${calNavHtml(days)}
+${cell(days[0], false)}
+</div>
+<div class="section-cards-tray"></div>`;
+		}
+		// The weekdays across the top, the weekend along the bottom — each run named above it.
+		const head = (isos) => isos.map((iso) => `<div class="sc-cal-dow${weekend(iso) ? " is-wknd" : ""}">${DOW[dowOf(iso)]}</div>`).join("\n");
+		const weekdays = days.filter((iso) => !weekend(iso));
+		const wknd = days.filter(weekend);
+		return `<div class="section-cards-pinned"></div>
+<div class="section-cards-grid">
+${calNavHtml(days)}
+${head(weekdays)}
+${weekdays.map((iso) => cell(iso, false)).join("\n")}
+${head(wknd)}
+${wknd.map((iso) => cell(iso, true)).join("\n")}
+</div>
+<div class="section-cards-tray"></div>`;
+	}
+	const parts = DOW.map((n) => `<div class="sc-cal-dow">${n}</div>`);
 	for (const [year, month] of months) {
 		const label = new Date(year, month - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 		parts.push(`<div class="sc-cal-month">${label}</div>`);
@@ -813,7 +870,7 @@ function pageHtml(layout, { withMenu = false, mode = "default", background = nul
 	const activeAt = Math.max(0, sections.findIndex((s) => process.env.ROLO_ACTIVE && s.title.includes(process.env.ROLO_ACTIVE)));
 	const tabTitle = sticky ? `Sticky: ${sections[activeAt]?.title ?? ""}` : `Cards: ${path.basename(notePath, ".md")}`;
 	const view = `<div class="workspace-leaf-content" data-type="section-cards-view">
-<div class="view-content section-cards-view is-layout-${layout}${mode === "hier" ? " is-hier-on" : ""}${sticky ? " is-sticky" : ""}${process.env.TRAY === "hidden" && ["custom", "images", "links"].includes(layout) ? " is-tray-collapsed" : ""}${background ? " has-sfsc-bg" : ""}"${background ? ` style="--sfsc-bg-image: url('${background}.svg')"` : ""}>
+<div class="view-content section-cards-view is-layout-${layout}${layout === "calendar" ? ` is-cal-${CAL_RANGE}` : ""}${mode === "hier" ? " is-hier-on" : ""}${sticky ? " is-sticky" : ""}${process.env.TRAY === "hidden" && ["custom", "images", "links"].includes(layout) ? " is-tray-collapsed" : ""}${background ? " has-sfsc-bg" : ""}"${background ? ` style="--sfsc-bg-image: url('${background}.svg')"` : ""}>
 ${toolbarHtml(layout, mode)}
 ${process.env.LAYOUT_POP ? `<div class="sfsc-picker-pop" style="top: 86px; left: 130px; --sfsc-picker-cols: 4">${Object.entries(LAYOUT_LABELS).map(([v, l]) => `<button class="sfsc-picker-tile${v === layout ? " is-active" : ""}"${["calendar","heatmap"].includes(v) && process.env.LAYOUT_POP === "undated" ? " disabled" : ""}><span class="sfsc-picker-tile-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg></span><span class="sfsc-picker-tile-label">${l}</span></button>`).join("")}</div>` : ""}
 ${sticky ? stickyHeadHtml() : ""}
