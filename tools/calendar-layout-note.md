@@ -6,7 +6,8 @@
      Stage it under the sample vault's filename so the tab and file chip read
      "Daily Notes 2026", and shoot each range in turn — the default TODAY (2026-08-06)
      puts a ringed card in all three, with a blank Tuesday and a two-card weekend in
-     the Week range. WEEK_START=monday mirrors the plugin's own setting.
+     the Week range. The committed shots use the default (Sunday-first) week;
+     WEEK_START=monday stages the other setting.
        cp tools/calendar-layout-note.md "<outdir>/Daily Notes 2026.md"
        for r in month week day; do
          NOTE="<outdir>/Daily Notes 2026.md" CAL_RANGE=$r node tools/preview-harness.mjs <outdir>

@@ -202,7 +202,8 @@ cell ringed even when it has no card yet. Click an empty day to start its card, 
 card onto another day to move it. Needs date headings.
 
 A **range** picker in the toolbar says how much of the calendar one screen holds: a month,
-a week, or a day. The range is remembered per note.
+a week, or a day. The range is remembered per note. Only the Month range shrinks its cards
+to fit thirty-odd days on one screen — Week and Day read at the ordinary card size.
 
 **Month** — every month between the first and last dated card, scrolling, under a pinned row
 of weekday names. The sort control orders the months.

@@ -1015,10 +1015,14 @@ body.is-mobile .is-layout-tight .section-card-body {
 
 /* Day cards are uniform squares-ish cells; clicking one opens it big. */
 .is-layout-calendar .section-card {
-	height: var(--sfsc-cal-cell, 112px);
 	min-width: 0;
 	overflow: hidden;
 	cursor: zoom-in;
+}
+
+/* A month's days are uniform cells; the Week and Day ranges size their own below. */
+.is-cal-month .section-card {
+	height: var(--sfsc-cal-cell, 112px);
 }
 
 /* The card is a fixed-height flex column: without these, a full body used to
@@ -1026,7 +1030,6 @@ body.is-mobile .is-layout-tight .section-card-body {
    is pinned to one tight line on every card; the body absorbs the rest. */
 .is-layout-calendar .section-card .section-card-header {
 	flex: 0 0 auto;
-	padding: 0 8px;
 	min-height: 0;
 }
 
@@ -1037,14 +1040,25 @@ body.is-mobile .is-layout-tight .section-card-body {
 	display: none;
 }
 
-.is-layout-calendar .section-card .section-card-title {
+.is-layout-calendar .section-card .section-card-body {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+/* ---------- the Month range's shrunken cards ----------
+   Only a month has to fit thirty-odd days on one screen, so only a month pays for
+   it: smaller type, tight padding, half-size checkboxes and flush lists. The Week
+   and Day ranges give a day room, and read at the size every other layout uses. */
+.is-cal-month .section-card .section-card-header {
+	padding: 0 8px;
+}
+
+.is-cal-month .section-card .section-card-title {
 	font-size: calc(var(--font-ui-smaller) * 0.85);
 	line-height: 1.4;
 }
 
-.is-layout-calendar .section-card .section-card-body {
-	flex: 1 1 auto;
-	min-height: 0;
+.is-cal-month .section-card .section-card-body {
 	padding: 4px 8px 6px;
 	font-size: calc(var(--font-ui-smaller) * 0.85);
 	overflow: hidden;
@@ -1057,15 +1071,15 @@ body.is-mobile .is-layout-tight .section-card-body {
 
 /* A day made big is a normal card again: the checkbox size falls back to what
    the theme sets everywhere else (inherit reaches past the cell-size override). */
-.is-layout-calendar .section-card.is-maximized .section-card-body {
+.is-cal-month .section-card.is-maximized .section-card-body {
 	--checkbox-size: inherit;
 }
 
 /* Lists sit flush with the card edge: core indents top-level items a fixed 3ch.
    Bullet/number markers move inside the line so zero margin can't clip them;
    task items render their checkbox inline and need no room at all. */
-.is-layout-calendar .section-card .section-card-body ul > li,
-.is-layout-calendar .section-card .section-card-body ol > li {
+.is-cal-month .section-card .section-card-body ul > li,
+.is-cal-month .section-card .section-card-body ol > li {
 	margin-inline-start: 0;
 	list-style-position: inside;
 }
@@ -1178,43 +1192,12 @@ body.is-mobile .is-layout-tight .section-card-body {
 	position: static;
 }
 
-/* A day shown on its own is a card read at normal size — the month grid's shrunken
-   type, tight padding and half-size checkboxes are for fitting a month on a screen.
-   It edits on click like a card anywhere else, so it wears the ordinary cursor. */
+/* The Week and Day ranges take the card styling every other layout uses — type,
+   padding, checkboxes and list indents all default, because only the Month range
+   scopes the shrunken versions. A lone day also edits on click like a card
+   anywhere else, so it wears the ordinary cursor rather than the zoom-in one. */
 .is-cal-day .section-cards-grid .section-card {
 	cursor: default;
-}
-
-.is-cal-day .section-cards-grid .section-card .section-card-header {
-	padding: 0 12px;
-}
-
-.is-cal-day .section-cards-grid .section-card .section-card-title {
-	font-size: var(--font-ui-small);
-}
-
-.is-cal-day .section-cards-grid .section-card .section-card-body {
-	padding: 10px 12px 12px;
-	font-size: calc(var(--font-ui-small) * var(--sfsc-font-scale, 1));
-	overflow-y: auto;
-	--checkbox-size: inherit;
-}
-
-/* …and its lists indent as the other layouts' do (the rules below, which the layout
-   class holds off the calendar): markers outside, a hair of indent. The flush-left
-   markers of a day cell are there to buy width back, which a whole pane doesn't need. */
-.is-cal-day .section-cards-grid .section-card .section-card-body ul > li,
-.is-cal-day .section-cards-grid .section-card .section-card-body ol > li {
-	list-style-position: outside;
-	margin-inline-start: 0.8em;
-}
-
-.is-cal-day .section-cards-grid .section-card .section-card-body ol > li {
-	margin-inline-start: 2ch;
-}
-
-.is-cal-day .section-cards-grid .section-card .section-card-body ul > li.task-list-item {
-	margin-inline-start: calc(var(--checkbox-size, 1em) * 1.5);
 }
 
 /* A lone empty day is a big square: its offer sits in the middle of it, not tucked
@@ -4585,20 +4568,20 @@ body.is-mobile .section-card-body {
    so the item indents by exactly that hang. Top-level lists lose the 1.4em
    padding; nested ones keep it as the per-level step. The Calendar keeps its
    own flush, markers-inside rule. */
-.section-cards-view:not(.is-layout-calendar) .section-card-body > ul,
-.section-cards-view:not(.is-layout-calendar) .section-card-body > ol {
+.section-cards-view:not(.is-cal-month) .section-card-body > ul,
+.section-cards-view:not(.is-cal-month) .section-card-body > ol {
 	padding-inline-start: 0;
 }
 
-.section-cards-view:not(.is-layout-calendar) .section-card-body ul > li {
+.section-cards-view:not(.is-cal-month) .section-card-body ul > li {
 	margin-inline-start: 0.8em;
 }
 
-.section-cards-view:not(.is-layout-calendar) .section-card-body ol > li {
+.section-cards-view:not(.is-cal-month) .section-card-body ol > li {
 	margin-inline-start: 2ch;
 }
 
-.section-cards-view:not(.is-layout-calendar) .section-card-body ul > li.task-list-item {
+.section-cards-view:not(.is-cal-month) .section-card-body ul > li.task-list-item {
 	margin-inline-start: calc(var(--checkbox-size, 1em) * 1.5);
 }
 
