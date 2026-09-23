@@ -7190,8 +7190,16 @@ export class SectionCardsView extends ItemView {
 		// lives in content coordinates — pin it to the visible box, or it opens above the
 		// viewport whenever the wall is scrolled (a certainty in the Horizontal layout).
 		overlay.setCssStyles({ top: `${this.contentEl.scrollTop}px`, height: `${this.contentEl.clientHeight}px` });
+		// Only a press that starts on the backdrop closes the card. A text selection
+		// dragged out of the card — past its edge, or out of the window — ends with a
+		// click on the nearest common ancestor, which is the backdrop too.
+		let pressedBackdrop = false;
+		overlay.addEventListener("pointerdown", (evt) => {
+			pressedBackdrop = evt.target === overlay;
+		});
 		overlay.addEventListener("click", (evt) => {
-			if (evt.target === overlay) this.closeMaximized();
+			if (evt.target === overlay && pressedBackdrop) this.closeMaximized();
+			pressedBackdrop = false;
 		});
 
 		this.maximized = {

@@ -2531,6 +2531,9 @@ body.is-mobile .is-layout-rolodex .section-card-body {
 	border-radius: var(--radius-m, 8px);
 	box-shadow: var(--sc-shadow);
 	padding: 8px 14px 10px 12px;
+	/* The size a card body reads at everywhere else — and the size the Edit line and
+	   add dialogs write in. Unset, the lines inherited the pane's larger text. */
+	font-size: calc(var(--font-ui-small) * var(--sfsc-font-scale, 1));
 	min-height: 40px;
 	resize: vertical;
 	overflow: auto;
