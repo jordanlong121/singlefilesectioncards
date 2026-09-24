@@ -3903,6 +3903,19 @@ export class SectionCardsView extends ItemView {
 		this.setCalendarAnchor(shiftIso(from, this.calendarRange === "week" ? delta * 7 : delta));
 	}
 
+	/** Before landing on a day's card in the Week or Day range, turn the range to that
+	 * day — outside it the card sits hidden, with nothing on screen to scroll to. A day
+	 * already in the range showing is left alone (no refresh), as is every other layout
+	 * and the Month range, whose grid holds every day. */
+	private async turnCalendarTo(iso: string | null): Promise<void> {
+		if (!iso || this.layout !== "calendar" || this.calendarRange === "month") return;
+		const anchor = this.calendarAnchor;
+		const showing = anchor ? (this.calendarRange === "week" ? weekDays(anchor, this.weekFirstDow()) : [anchor]) : [];
+		if (showing.includes(iso)) return;
+		this.calendarAnchor = iso;
+		await this.refresh();
+	}
+
 	/** Show the week (or the day) holding this ISO day. */
 	private setCalendarAnchor(iso: string): void {
 		this.calendarAnchor = iso;
@@ -4948,6 +4961,9 @@ export class SectionCardsView extends ItemView {
 			(detect
 				? this.cardEntries.find((e) => titleToIso(e.holder.section.title, this.cardFormat(), detect) === iso)
 				: undefined);
+		// The Calendar's Week and Day ranges show one range at a time: turn to the one
+		// holding the day, so its card — or its empty cell — is on screen to land on.
+		await this.turnCalendarTo(iso);
 		let entry = find();
 		if (!entry) {
 			this.promptCreateDateCard(iso);
@@ -5724,7 +5740,7 @@ export class SectionCardsView extends ItemView {
 		this.deckMode = false; // picking a note leaves the Deck
 		this.applyStoredView();
 		await this.syncView();
-		if (revealHeading) this.revealCard(revealHeading);
+		if (revealHeading) await this.revealCard(revealHeading);
 		this.app.workspace.requestSaveLayout();
 	}
 
@@ -7144,11 +7160,19 @@ export class SectionCardsView extends ItemView {
 	 * Scroll a card into view and flash it — used when arriving from a `[[Note#Heading]]`
 	 * link. Silently does nothing if that heading isn't a card at the current level.
 	 */
-	revealCard(heading: string): void {
+	async revealCard(heading: string): Promise<void> {
 		if (!heading) return;
 		const wanted = heading.replace(/^#+\s*/, "").trim().toLowerCase();
-		for (const { el, section } of this.cardsByHeading.values()) {
+		for (let { el, section } of this.cardsByHeading.values()) {
 			if (section.title.trim().toLowerCase() !== wanted) continue;
+			// Outside the Calendar's Week or Day range the card is hidden: turn to its day,
+			// and land on the card the refresh put there.
+			if (el.hasClass("is-cal-outside")) {
+				await this.turnCalendarTo(titleToIso(section.title, this.cardFormat(), this.plugin.settings.dateDetectFormat));
+				const hit = this.cardsByHeading.get(section.headingRaw);
+				if (!hit) return;
+				({ el, section } = hit);
+			}
 			if (this.isSingleCardLayout()) {
 				const entry = this.cardEntries.find((e) => e.el === el);
 				if (entry) this.setSingleCardActive(entry);

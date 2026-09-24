@@ -512,7 +512,7 @@ export default class SectionCardsPlugin extends Plugin {
 				await this.app.workspace.revealLeaf(existing);
 				const view = existing.view as SectionCardsView;
 				await view.refresh();
-				if (revealHeading) view.revealCard(revealHeading);
+				if (revealHeading) await view.revealCard(revealHeading);
 				return;
 			}
 		}
@@ -531,7 +531,7 @@ export default class SectionCardsPlugin extends Plugin {
 		await this.app.workspace.revealLeaf(leaf);
 
 		// setViewState has already rendered via setState -> syncView.
-		if (revealHeading) (leaf.view as SectionCardsView).revealCard(revealHeading);
+		if (revealHeading) await (leaf.view as SectionCardsView).revealCard(revealHeading);
 	}
 
 	/**
