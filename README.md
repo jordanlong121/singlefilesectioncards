@@ -665,7 +665,7 @@ Sync with plugin settings, it travels with them.
 ## Usage
 
 - Click the deck icon in a note's top-right corner: that tab becomes the note's cards view
-  (settings → *Cards button on notes* turns the icon off).
+  (settings → *Open regular note as card button* turns the icon off).
 - Right-click any note in the file explorer (or its tab header) and choose **Open as cards**.
 - Click the deck-of-cards icon in the ribbon, or run one of the commands:
   - `Single File Section Cards: Open today's section` — the default note as cards with today's
@@ -692,7 +692,7 @@ Sync with plugin settings, it travels with them.
 | Setting | What it does |
 | --- | --- |
 | Default note | Vault-relative path opened by the ribbon icon and command |
-| Cards button on notes | A deck icon in every note's top-right that opens the note as cards in the same tab (on by default) |
+| Open regular note as card button | A deck icon in every note's top-right that opens the note as cards in the same tab (on by default) |
 | Reopen remembered notes as cards | A note you've viewed as cards before opens in the cards view instead of the editor; a card's ↗ button still reaches the editor (off by default) |
 | Heading level | Which heading rank becomes a card (H1–H6) |
 | Only list heading levels the note contains | The toolbar's Card level picker offers just the levels the open note uses (every level when the note has no headings) |
