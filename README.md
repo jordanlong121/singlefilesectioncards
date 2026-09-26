@@ -602,7 +602,14 @@ the card — or any line in it — and choose **Update from calendar feed**. ☰
 calendar feed** does today's card (making it first if the note has none), and ☰ → **Update all
 days from calendar feed…** does every dated card in the note in one go: it fetches the feed
 first and says how many cards and events it would touch before changing anything. Both are
-commands too. The day's events land under a heading in the card, one level below it:
+commands too.
+
+**Update all** also finds the days on the calendar the note has no card for, and asks how far to
+go making them: **this week**, **this month**, **this year**, or **all** — from the feed's first
+event to a year from today (repeating events with no end would otherwise go on forever) — each
+choice showing how many cards it makes, and *Don't make any* the default. New cards are made the
+way you'd make them yourself: the note's heading format and card template, placed by your
+new-card placement, with that day's events already under the calendar heading. The day's events land under a heading in the card, one level below it:
 
 ```markdown
 ### 2026-07-22, Wednesday

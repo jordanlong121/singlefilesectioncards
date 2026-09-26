@@ -9,9 +9,9 @@ import {
   detectLevelSetup, movableBlocks, deckExcerpt, LAYOUT_OPTIONS, locateCard,
   weekStartIso, weekDays, clampIso, isoDow, isWeekendIso, CALENDAR_RANGE_OPTIONS, CALENDAR_RANGE_ICONS,
   CALENDAR_RANGE_KEYS, calendarRangeDays, calendarRangeStep,
-  feedDayEvents, feedEventsByDays, parseFeed, feedEventLine, feedEventTag, mergeFeedLines, FEED_TAG_RE,
+  feedDayEvents, feedEventsByDays, parseFeed, feedEventLine, feedEventTag, mergeFeedLines, FEED_TAG_RE, feedFirstDay, daysBetween,
   insertSection, deleteSection, retitleSectionInFile, quickAddToSection, pasteAtSectionEnd, pasteAboveSubheadings,
-  syncFeedIntoSection, syncFeedIntoSections,
+  syncFeedIntoSection, syncFeedIntoSections, insertSections,
   toggleTaskInFile, moveBlockInFile, deleteBlockInFile, replaceBlockInFile, insertAfterBlockInFile,
   moveRangeInFile, replaceRangeInFile, deleteRangeInFile, moveSectionInFile, mergeSectionsInFile,
 } from "./.tmp/main.js";
@@ -403,6 +403,16 @@ t("feed: many days at once match one day at a time, from one parse", () => inZon
   assert.equal(feedEventsByDays(feed, []).size, 0);
 }));
 
+t("feed: the first day, and day spans across month and year ends", () => inZone("America/Toronto", () => {
+  assert.equal(feedFirstDay(parseFeed(feed)), "2026-09-01", "the weekly series' first occurrence is earliest");
+  assert.equal(feedFirstDay(parseFeed("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n")), null);
+  assert.deepEqual(daysBetween("2026-12-30", "2027-01-02"), ["2026-12-30", "2026-12-31", "2027-01-01"]);
+  assert.deepEqual(daysBetween("2028-02-28", "2028-03-01"), ["2028-02-28", "2028-02-29"], "a leap day");
+  assert.deepEqual(daysBetween("2026-03-08", "2026-03-09"), ["2026-03-08"], "the day clocks spring forward");
+  assert.equal(daysBetween("2026-01-01", "2027-01-01").length, 365);
+  assert.deepEqual(daysBetween("2026-05-01", "2026-05-01"), []);
+}));
+
 t("feed merge: placement at the top — under the title, a blank line before the rest; updates keep it", () => {
   const lines = ["- 09:00–09:30 Stand-up ^ical-aaaaaaa"];
   const body = ["Morning notes.", "- [ ] tidy the drive"];
@@ -474,6 +484,29 @@ t("every layout has a label and a hint; the planner is among them", () => {
 });
 
 // ---------- Writes: calendar feed ----------
+ta("write: many new cards in one write — placed like new cards, days already there skipped", async () => {
+  const note = "# Log\n\n### 2026-07-20, Monday\nNotes.\n\n### 2026-07-23, Thursday\nQuiet day.\n";
+  const v = fakeApp(note);
+  const added = await insertSections(v.app, v.file, [
+    { headingRaw: "### 2026-07-21, Tuesday", bodyLines: ["Template line.", "", "#### Calendar", "- 10:00–11:00 Standup ^ical-aaaaaaa"] },
+    { headingRaw: "### 2026-07-22, Wednesday", bodyLines: ["#### Calendar", "- All day: Offsite ^ical-bbbbbbb"] },
+    { headingRaw: "### 2026-07-20, Monday", bodyLines: ["duplicate"] },
+    { headingRaw: "### 2026-07-25, Saturday", bodyLines: [] },
+  ], "logical");
+  assert.equal(added, 3, "the day already in the note is skipped");
+  assert.deepEqual(cards(v.text, 3).map((c) => c.title), ["2026-07-20, Monday", "2026-07-21, Tuesday", "2026-07-22, Wednesday", "2026-07-23, Thursday", "2026-07-25, Saturday"],
+    "each lands in date order");
+  assert.ok(v.text.includes("### 2026-07-21, Tuesday\nTemplate line.\n\n#### Calendar\n- 10:00–11:00 Standup ^ical-aaaaaaa\n\n### 2026-07-22"), v.text);
+  assert.equal((v.text.match(/duplicate/g) || []).length, 0);
+  // Bottom placement appends in the order given; nothing to add writes nothing.
+  const w = fakeApp(note);
+  await insertSections(w.app, w.file, [{ headingRaw: "### 2026-07-26, Sunday", bodyLines: [] }, { headingRaw: "### 2026-07-27, Monday", bodyLines: [] }], "bottom");
+  assert.deepEqual(cards(w.text, 3).slice(-2).map((c) => c.title), ["2026-07-26, Sunday", "2026-07-27, Monday"]);
+  const before = w.text;
+  assert.equal(await insertSections(w.app, w.file, [{ headingRaw: "### 2026-07-26, Sunday", bodyLines: [] }], "bottom"), 0);
+  assert.equal(w.text, before);
+});
+
 ta("write: feed lines into one card, and into every day in one write", async () => {
   const note = "# Log\n\n### 2026-07-20, Monday\nNotes.\n\n### 2026-07-21, Tuesday\n- [ ] a task\n\n### 2026-07-22, Wednesday\n#### Calendar\n- 08:00–09:00 Old ^ical-zzzzzzz\n\n### 2026-07-23, Thursday\nQuiet day.\n";
   const v = fakeApp(note);
