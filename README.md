@@ -19,8 +19,7 @@ cards, task management, brainstorming, and a diary or journal.
 
 **Why one big note?** A single file has real advantages over a folder of small ones: an AI
 agent can read the whole context in one go, nothing about the structure is locked into a
-plugin, and any app that edits Markdown can edit it. The usual price is scrolling — like hunting for
-today's section in a year-long note or finding a to-do item in a large project file. This plugin removes that price: the note stays one plain
+plugin, and any app that edits Markdown can edit it. The usual price is excessive scrolling. This plugin removes that price: the note stays one plain
 Markdown file, and you work in the view that fits the job — a wall of cards, a calendar, a day
 planner, a canvas — landing on the section you want without scrolling for it.
 
@@ -52,14 +51,9 @@ If this plugin is useful to you, you can support its development:
 
 - **One card per heading.** Pick which level becomes a card (H1–H6). Multiple layouts, sort
   orders, and per-card colors.
-- **Work directly on the cards.** Click a card to edit its body (the heading stays in the title
-  bar; **Rename card…** changes it), tick task checkboxes (with optional `✅` done dates),
-  quick-add text or delete it. Pinned cards stay at the top.
+- **Work directly on the cards.** Click a card to edit its body (the heading stays in the title. Rename cards, tick task checkboxes, delete cards, pin to top.
 - **Drag and drop.** Reorder cards, or drag a task, paragraph, or image onto another card.
-- **Select many.** Click a title bar to select its card, Shift-click to select a run (or press
-  `Ctrl/⌘+A`), then pin, color, flip, move, or delete them together from the bar that appears
-  (or a title bar's menu). Ctrl/⌘-click makes a card big. Arrow keys walk the cards; Enter
-  edits, Space selects, Shift+arrow extends.
+- **Select many.** Click a title bar to select its card, Shift-click to select multiple cards.
 - **Group by.** Divider bars over buckets — first tag, date, open tasks, stars, or length —
   from the toolbar's Group picker. Collapse any card to its title bar; both are remembered.
 - **Plays with the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin.**
@@ -67,30 +61,18 @@ If this plugin is useful to you, you can support its development:
   create/edit dialogs.
 - **Flash cards.** A marker line splits a section into a front and a back; the card's flip
   button turns it over to the answer, definition, or notes behind (see [Card Flip](#card-flip)).
-- **Make it yours.** Apply custom card colors and background images (remembered per note),
-  and tune the look with the [Style Settings](https://github.com/mgmeyers/obsidian-style-settings) plugin.
+- **Make it yours.** Apply custom card colors and background images.
 - **Arrange freely, and keep the arrangements.** The Custom Grid canvas places sections where
   you drop them; save an arrangement under a name and switch between saved layouts at will.
 - **Calendar feeds.** Give a note a calendar's iCal (.ics) address — Google, Outlook, iCloud —
   and a day's events fill that day's card under a heading of your choosing: one day from its
   card, or every day at once, making cards for the calendar's days the note doesn't have yet
   (see [Calendar feeds](#calendar-feeds)).
-- **Navigate as cards.** Wikilinks open the linked note's card wall, the ↗ button opens the section in a
-  normal editor.
 - **Templates.** New cards can start from a template note, and new notes from the New note
   wizard's built-in structures, your preset notes, or the headings of any note.
 - **Deck.** The toolbar's deck button (or `D`) flips the view to thumbnails of your pinned
   and most recent card notes, each wearing its note's background — click one to hop over.
-- **Pick or create a note.** The toolbar's note button (or `O`) opens a picker of recent notes
-  that searches the vault as you type. Type a title that isn't a note yet and the last row
-  offers to create it (`Shift+Enter`, or the footer's "Create new note…" button), in Obsidian's default new-note folder —
-  or include a `folder/` to place it.
-- **Keyboard shortcuts** — see `?` in the app for the full list. `1`–`6` heading level, `L`/`Shift+L` layouts, `C` Calendar, `V` view modes, `D` deck, `M` menu,
-  `,`/`.` previous/next heading (week or day on the Calendar), on the Calendar `M`/`2`/`W`/`D`
-  pick Month / 2 weeks / Week / Day, `N` new card, `O` pick a note, `S` starred lines only,
-  `F` flip the card under the pointer, `Shift+F` all cards face up, arrows move the card focus
-  (Enter edits, Space selects), `Ctrl/⌘+A` select all, `Ctrl/⌘+F` filter, `Ctrl/⌘+T` a new task
-  in a card editor via the Tasks plugin.
+
 
 ## Layouts
 
