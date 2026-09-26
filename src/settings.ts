@@ -105,7 +105,7 @@ export const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
 	["images", "Images", "Freeform canvas of the note's images: drag previews on from the tray, place and resize them"],
 	["links", "Links", "Freeform canvas of the note's web links: drag page previews on from the tray, place and resize them"],
-	["calendar", "Calendar", "Date cards on a calendar grid — a month, a week, or one day — needs the Dates checkbox"],
+	["calendar", "Calendar", "Date cards on a calendar grid — a month, two weeks, a week, or one day — needs the Dates checkbox (C)"],
 	["heatmap", "Heatmap", "A year-at-a-glance activity graph of the dated cards — needs the Dates checkbox"],
 ];
 
