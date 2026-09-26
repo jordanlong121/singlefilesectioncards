@@ -252,6 +252,8 @@ export interface SectionCardsSettings {
 	weekStart: "locale" | "sunday" | "monday";
 	/** Calendar feeds: the heading a day's events go under, inside the day's card. */
 	feedHeading: string;
+	/** Calendar feeds: where a card's feed heading goes when it doesn't have one yet. */
+	feedPlacement: "top" | "bottom";
 	/** Calendar feeds: events written as open tasks ("- [ ]") rather than plain bullets. */
 	feedAsTasks: boolean;
 	/** Calendar feeds: update today's card from the note's feed when the note opens. */
@@ -566,6 +568,7 @@ export const DEFAULT_SETTINGS: SectionCardsSettings = {
 	toolbarStyle: "compact",
 	weekStart: "locale",
 	feedHeading: "Calendar",
+	feedPlacement: "bottom",
 	feedAsTasks: false,
 	feedAutoUpdate: false,
 	dateDetectFormat: "",

@@ -9,8 +9,9 @@ import {
   detectLevelSetup, movableBlocks, deckExcerpt, LAYOUT_OPTIONS, locateCard,
   weekStartIso, weekDays, clampIso, isoDow, isWeekendIso, CALENDAR_RANGE_OPTIONS, CALENDAR_RANGE_ICONS,
   CALENDAR_RANGE_KEYS, calendarRangeDays, calendarRangeStep,
-  feedDayEvents, feedEventLine, feedEventTag, mergeFeedLines, FEED_TAG_RE,
+  feedDayEvents, feedEventsByDays, parseFeed, feedEventLine, feedEventTag, mergeFeedLines, FEED_TAG_RE,
   insertSection, deleteSection, retitleSectionInFile, quickAddToSection, pasteAtSectionEnd, pasteAboveSubheadings,
+  syncFeedIntoSection, syncFeedIntoSections,
   toggleTaskInFile, moveBlockInFile, deleteBlockInFile, replaceBlockInFile, insertAfterBlockInFile,
   moveRangeInFile, replaceRangeInFile, deleteRangeInFile, moveSectionInFile, mergeSectionsInFile,
 } from "./.tmp/main.js";
@@ -381,6 +382,44 @@ t("feed: lines — tasks, tags, and tags stable across reads", () => inZone("Ame
   assert.throws(() => feedDayEvents("not a calendar", "2026-09-22"));
 }));
 
+t("feed: many days at once match one day at a time, from one parse", () => inZone("America/Toronto", () => {
+  const days = [];
+  for (let d = new Date(2026, 7, 25); d <= new Date(2026, 10, 15); d.setDate(d.getDate() + 1)) {
+    days.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+  }
+  const all = feedEventsByDays(parseFeed(feed), days);
+  assert.equal(all.size, days.length, "every asked-for day has an entry");
+  let events = 0;
+  for (const iso of days) {
+    const one = feedDayEvents(feed, iso).map((e) => feedEventLine(e, false));
+    assert.deepEqual(all.get(iso).map((e) => feedEventLine(e, false)), one, iso);
+    events += one.length;
+  }
+  assert.ok(events > 15, `the span holds the fixture's events (${events})`);
+  // Scattered days, out of order, with duplicates.
+  const some = feedEventsByDays(feed, ["2026-09-23", "2026-09-08", "2026-09-23"]);
+  assert.deepEqual([...some.keys()].sort(), ["2026-09-08", "2026-09-23"]);
+  assert.equal(some.get("2026-09-23").length, 3);
+  assert.equal(feedEventsByDays(feed, []).size, 0);
+}));
+
+t("feed merge: placement at the top — under the title, a blank line before the rest; updates keep it", () => {
+  const lines = ["- 09:00–09:30 Stand-up ^ical-aaaaaaa"];
+  const body = ["Morning notes.", "- [ ] tidy the drive"];
+  const top = mergeFeedLines(body, 3, "Calendar", lines, "%% flip %%", "top");
+  assert.deepEqual(top, ["#### Calendar", "- 09:00–09:30 Stand-up ^ical-aaaaaaa", "", "Morning notes.", "- [ ] tidy the drive"]);
+  // The next update: a new event, the rest of the card and its blank line untouched.
+  const more = ["- 09:00–09:30 Stand-up ^ical-aaaaaaa", "- 14:00–15:00 Review ^ical-bbbbbbb"];
+  const again = mergeFeedLines(top, 3, "Calendar", more, "%% flip %%", "top");
+  assert.deepEqual(again, ["#### Calendar", ...more, "", "Morning notes.", "- [ ] tidy the drive"]);
+  assert.equal(mergeFeedLines(again, 3, "Calendar", more, "%% flip %%", "top"), null, "and a repeat changes nothing");
+  // An empty card: just the block.
+  assert.deepEqual(mergeFeedLines([], 3, "Calendar", lines, "", "top"), ["#### Calendar", ...lines]);
+  // A heading that already exists stays put, whatever the placement.
+  const bottomFirst = mergeFeedLines(body, 3, "Calendar", lines, "", "bottom");
+  assert.deepEqual(mergeFeedLines(bottomFirst, 3, "Calendar", more, "", "top").slice(0, 3), ["Morning notes.", "- [ ] tidy the drive", ""]);
+});
+
 t("feed merge: adds the heading at the card's end, before a flip marker, only when needed", () => {
   const lines = ["- 09:00–09:30 Stand-up ^ical-aaaaaaa"];
   assert.deepEqual(mergeFeedLines(["Notes.", "- [ ] task", ""], 3, "Calendar", lines, "%% flip %%"),
@@ -432,6 +471,37 @@ t("feed merge: replaces the feed's lines, keeps the user's and their ticks, leav
 t("every layout has a label and a hint; the planner is among them", () => {
   assert.ok(LAYOUT_OPTIONS.every(([value, label, hint]) => value && label && hint));
   assert.ok(LAYOUT_OPTIONS.some(([value]) => value === "planner"));
+});
+
+// ---------- Writes: calendar feed ----------
+ta("write: feed lines into one card, and into every day in one write", async () => {
+  const note = "# Log\n\n### 2026-07-20, Monday\nNotes.\n\n### 2026-07-21, Tuesday\n- [ ] a task\n\n### 2026-07-22, Wednesday\n#### Calendar\n- 08:00–09:00 Old ^ical-zzzzzzz\n\n### 2026-07-23, Thursday\nQuiet day.\n";
+  const v = fakeApp(note);
+  const secs = cards(note, 3);
+  const line = (t, id) => `- ${t} ^ical-${id}`;
+  // One card, placed at the top.
+  assert.equal(await syncFeedIntoSection(v.app, v.file, 3, secs[1], "Calendar", [line("10:00–11:00 Standup", "aaaaaaa")], "", "top"), "changed");
+  assert.ok(v.text.includes("### 2026-07-21, Tuesday\n#### Calendar\n- 10:00–11:00 Standup ^ical-aaaaaaa\n\n- [ ] a task\n"), v.text);
+  assert.equal(await syncFeedIntoSection(v.app, v.file, 3, secs[1], "Calendar", [line("10:00–11:00 Standup", "aaaaaaa")], "", "top"), "unchanged");
+  // Every day at once: one new, one replaced, one emptied, one with nothing to do.
+  const now = cards(v.text, 3);
+  const result = await syncFeedIntoSections(v.app, v.file, 3, [
+    { section: now[0], lines: [line("All day: Offsite", "bbbbbbb")] },
+    { section: now[1], lines: [line("10:00–11:00 Standup", "aaaaaaa"), line("15:00–16:00 Review", "ccccccc")] },
+    { section: now[2], lines: [] },
+    { section: now[3], lines: [] },
+  ], "Calendar", "", "bottom");
+  assert.deepEqual(result, { changed: 3, missing: 0 });
+  const after = cards(v.text, 3);
+  assert.equal(after.length, 4, "no card gained or lost");
+  assert.ok(v.text.includes("### 2026-07-20, Monday\nNotes.\n\n#### Calendar\n- All day: Offsite ^ical-bbbbbbb\n\n### 2026-07-21"),
+    "added at the bottom, the blank line before the next day kept:\n" + v.text);
+  assert.ok(v.text.includes("### 2026-07-21, Tuesday\n#### Calendar\n- 10:00–11:00 Standup ^ical-aaaaaaa\n- 15:00–16:00 Review ^ical-ccccccc\n\n- [ ] a task\n\n### 2026-07-22"), v.text);
+  assert.ok(v.text.includes("### 2026-07-22, Wednesday\n#### Calendar\n\n### 2026-07-23"), "the emptied day keeps its heading, loses the feed's line");
+  assert.ok(v.text.endsWith("### 2026-07-23, Thursday\nQuiet day.\n"), "a day with nothing to do is untouched");
+  // A card that's gone is counted, not guessed at.
+  const stale = { ...secs[3], headingRaw: "### 2026-07-24, Friday", title: "2026-07-24, Friday", raw: "### 2026-07-24, Friday\nx", body: "x" };
+  assert.deepEqual(await syncFeedIntoSections(v.app, v.file, 3, [{ section: stale, lines: [line("x", "ddddddd")] }], "Calendar", ""), { changed: 0, missing: 1 });
 });
 
 // ---------- Writes ----------

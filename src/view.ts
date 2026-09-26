@@ -134,8 +134,9 @@ import {
 	insertSection,
 	writeSection,
 	syncFeedIntoSection,
+	syncFeedIntoSections,
 } from "./writes";
-import { feedDayEvents, feedEventLine } from "./icalfeed";
+import { feedDayEvents, feedEventLine, feedEventsByDays, parseFeed } from "./icalfeed";
 import {
 	PlannerSlot,
 	plannerBlockKey,
@@ -5076,7 +5077,16 @@ export class SectionCardsView extends ItemView {
 			return;
 		}
 		const heading = this.plugin.settings.feedHeading.trim() || "Calendar";
-		const result = await syncFeedIntoSection(this.app, file, this.headingLevel, section, heading, lines, this.flipMarker());
+		const result = await syncFeedIntoSection(
+			this.app,
+			file,
+			this.headingLevel,
+			section,
+			heading,
+			lines,
+			this.flipMarker(),
+			this.plugin.settings.feedPlacement,
+		);
 		if (result === "missing") {
 			new Notice("Couldn't find that card — the file changed on disk.");
 			return;
@@ -5095,6 +5105,59 @@ export class SectionCardsView extends ItemView {
 		if (!this.dateEntry(iso) && create) await this.createDateCard(iso);
 		const entry = this.dateEntry(iso);
 		if (entry) await this.updateDayFromFeed(entry.holder.section, quiet);
+	}
+
+	/**
+	 * Every dated card in the note from its feed, in one write. The feed is fetched and
+	 * read first, so the confirmation can say how many cards and events it will touch —
+	 * it can be hundreds of cards, past and future.
+	 */
+	async updateAllDaysFromFeed(): Promise<void> {
+		const file = this.getFile();
+		const url = this.plugin.getCalendarFeed(this.filePath);
+		if (!file || !url) {
+			this.promptCalendarFeed();
+			return;
+		}
+		const format = this.cardFormat();
+		const detect = this.plugin.settings.dateDetectFormat;
+		const dated = this.cardEntries
+			.map((entry) => ({ section: entry.holder.section, iso: entry.holder.section.unfiled ? null : titleToIso(entry.holder.section.title, format, detect) }))
+			.filter((d): d is { section: Section; iso: string } => d.iso !== null);
+		if (!dated.length) {
+			new Notice(`No card at this heading level names a day — switch the card level to the one holding the days.`);
+			return;
+		}
+		let byDay: Map<string, ReturnType<typeof feedDayEvents>>;
+		try {
+			byDay = feedEventsByDays(parseFeed(await this.plugin.fetchFeed(url, true)), dated.map((d) => d.iso));
+		} catch (err) {
+			new Notice(`Couldn't update from the calendar feed: ${err instanceof Error ? err.message : String(err)}.`);
+			return;
+		}
+		const asTask = this.plugin.settings.feedAsTasks;
+		const targets = dated.map((d) => ({ section: d.section, lines: (byDay.get(d.iso) ?? []).map((e) => feedEventLine(e, asTask)) }));
+		const busy = targets.filter((t) => t.lines.length);
+		const events = busy.reduce((n, t) => n + t.lines.length, 0);
+		const heading = this.plugin.settings.feedHeading.trim() || "Calendar";
+		const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+		new ConfirmActionModal(
+			this.app,
+			"Update every day from the calendar?",
+			`${plural(dated.length, "dated card")} in “${file.basename}”: ${busy.length} of them have events on the calendar (${plural(events, "event")}). ` +
+				`Those get the calendar's lines under “${heading}”; a card whose calendar heading is already there but has nothing on the calendar loses the feed's old lines. ` +
+				"Everything else in the cards stays as it is.",
+			"Update all",
+			false,
+			() => {
+				void (async () => {
+					const result = await syncFeedIntoSections(this.app, file, this.headingLevel, targets, heading, this.flipMarker(), this.plugin.settings.feedPlacement);
+					if (result.changed) await this.refresh();
+					const missing = result.missing ? ` ${plural(result.missing, "card")} couldn't be found — the file changed while updating.` : "";
+					new Notice(result.changed ? `Updated ${plural(result.changed, "card")} from the calendar.${missing}` : `Every day already matches the calendar.${missing}`);
+				})();
+			},
+		).open();
 	}
 
 	/** Set, test, or remove this note's calendar feed address. */
@@ -5357,6 +5420,12 @@ export class SectionCardsView extends ItemView {
 							.setTitle("Update today from calendar feed")
 							.setIcon("refresh-cw")
 							.onClick(() => void this.updateTodayFromFeed()),
+					);
+					menu.addItem((item) =>
+						item
+							.setTitle("Update all days from calendar feed…")
+							.setIcon("refresh-cw")
+							.onClick(() => void this.updateAllDaysFromFeed()),
 					);
 				}
 			}
@@ -6912,6 +6981,9 @@ export class SectionCardsView extends ItemView {
 		// shell's icons were most of its cost on a big wall, and most cards are never
 		// hovered. ensureActions also serves code that looks a strip button up.
 		let actionsBuilt = false;
+		let feedBtn: HTMLElement | null = null;
+		// The calendar-feed button shows on a dated card of a note with a feed.
+		const syncFeedBtn = () => feedBtn?.toggleClass("is-hidden", !this.feedDayOf(holder.section));
 		let buildFlipButton: (() => void) | null = null;
 		const ensureActions = () => {
 			if (actionsBuilt) return;
@@ -6931,6 +7003,17 @@ export class SectionCardsView extends ItemView {
 					await this.refresh();
 				}).open();
 			});
+
+			// Update this day from the note's calendar feed. Built with the strip, shown
+			// only while it applies (syncFeedBtn): a feed can be set or removed later.
+			feedBtn = actions.createEl("button", { cls: "section-card-feed" });
+			fastIcon(feedBtn, "refresh-cw");
+			feedBtn.setAttr("aria-label", "Update this day from the calendar feed");
+			feedBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				void this.updateDayFromFeed(holder.section);
+			});
+			syncFeedBtn();
 
 			const colorBtn = actions.createEl("button", { cls: "section-card-color" });
 			fastIcon(colorBtn, "palette");
@@ -6995,6 +7078,8 @@ export class SectionCardsView extends ItemView {
 		};
 		card.addEventListener("pointerenter", ensureActions);
 		card.addEventListener("focusin", ensureActions);
+		card.addEventListener("pointerenter", syncFeedBtn);
+		card.addEventListener("focusin", syncFeedBtn);
 
 		this.applyPinState(card, this.plugin.getPinned(file.path).includes(section.headingRaw));
 

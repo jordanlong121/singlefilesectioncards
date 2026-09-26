@@ -28,24 +28,20 @@ export const FEED_TAG_RE = /\s\^ical-([a-z0-9]+)\s*$/;
  * 1990) can't hang the view; far past anything a real calendar needs. */
 const MAX_OCCURRENCES = 50_000;
 
-/**
- * The events a feed has on one day, in the order they should be listed: all-day
- * events first, then by start time, then by title. Handles repeating events (their
- * rules, skipped dates, and occurrences moved or cancelled one at a time), multi-day
- * and overnight events, and the feed's own time zones. Cancelled events are left out.
- * Throws when the text isn't iCalendar at all.
- */
-export function feedDayEvents(ics: string, dayIso: string): FeedEvent[] {
+/** A feed read once: its events sorted into one-offs, repeating series (each with its
+ * moved or cancelled occurrences related to it), and those occurrences themselves. */
+export interface ParsedFeed {
+	singles: ICAL.Event[];
+	series: ICAL.Event[];
+	exceptions: ICAL.Event[];
+}
+
+/** Read a feed's text once, for any number of days. Throws when it isn't iCalendar. */
+export function parseFeed(ics: string): ParsedFeed {
 	// ICAL.parse is typed `any`; one VCALENDAR parses to one jCal component array.
 	const root = new ICAL.Component(ICAL.parse(ics) as unknown[]);
 	// The feed's zones first, so every TZID it uses resolves (Google's carry their own).
 	for (const zone of root.getAllSubcomponents("vtimezone")) ICAL.TimezoneService.register(zone);
-
-	const [y, m, d] = dayIso.split("-").map(Number);
-	const dayStart = new Date(y, m - 1, d);
-	const dayEnd = new Date(y, m - 1, d + 1);
-	const nextIso = isoOf(dayEnd);
-
 	// Occurrences moved or cancelled one at a time arrive as their own VEVENTs, sharing
 	// the series' UID with a RECURRENCE-ID. They're related to their series (so it skips
 	// them) and then judged on their own dates, wherever they were moved to.
@@ -59,8 +55,26 @@ export function feedDayEvents(ics: string, dayIso: string): FeedEvent[] {
 		else singles.push(event);
 	}
 	for (const exception of exceptions) series.get(exception.uid)?.relateException(exception);
+	return { singles, series: [...series.values()], exceptions };
+}
 
-	const out: FeedEvent[] = [];
+/**
+ * The events a feed has on each of the given days, each day's in the order they should
+ * be listed: all-day events first, then by start time, then by title. Handles repeating
+ * events (their rules, skipped dates, and occurrences moved or cancelled one at a time),
+ * multi-day and overnight events, and the feed's own time zones; cancelled events are
+ * left out. The feed is read once and each series walked once, across the days' span —
+ * so a year of days costs about what one does. Every asked-for day gets an entry.
+ */
+export function feedEventsByDays(feed: ParsedFeed | string, dayIsos: string[]): Map<string, FeedEvent[]> {
+	const parsed = typeof feed === "string" ? parseFeed(feed) : feed;
+	const out = new Map<string, FeedEvent[]>(dayIsos.map((iso) => [iso, []]));
+	if (!dayIsos.length) return out;
+	const sorted = [...new Set(dayIsos)].sort();
+	const spanStart = localDay(sorted[0]);
+	const spanEnd = localDay(isoOf(dayAfter(sorted[sorted.length - 1])));
+	const spanEndIso = isoOf(spanEnd);
+
 	const consider = (event: ICAL.Event, start: ICAL.Time, end: ICAL.Time, recurrence: ICAL.Time | null) => {
 		if (cancelled(event)) return;
 		const key = `${event.uid}|${recurrence ? recurrence.toString() : ""}`;
@@ -69,27 +83,35 @@ export function feedDayEvents(ics: string, dayIso: string): FeedEvent[] {
 			// All-day: dates, end exclusive; a missing or empty span means the one day.
 			const from = start.toString();
 			const to = end && end.compare(start) > 0 ? end.toString() : isoOf(dayAfter(from));
-			if (from <= dayIso && dayIso < to) out.push({ key, title, allDay: true, startsBefore: false, endsAfter: false });
+			for (const iso of sorted) {
+				if (iso >= to) break;
+				if (iso >= from) out.get(iso)?.push({ key, title, allDay: true, startsBefore: false, endsAfter: false });
+			}
 			return;
 		}
 		const s = start.toJSDate();
 		const e = end && end.compare(start) > 0 ? end.toJSDate() : s;
-		// A zero-length event belongs to the day it starts on; anything else to every
-		// day it overlaps.
-		const overlaps = e > s ? s < dayEnd && e > dayStart : s >= dayStart && s < dayEnd;
-		if (!overlaps) return;
-		out.push({ key, title, allDay: false, start: s, end: e, startsBefore: s < dayStart, endsAfter: e > dayEnd });
+		if (s >= spanEnd || (e > s ? e <= spanStart : s < spanStart)) return;
+		for (const iso of sorted) {
+			const dayStart = localDay(iso);
+			const dayEnd = dayAfter(iso);
+			if (dayStart >= (e > s ? e : dayAfter(isoOf(s)))) break;
+			// A zero-length event belongs to the day it starts on; anything else to every
+			// day it overlaps.
+			const overlaps = e > s ? s < dayEnd && e > dayStart : s >= dayStart && s < dayEnd;
+			if (overlaps) out.get(iso)?.push({ key, title, allDay: false, start: s, end: e, startsBefore: s < dayStart, endsAfter: e > dayEnd });
+		}
 	};
 
-	for (const event of singles) consider(event, event.startDate, event.endDate, null);
-	for (const event of exceptions) consider(event, event.startDate, event.endDate, event.recurrenceId);
-	for (const event of series.values()) {
+	for (const event of parsed.singles) consider(event, event.startDate, event.endDate, null);
+	for (const event of parsed.exceptions) consider(event, event.startDate, event.endDate, event.recurrenceId);
+	for (const event of parsed.series) {
 		const expand = event.iterator();
-		// Occurrences are walked from the series' start until one begins after the day
+		// Occurrences are walked from the series' start until one begins after the span
 		// ends; a long event that began earlier still overlaps, so the stop is on the
 		// start alone. The day after is compared as a date for all-day series.
 		for (let n = 0, next = expand.next(); next && n < MAX_OCCURRENCES; n++, next = expand.next()) {
-			if (next.isDate ? next.toString() >= nextIso : next.toJSDate() >= dayEnd) break;
+			if (next.isDate ? next.toString() >= spanEndIso : next.toJSDate() >= spanEnd) break;
 			const details = event.getOccurrenceDetails(next);
 			// A moved occurrence is its exception's to report, on its own dates.
 			if (details.item !== event) continue;
@@ -97,12 +119,25 @@ export function feedDayEvents(ics: string, dayIso: string): FeedEvent[] {
 		}
 	}
 
-	return out.sort(
-		(a, b) =>
-			Number(b.allDay) - Number(a.allDay) ||
-			(a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0) ||
-			a.title.localeCompare(b.title),
-	);
+	for (const list of out.values()) {
+		list.sort(
+			(a, b) =>
+				Number(b.allDay) - Number(a.allDay) ||
+				(a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0) ||
+				a.title.localeCompare(b.title),
+		);
+	}
+	return out;
+}
+
+/** The events a feed has on one day (feedEventsByDays for a single day). */
+export function feedDayEvents(feed: ParsedFeed | string, dayIso: string): FeedEvent[] {
+	return feedEventsByDays(feed, [dayIso]).get(dayIso) ?? [];
+}
+
+function localDay(iso: string): Date {
+	const [y, m, d] = iso.split("-").map(Number);
+	return new Date(y, m - 1, d);
 }
 
 function cancelled(event: ICAL.Event): boolean {
@@ -150,10 +185,12 @@ export function feedEventLine(event: FeedEvent, asTask: boolean): string {
 /**
  * A card's body with its feed heading's lines replaced: `lines` (from feedEventLine)
  * become the heading's feed lines. Lines under the heading without a feed tag are the
- * user's and stay, after the feed's. A task line keeps its tick when its event is
- * still there. The heading is found at any level below the card's, case-insensitively;
- * missing, it's added at the end of the card's front (before a Card Flip marker) —
- * but only when there's something to put under it. Returns null when nothing changes.
+ * user's and stay, after the feed's (a blank line between them stays too). A task line
+ * keeps its tick when its event is still there. The heading is found at any level below
+ * the card's, case-insensitively; missing, it's added — only when there's something to
+ * put under it — at the card's top (right under its title) or the end of its front
+ * (before a Card Flip marker), per `placement`. An existing heading stays where it is.
+ * Returns null when nothing changes.
  */
 export function mergeFeedLines(
 	body: string[],
@@ -161,6 +198,7 @@ export function mergeFeedLines(
 	heading: string,
 	lines: string[],
 	flipMarker: string,
+	placement: "top" | "bottom" = "bottom",
 ): string[] | null {
 	const want = heading.trim().toLowerCase();
 	if (!want) return null;
@@ -192,6 +230,11 @@ export function mergeFeedLines(
 	if (at < 0) {
 		if (!lines.length) return null;
 		const subLevel = Math.min(6, cardLevel + 1);
+		if (placement === "top") {
+			// Right under the card's title, a blank line before what the card already says.
+			const title = `${"#".repeat(subLevel)} ${heading.trim()}`;
+			return [title, ...lines, ...(body.length && body[0].trim() !== "" ? [""] : []), ...body];
+		}
 		let end = frontEnd;
 		while (end > 0 && body[end - 1].trim() === "") end--;
 		const block = [...(end > 0 ? [""] : []), `${"#".repeat(subLevel)} ${heading.trim()}`, ...lines];
@@ -241,13 +284,16 @@ export function mergeFeedLines(
 		const box = /^\s*[-*+]\s+\[(.)\]/.exec(line);
 		if (box && box[1] !== " ") ticks.set(tag[1], box[1]);
 	}
+	// A blank line between the feed's lines and the user's is kept (at the card's top, it
+	// separates the events from the rest of the card) — but only one, and only if there was.
+	const gap = own.length > 0 && own[0].trim() === "";
 	while (own.length && own[0].trim() === "") own.shift();
 	const fresh = lines.map((line) => {
 		const tag = FEED_TAG_RE.exec(line);
 		const tick = tag ? ticks.get(tag[1]) : undefined;
 		return tick ? line.replace(/^(\s*[-*+]\s+)\[ \]/, `$1[${tick}]`) : line;
 	});
-	const next = [...fresh, ...own, ...trailingBlanks];
+	const next = [...fresh, ...(gap && fresh.length && own.length ? [""] : []), ...own, ...trailingBlanks];
 	if (next.length === inside.length && next.every((line, i) => line === inside[i])) return null;
 	return [...body.slice(0, at + 1), ...next, ...body.slice(stop)];
 }

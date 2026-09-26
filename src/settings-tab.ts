@@ -327,6 +327,15 @@ export class SectionCardsSettingTab extends PluginSettingTab {
 						control: { type: "text", key: "feedHeading", placeholder: "Calendar" },
 					},
 					{
+						name: "Where the heading goes",
+						desc: "Where a day's card gets the heading the first time its events are added: under the card's title, or at the end of the card. After that it stays wherever it is — move it by hand if you like. At the top, the rest of the card follows the events, which in Markdown terms puts it under the heading too (the Day Planner shows it inside the heading's card) unless it has a heading of its own.",
+						control: {
+							type: "dropdown",
+							key: "feedPlacement",
+							options: { bottom: "Bottom of the card", top: "Top of the card" },
+						},
+					},
+					{
 						name: "Write events as tasks",
 						desc: "Each event becomes an open task instead of a plain bullet. A task you tick stays ticked when the day is updated.",
 						control: { type: "toggle", key: "feedAsTasks" },
