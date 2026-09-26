@@ -4,7 +4,7 @@
 
 [![A freeform canvas for sticky notes and brainstorming](screenshots/hero-canvas.png)](#custom-grid)
 
-[![Dated cards on a calendar — a month, a week, or a day](screenshots/hero-calendar.png)](#calendar)
+[![Dated cards on a calendar — a month, two weeks, a week, or a day](screenshots/hero-calendar.png)](#calendar)
 
 [![The note's images arranged freely on a canvas](screenshots/hero-images.png)](#images)
 
@@ -213,13 +213,6 @@ of weekday names. The sort control orders the months.
 
 ![The Calendar's Month range: August 2026 as a grid of day cards](screenshots/calendar.png)
 
-**2 weeks** — the Week range's planner twice, side by side: all ten weekdays across the top,
-each week's weekend in the band beneath it, and a rule down the middle between the two weeks.
-Its arrows step one week at a time, so the week you were looking at stays on screen — it
-just moves to the other side.
-
-![The Calendar's 2 weeks range: two weeks of weekdays across the top, each weekend beneath its week](screenshots/calendar-2weeks.png)
-
 **Week** — one week in the shape of a paper planner: the five weekdays across the top, the
 weekend lying along the bottom in a band of its own, all of it filling the pane so a day's
 card shows most of itself rather than a corner. Both runs keep the week's own order, so a
@@ -227,14 +220,22 @@ Sunday-first week has its weekend bracketing the weekdays rather than trailing t
 
 ![The Calendar's Week range: Monday to Friday across the top, Saturday and Sunday along the bottom](screenshots/calendar-week.png)
 
+**2 weeks** — that planner twice, side by side: all ten weekdays across the top,
+each week's weekend in the band beneath it, and a rule down the middle between the two weeks.
+Its arrows step one week at a time, so the week you were looking at stays on screen — it
+just moves to the other side.
+
+![The Calendar's 2 weeks range: two weeks of weekdays across the top, each weekend beneath its week](screenshots/calendar-2weeks.png)
+
 **Day** — one day, filling the pane. It edits on click like a card in any other layout, where
-a month or week cell opens big first.
+a cell in the other ranges opens big first.
 
 ![The Calendar's Day range: one day's card filling the pane](screenshots/calendar-day.png)
 
 2 weeks, Week and Day carry a row of arrows: ‹ and › walk a week (or, for Day, a day) at a
-time — as do the `,` and `.` keys — and **Today** comes back once you've wandered off. They walk past the note's
-dated days too: that's how a day the note has never mentioned gets its card.
+time — as do the `,` and `.` keys — and **Today** comes back once you've wandered off. They
+walk past the note's dated days too: that's how a day the note has never mentioned gets its
+card.
 
 ### Heatmap
 
@@ -293,7 +294,7 @@ them all (document order). Esc clears the selection.
 **Keyboard.** The arrow keys move a dashed focus ring to the nearest card in that direction;
 Enter opens that card's editor, Space selects or deselects it, and Shift+arrow extends the
 selection as it moves. In the Rolodex and the Day Planner, left and right step to the
-neighbouring card; on the Calendar's Week and Day ranges, `,` and `.` walk the calendar.
+neighbouring card; on the Calendar's 2 weeks, Week and Day ranges, `,` and `.` walk the calendar.
 
 ## The action strip
 
@@ -573,8 +574,11 @@ more quietly.
 ## Jump to a date
 
 With **Dates** on and date headings present, a calendar button appears beside the checkbox.
-Pick a date and the view scrolls to that card and flashes it; if no card exists for the date, a
-prompt offers to create it (template applied, default placement).
+Pick a date — or the picker's **Today** — and the view scrolls to that card and flashes it; if no
+card exists for the date, a prompt offers to create it (template applied, default placement).
+On the Calendar's 2 weeks, Week and Day ranges, the calendar first turns to the range holding
+that day, so the card (or its empty cell) is on screen to land on. The same goes for a link to a
+dated card and for *Open today's section*.
 
 ## Usage
 
