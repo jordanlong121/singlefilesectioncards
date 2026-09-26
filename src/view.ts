@@ -3742,6 +3742,10 @@ export class SectionCardsView extends ItemView {
 			}
 			run(days.filter((iso) => !isWeekendIso(iso)));
 			run(days.filter(isWeekendIso));
+			// 2 weeks: a rule down the spacer track, from the weekday names to the foot of
+			// the weekend band, so the left and right weeks read as two. Placed by its own
+			// column and rows, so it takes no part in the days' auto-placement.
+			if (this.calendarRange === "2weeks") grid.createDiv({ cls: "sc-cal-divider", attr: { "aria-hidden": "true" } });
 			return;
 		}
 
@@ -6256,7 +6260,7 @@ export class SectionCardsView extends ItemView {
 		// section rebuilds one card and every other card's rendered markdown is kept.
 		for (const stray of Array.from(
 			this.gridEl.querySelectorAll(
-				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty, .sc-cal-nav, .sc-cal-dow, .sc-cal-month, .sc-cal-blank, .sc-heat-wrap, .sfsc-deck-card",
+				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty, .sc-cal-nav, .sc-cal-divider, .sc-cal-dow, .sc-cal-month, .sc-cal-blank, .sc-heat-wrap, .sfsc-deck-card",
 			),
 		)) {
 			stray.remove();

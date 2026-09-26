@@ -270,6 +270,7 @@ ${cell(days[0], false)}
 ${calNavHtml(days)}
 ${run(days.filter((iso) => !weekend(iso)))}
 ${run(days.filter(weekend))}
+${CAL_RANGE === "2weeks" ? '<div class="sc-cal-divider" aria-hidden="true"></div>' : ""}
 </div>
 <div class="section-cards-tray"></div>`;
 	}
