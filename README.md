@@ -214,7 +214,7 @@ of weekday names. The sort control orders the months.
 ![The Calendar's Month range: August 2026 as a grid of day cards](screenshots/calendar.png)
 
 **2 weeks** — the Week range's planner twice, side by side: all ten weekdays across the top,
-each week's weekend in the band beneath it, and a narrow gap setting the second week off.
+each week's weekend in the band beneath it, and a rule down the middle between the two weeks.
 Its arrows step one week at a time, so the week you were looking at stays on screen — it
 just moves to the other side.
 

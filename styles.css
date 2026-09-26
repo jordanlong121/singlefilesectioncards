@@ -1207,6 +1207,18 @@ body.is-mobile .is-layout-tight .section-card-body {
 	grid-column: 12 / span 5;
 }
 
+/* The rule between the two weeks: centred in the spacer track (column 11), from the
+   weekday names (row 2) to the foot of the weekend band (the grid's last row line). */
+.sc-cal-divider {
+	grid-column: 11;
+	grid-row: 2 / -1;
+	justify-self: center;
+	width: 2px;
+	border-radius: 1px;
+	background-color: var(--text-faint);
+	opacity: 0.6;
+}
+
 /* One day is one column, under its nav row. */
 .is-cal-day .section-cards-grid {
 	grid-template-columns: minmax(0, 1fr);
