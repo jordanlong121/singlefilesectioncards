@@ -39,7 +39,7 @@ export class SectionCardsSettingTab extends PluginSettingTab {
 				control: { type: "toggle", key: "autoOpenCards" },
 			},
 			{
-				name: "Cards button on notes",
+				name: "Open regular note as card button",
 				desc: "A deck icon in the top-right of every note. Clicking it opens that note as cards in the same tab.",
 				control: { type: "toggle", key: "noteCardsButton" },
 			},
