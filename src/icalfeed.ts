@@ -83,16 +83,17 @@ export function feedEventsByDays(feed: ParsedFeed | string, dayIsos: string[]): 
 			// All-day: dates, end exclusive; a missing or empty span means the one day.
 			const from = start.toString();
 			const to = end && end.compare(start) > 0 ? end.toString() : isoOf(dayAfter(from));
-			for (const iso of sorted) {
-				if (iso >= to) break;
-				if (iso >= from) out.get(iso)?.push({ key, title, allDay: true, startsBefore: false, endsAfter: false });
+			for (let i = lowerBound(sorted, from); i < sorted.length && sorted[i] < to; i++) {
+				out.get(sorted[i])?.push({ key, title, allDay: true, startsBefore: false, endsAfter: false });
 			}
 			return;
 		}
 		const s = start.toJSDate();
 		const e = end && end.compare(start) > 0 ? end.toJSDate() : s;
 		if (s >= spanEnd || (e > s ? e <= spanStart : s < spanStart)) return;
-		for (const iso of sorted) {
+		// From the day it starts on (or the first day asked for), until it's over.
+		for (let i = lowerBound(sorted, isoOf(s)); i < sorted.length; i++) {
+			const iso = sorted[i];
 			const dayStart = localDay(iso);
 			const dayEnd = dayAfter(iso);
 			if (dayStart >= (e > s ? e : dayAfter(isoOf(s)))) break;
@@ -133,6 +134,38 @@ export function feedEventsByDays(feed: ParsedFeed | string, dayIsos: string[]): 
 /** The events a feed has on one day (feedEventsByDays for a single day). */
 export function feedDayEvents(feed: ParsedFeed | string, dayIso: string): FeedEvent[] {
 	return feedEventsByDays(feed, [dayIso]).get(dayIso) ?? [];
+}
+
+/** The first index in a sorted list of ISO days at or after `iso`. */
+function lowerBound(sorted: string[], iso: string): number {
+	let lo = 0;
+	let hi = sorted.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		if (sorted[mid] < iso) lo = mid + 1;
+		else hi = mid;
+	}
+	return lo;
+}
+
+/** The earliest day any event in the feed starts on (a series by its first occurrence),
+ * or null for a feed with no events. */
+export function feedFirstDay(feed: ParsedFeed): string | null {
+	let first: string | null = null;
+	for (const event of [...feed.singles, ...feed.series, ...feed.exceptions]) {
+		const start = event.startDate;
+		if (!start) continue;
+		const iso = start.isDate ? start.toString() : isoOf(start.toJSDate());
+		if (first === null || iso < first) first = iso;
+	}
+	return first;
+}
+
+/** Every ISO day from `from` up to (not including) `to`. */
+export function daysBetween(from: string, to: string): string[] {
+	const out: string[] = [];
+	for (let d = localDay(from), end = localDay(to); d < end; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) out.push(isoOf(d));
+	return out;
 }
 
 function localDay(iso: string): Date {

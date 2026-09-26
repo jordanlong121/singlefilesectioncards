@@ -135,8 +135,9 @@ import {
 	writeSection,
 	syncFeedIntoSection,
 	syncFeedIntoSections,
+	insertSections,
 } from "./writes";
-import { feedDayEvents, feedEventLine, feedEventsByDays, parseFeed } from "./icalfeed";
+import { feedDayEvents, feedEventLine, feedEventsByDays, parseFeed, feedFirstDay, daysBetween, mergeFeedLines } from "./icalfeed";
 import {
 	PlannerSlot,
 	plannerBlockKey,
@@ -217,6 +218,8 @@ import { SavedLayoutChangesModal, ConfirmActionModal,
 	ShortcutsModal,
 	CreateDateCardModal,
 	CalendarFeedModal,
+	FeedUpdateAllModal,
+	type FeedCreateScope,
 	PlannerMissingDayModal,
 	DocumentSetupModal,
 	DuplicateCardModal,
@@ -5108,9 +5111,12 @@ export class SectionCardsView extends ItemView {
 	}
 
 	/**
-	 * Every dated card in the note from its feed, in one write. The feed is fetched and
-	 * read first, so the confirmation can say how many cards and events it will touch —
-	 * it can be hundreds of cards, past and future.
+	 * Every dated card in the note from its feed. The feed is fetched and read first, so
+	 * the dialog can say how many cards and events the update will touch, and offer to
+	 * make cards for the calendar's days the note has none for: this week, this month,
+	 * this year, or all of them (from the feed's first event to a year ahead — repeating
+	 * events with no end go on forever). Existing cards are updated in one write, new
+	 * ones added in another.
 	 */
 	async updateAllDaysFromFeed(): Promise<void> {
 		const file = this.getFile();
@@ -5119,42 +5125,96 @@ export class SectionCardsView extends ItemView {
 			this.promptCalendarFeed();
 			return;
 		}
+		// Cards at a level without dates would be the wrong ones to fill: follow the days.
+		this.followDateLevel();
+		await this.refresh();
 		const format = this.cardFormat();
 		const detect = this.plugin.settings.dateDetectFormat;
 		const dated = this.cardEntries
 			.map((entry) => ({ section: entry.holder.section, iso: entry.holder.section.unfiled ? null : titleToIso(entry.holder.section.title, format, detect) }))
 			.filter((d): d is { section: Section; iso: string } => d.iso !== null);
-		if (!dated.length) {
-			new Notice(`No card at this heading level names a day — switch the card level to the one holding the days.`);
-			return;
-		}
+
+		const today = mo().format("YYYY-MM-DD");
+		const [ty, tm, td] = today.split("-").map(Number);
+		const iso = (date: Date) =>
+			`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+		const weekStart = calendarRangeDays(today, "week", this.weekFirstDow())[0];
+		const scopes: Record<Exclude<FeedCreateScope, "none" | "all">, [string, string]> = {
+			week: [weekStart, shiftIso(weekStart, 7)],
+			month: [iso(new Date(ty, tm - 1, 1)), iso(new Date(ty, tm, 1))],
+			year: [iso(new Date(ty, 0, 1)), iso(new Date(ty + 1, 0, 1))],
+		};
 		let byDay: Map<string, ReturnType<typeof feedDayEvents>>;
+		let allFrom: string;
+		// A year from today, inclusive (the day after it is the range's end).
+		const allTo = iso(new Date(ty + 1, tm - 1, td + 1));
 		try {
-			byDay = feedEventsByDays(parseFeed(await this.plugin.fetchFeed(url, true)), dated.map((d) => d.iso));
+			const feed = parseFeed(await this.plugin.fetchFeed(url, true));
+			const first = feedFirstDay(feed) ?? today;
+			allFrom = [first, scopes.week[0], scopes.month[0], scopes.year[0]].sort()[0];
+			byDay = feedEventsByDays(feed, [...daysBetween(allFrom, allTo), ...dated.map((d) => d.iso)]);
 		} catch (err) {
 			new Notice(`Couldn't update from the calendar feed: ${err instanceof Error ? err.message : String(err)}.`);
 			return;
 		}
+
 		const asTask = this.plugin.settings.feedAsTasks;
-		const targets = dated.map((d) => ({ section: d.section, lines: (byDay.get(d.iso) ?? []).map((e) => feedEventLine(e, asTask)) }));
+		const lineFor = (iso: string) => (byDay.get(iso) ?? []).map((e) => feedEventLine(e, asTask));
+		const targets = dated.map((d) => ({ section: d.section, lines: lineFor(d.iso) }));
 		const busy = targets.filter((t) => t.lines.length);
 		const events = busy.reduce((n, t) => n + t.lines.length, 0);
+		const have = new Set(dated.map((d) => d.iso));
+		const missingIn = (from: string, to: string) =>
+			daysBetween(from, to).filter((iso) => !have.has(iso) && (byDay.get(iso)?.length ?? 0) > 0);
+		const missing: Record<FeedCreateScope, string[]> = {
+			none: [],
+			week: missingIn(...scopes.week),
+			month: missingIn(...scopes.month),
+			year: missingIn(...scopes.year),
+			all: missingIn(allFrom, allTo),
+		};
+
 		const heading = this.plugin.settings.feedHeading.trim() || "Calendar";
 		const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-		new ConfirmActionModal(
-			this.app,
-			"Update every day from the calendar?",
-			`${plural(dated.length, "dated card")} in “${file.basename}”: ${busy.length} of them have events on the calendar (${plural(events, "event")}). ` +
+		const summary = dated.length
+			? `${plural(dated.length, "dated card")} in “${file.basename}”: ${busy.length} of them have events on the calendar (${plural(events, "event")}). ` +
 				`Those get the calendar's lines under “${heading}”; a card whose calendar heading is already there but has nothing on the calendar loses the feed's old lines. ` +
-				"Everything else in the cards stays as it is.",
-			"Update all",
-			false,
-			() => {
+				"Everything else in the cards stays as it is."
+			: `“${file.basename}” has no dated cards yet.`;
+		new FeedUpdateAllModal(
+			this.app,
+			summary,
+			[
+				{ value: "none", label: "Don't make any", count: 0 },
+				{ value: "week", label: "This week", count: missing.week.length },
+				{ value: "month", label: "This month", count: missing.month.length },
+				{ value: "year", label: "This year", count: missing.year.length },
+				{ value: "all", label: "All — to a year from today", count: missing.all.length },
+			],
+			(scope) => {
 				void (async () => {
-					const result = await syncFeedIntoSections(this.app, file, this.headingLevel, targets, heading, this.flipMarker(), this.plugin.settings.feedPlacement);
-					if (result.changed) await this.refresh();
-					const missing = result.missing ? ` ${plural(result.missing, "card")} couldn't be found — the file changed while updating.` : "";
-					new Notice(result.changed ? `Updated ${plural(result.changed, "card")} from the calendar.${missing}` : `Every day already matches the calendar.${missing}`);
+					const marker = this.flipMarker();
+					const placement = this.plugin.settings.feedPlacement;
+					const updated = targets.length
+						? await syncFeedIntoSections(this.app, file, this.headingLevel, targets, heading, marker, placement)
+						: { changed: 0, missing: 0 };
+					// New cards: the note's heading format and template, that day's events in.
+					const items: { headingRaw: string; bodyLines: string[] }[] = [];
+					for (const iso of missing[scope]) {
+						const title = mo(iso, "YYYY-MM-DD").format(format);
+						const template = await this.plugin.loadTemplateBody(file.path, title);
+						const body = template?.trim() ? template.replace(/^(?:[ \t]*\r?\n)+/, "").replace(/\s+$/, "").split(/\r?\n/) : [];
+						const filled = mergeFeedLines(body, this.headingLevel, heading, lineFor(iso), marker, placement) ?? body;
+						items.push({ headingRaw: `${"#".repeat(this.headingLevel)} ${title}`, bodyLines: filled });
+					}
+					const created = items.length ? await insertSections(this.app, file, items, this.plugin.settings.newCardPlacement) : 0;
+					if (updated.changed || created) await this.refresh();
+					const parts = [
+						updated.changed ? `updated ${plural(updated.changed, "card")}` : "",
+						created ? `made ${plural(created, "new card")}` : "",
+					].filter(Boolean);
+					const lost = updated.missing ? ` ${plural(updated.missing, "card")} couldn't be found — the file changed while updating.` : "";
+					new Notice(parts.length ? `Calendar: ${parts.join(" and ")}.${lost}` : `Every day already matches the calendar.${lost}`);
 				})();
 			},
 		).open();
@@ -5242,6 +5302,19 @@ export class SectionCardsView extends ItemView {
 		window.setTimeout(() => entry.el.removeClass("is-linked"), 1600);
 	}
 
+	/** Before writing a dated card: a level with no date headings (H2 in a note of H1
+	 * months and H3 days) mustn't get one, so the view moves to the level that holds the
+	 * dates and the card is written there. */
+	private followDateLevel(): void {
+		const counts = dateHeadingCounts(this.noteLines, this.cardFormat(), this.plugin.settings.dateDetectFormat);
+		const dateLevel = bestDateLevel(counts);
+		if (dateLevel !== null && counts[this.headingLevel] === 0 && dateLevel !== this.headingLevel) {
+			this.headingLevel = dateLevel;
+			this.rememberView();
+			this.buildToolbar();
+		}
+	}
+
 	/** Jump-to-date landed on a date with no card: write one (template applied, default
 	 * placement), then jump again so the new card scrolls into view and flashes. */
 	private async createDateCard(iso: string): Promise<void> {
@@ -5250,15 +5323,7 @@ export class SectionCardsView extends ItemView {
 			new Notice(`can't find "${this.filePath}".`);
 			return;
 		}
-		// A level with no date headings (H2 in a note of H1 months and H3 days) mustn't
-		// get a dated card: write at the level that holds the dates, and follow it there.
-		const counts = dateHeadingCounts(this.noteLines, this.cardFormat(), this.plugin.settings.dateDetectFormat);
-		const dateLevel = bestDateLevel(counts);
-		if (dateLevel !== null && counts[this.headingLevel] === 0 && dateLevel !== this.headingLevel) {
-			this.headingLevel = dateLevel;
-			this.rememberView();
-			this.buildToolbar();
-		}
+		this.followDateLevel();
 		const title = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
 		const headingRaw = `${"#".repeat(this.headingLevel)} ${title}`;
 		const body = await this.plugin.loadTemplateBody(file.path, title);

@@ -2,6 +2,7 @@
 
 import {
 	App,
+	type ButtonComponent,
 	SuggestModal,
 	Modal,
 	Notice,
@@ -1509,6 +1510,76 @@ export class CalendarFeedModal extends Modal {
 			.addButton((b) => b.setButtonText("Save").setCta().onClick(save));
 		input.focus();
 		input.select();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/** How far "update every day" goes in making cards for calendar days the note lacks. */
+export type FeedCreateScope = "none" | "week" | "month" | "year" | "all";
+
+/**
+ * Update every day from the calendar: what the update will touch, and — when the
+ * calendar has days the note has no card for — how far to go making them: this week,
+ * this month, this year, or all of them. Each choice shows how many cards it makes.
+ */
+export class FeedUpdateAllModal extends Modal {
+	private readonly summary: string;
+	private readonly scopes: { value: FeedCreateScope; label: string; count: number }[];
+	private readonly onConfirm: (scope: FeedCreateScope) => void;
+
+	constructor(
+		app: App,
+		summary: string,
+		scopes: { value: FeedCreateScope; label: string; count: number }[],
+		onConfirm: (scope: FeedCreateScope) => void,
+	) {
+		super(app);
+		this.summary = summary;
+		this.scopes = scopes;
+		this.onConfirm = onConfirm;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.addClass("sfsc-feed-modal");
+		contentEl.createEl("h3", { text: "Update every day from the calendar" });
+		contentEl.createEl("p", { text: this.summary });
+		let scope: FeedCreateScope = "none";
+		let go: ButtonComponent | null = null;
+		const cards = (n: number) => `${n} new card${n === 1 ? "" : "s"}`;
+		const sync = () => {
+			const n = this.scopes.find((s) => s.value === scope)?.count ?? 0;
+			go?.setButtonText(n ? `Update and create ${cards(n)}` : "Update");
+		};
+		if (this.scopes.some((s) => s.value !== "none" && s.count > 0)) {
+			new Setting(contentEl)
+				.setName("Days on the calendar without a card")
+				.setDesc("Make their cards — each with the note's heading format and card template, and that day's events.")
+				.addDropdown((dropdown) => {
+					for (const s of this.scopes) {
+						dropdown.addOption(s.value, s.value === "none" ? s.label : `${s.label} — ${s.count ? cards(s.count) : "none"}`);
+					}
+					dropdown.setValue(scope).onChange((value) => {
+						scope = value as FeedCreateScope;
+						sync();
+					});
+				});
+		} else {
+			contentEl.createEl("p", { cls: "sfsc-feed-help", text: "Every day with events on the calendar already has a card." });
+		}
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => {
+				go = b;
+				b.setCta().onClick(() => {
+					this.close();
+					this.onConfirm(scope);
+				});
+			});
+		sync();
 	}
 
 	onClose(): void {

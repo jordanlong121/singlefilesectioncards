@@ -844,3 +844,33 @@ export async function syncFeedIntoSections(
 	});
 	return { changed, missing };
 }
+
+/**
+ * Add many cards in one write — the days a calendar feed has that the note doesn't.
+ * Each goes where a new card of its own would (insertionLine, per `placement`), in the
+ * order given; a card whose title is already there is skipped rather than doubled.
+ * Returns how many were added.
+ */
+export async function insertSections(
+	app: App,
+	file: TFile,
+	items: { headingRaw: string; bodyLines: string[] }[],
+	placement: Placement,
+): Promise<number> {
+	let added = 0;
+	await app.vault.process(file, (data) => {
+		added = 0;
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		for (const { headingRaw, bodyLines } of items) {
+			const level = (/^#+/.exec(headingRaw)?.[0] ?? "###").length;
+			const title = headingRaw.replace(/^#+\s*/, "").trim();
+			if (parseSections(lines, level).some((s) => s.title === title)) continue;
+			const at = insertionLine(lines, level, title, placement);
+			lines.splice(at, 0, headingRaw, ...bodyLines, "");
+			added++;
+		}
+		return added ? lines.join(eol) : data;
+	});
+	return added;
+}
