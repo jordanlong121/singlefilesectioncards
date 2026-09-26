@@ -30,7 +30,8 @@ const NOTE_HAS_DATES = sections.some((s) => /\d{4}-\d{2}-\d{2}/.test(s.title));
 
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const inline = (s) =>
-	esc(s)
+	// A trailing ^block-id (a calendar feed's tag, say) is hidden in reading view.
+	esc(s.replace(/\s\^[A-Za-z0-9-]+\s*$/, ""))
 		.replace(/\[\[([^\]]+)\]\]/g, (_, t) => `<a class="internal-link" data-href="${t}" href="${t}">${t}</a>`)
 		.replace(/(^|\s)(#[\w/-]+)/g, (_, sp, tag) => `${sp}<a href="${tag}" class="tag" target="_blank" rel="noopener">${tag}</a>`)
 		.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
@@ -56,6 +57,13 @@ function renderBody(md) {
 			i++;
 			continue;
 		}
+		// A heading inside the body (a calendar feed's "#### Calendar", a subsection).
+		const h = /^(#{1,6})\s+(.*)$/.exec(lines[i]);
+		if (h) {
+			out.push(`<h${h[1].length} dir="auto">${inline(h[2])}</h${h[1].length}>`);
+			i++;
+			continue;
+		}
 		const m = TASK.exec(lines[i]);
 		if (m && !m[1]) {
 			out.push('<ul class="contains-task-list">');
@@ -78,7 +86,7 @@ function renderBody(md) {
 			out.push("</ul>");
 		} else {
 			const para = [];
-			while (i < lines.length && lines[i].trim() && !TASK.exec(lines[i])) para.push(lines[i++]);
+			while (i < lines.length && lines[i].trim() && !TASK.exec(lines[i]) && !/^#{1,6}\s/.test(lines[i])) para.push(lines[i++]);
 			out.push(`<p dir="auto">${inline(para.join(" "))}</p>`);
 		}
 	}
@@ -159,6 +167,7 @@ function toolbarHtml(layout, mode = "default") {
 	<button class="section-cards-icon-btn section-cards-deck-btn is-active">${DECK_ICON}</button>
 	<button class="section-cards-file-btn"><span>${path.basename(notePath)}</span></button>
 	<button class="sfsc-picker-btn section-cards-layout-btn${process.env.LAYOUT_POP ? " is-open" : ""}"><span class="sfsc-picker-btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg></span><span class="sfsc-picker-btn-label">${LAYOUT_LABELS[layout]}</span><span class="sfsc-picker-btn-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m6 9 6 6 6-6"/></svg></span></button>
+	${layout === "calendar" ? `<div class="section-cards-control section-cards-calrange-control"><button class="sfsc-picker-btn section-cards-calrange-btn"><span class="sfsc-picker-btn-icon">${CAL_ICON}</span><span class="sfsc-picker-btn-label">${CAL_RANGE_LABELS[CAL_RANGE]}</span><span class="sfsc-picker-btn-chevron">${CHEVRON_ICON}</span></button></div>` : ""}
 	<div class="section-cards-control section-cards-level-control"><button class="sfsc-picker-btn section-cards-level-btn"${["calendar", "heatmap"].includes(layout) ? " disabled" : ""}><span class="sfsc-picker-btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="M6 12h12"/><path d="M6 20V4"/><path d="M18 20V4"/></svg></span><span class="sfsc-picker-btn-label">H${LEVEL}</span><span class="sfsc-picker-btn-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m6 9 6 6 6-6"/></svg></span></button></div>
 	<div class="section-cards-control section-cards-filter"><input type="text" class="section-cards-filter-input" placeholder="Filter…" spellcheck="false"><button class="section-cards-filter-clear"></button></div>
 	<div class="section-cards-spacer"></div>
@@ -173,7 +182,6 @@ function toolbarHtml(layout, mode = "default") {
 	<div class="section-cards-spacer"></div>
 	<button class="section-cards-new-btn mod-cta">${MOBILE ? "+" : "+ New card"}</button>
 	<div class="section-cards-control section-cards-mode-control"><button class="sfsc-picker-btn section-cards-mode-btn"><span class="sfsc-picker-btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><rect width="7" height="18" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg></span><span class="sfsc-picker-btn-label">${mode === "hier" ? "Hierarchy view" : mode === "sections" ? "Divider view" : "Default view"}</span><span class="sfsc-picker-btn-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m6 9 6 6 6-6"/></svg></span></button></div>
-	${layout === "calendar" ? `<div class="section-cards-control section-cards-calrange-control"><button class="sfsc-picker-btn section-cards-calrange-btn"><span class="sfsc-picker-btn-icon">${CAL_ICON}</span><span class="sfsc-picker-btn-label">${CAL_RANGE_LABELS[CAL_RANGE]}</span><span class="sfsc-picker-btn-chevron">${CHEVRON_ICON}</span></button></div>` : ""}
 	${layout === "calendar" && CAL_RANGE !== "month" ? "" : `<div class="section-cards-control section-cards-sort-control"><button class="sfsc-picker-btn section-cards-sort-btn"><span class="sfsc-picker-btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg></span><span class="sfsc-picker-btn-label">${(layout === "calendar" ? CAL_SORT_LABELS : SORT_LABELS)[SORT]}</span><span class="sfsc-picker-btn-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m6 9 6 6 6-6"/></svg></span></button></div>`}
 	<div class="section-cards-control section-cards-group-control"><button class="sfsc-picker-btn section-cards-group-btn"><span class="sfsc-picker-btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg></span><span class="sfsc-picker-btn-label">None</span><span class="sfsc-picker-btn-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="m6 9 6 6 6-6"/></svg></span></button></div>
 	${layout === "tasks" ? `<div class="section-cards-control"><span class="section-cards-label">Tasks</span><select class="dropdown"><option>All</option></select></div>` : ""}
