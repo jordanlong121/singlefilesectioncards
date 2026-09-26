@@ -5190,3 +5190,22 @@ body.is-phone .section-cards-label {
 	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 }
+
+/* ---------- calendar feed dialog ---------- */
+.sfsc-feed-modal .sfsc-feed-help {
+	margin: 0 0 8px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+/* Test's answer (or the reason an address was refused), under the address box. */
+.sfsc-feed-status {
+	min-height: 1.5em;
+	margin-top: 6px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.sfsc-feed-status.is-error {
+	color: var(--text-error);
+}

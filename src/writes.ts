@@ -13,6 +13,7 @@ import {
 	removeBlock,
 } from "./blocks";
 import { plannerCards } from "./planner";
+import { mergeFeedLines } from "./icalfeed";
 
 /** Delete a block at write time, re-locating the section and verifying the block's text. */
 export async function deleteBlockInFile(
@@ -767,4 +768,37 @@ export async function writeSection(
 		new Notice("Couldn't find that section — the file changed on disk. Edit not saved.");
 	}
 	return ok;
+}
+
+/**
+ * Put a day's calendar-feed lines under the feed heading in its card (mergeFeedLines),
+ * re-locating the card on disk like every other write. "unchanged" when the note
+ * already says exactly that, so a refresh with nothing new writes nothing.
+ */
+export async function syncFeedIntoSection(
+	app: App,
+	file: TFile,
+	level: number,
+	original: Section,
+	heading: string,
+	feedLines: string[],
+	flipMarker: string,
+): Promise<"changed" | "unchanged" | "missing"> {
+	let result: "changed" | "unchanged" | "missing" = "unchanged";
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, original);
+		if (!target) {
+			result = "missing";
+			return data;
+		}
+		const start = bodyStartLine(target);
+		const body = lines.slice(start, target.endLine);
+		const merged = mergeFeedLines(body, level, heading, feedLines, flipMarker);
+		if (!merged) return data;
+		result = "changed";
+		return [...lines.slice(0, start), ...merged, ...lines.slice(target.endLine)].join(eol);
+	});
+	return result;
 }

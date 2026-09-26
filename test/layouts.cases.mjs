@@ -9,6 +9,7 @@ import {
   detectLevelSetup, movableBlocks, deckExcerpt, LAYOUT_OPTIONS, locateCard,
   weekStartIso, weekDays, clampIso, isoDow, isWeekendIso, CALENDAR_RANGE_OPTIONS, CALENDAR_RANGE_ICONS,
   CALENDAR_RANGE_KEYS, calendarRangeDays, calendarRangeStep,
+  feedDayEvents, feedEventLine, feedEventTag, mergeFeedLines, FEED_TAG_RE,
   insertSection, deleteSection, retitleSectionInFile, quickAddToSection, pasteAtSectionEnd, pasteAboveSubheadings,
   toggleTaskInFile, moveBlockInFile, deleteBlockInFile, replaceBlockInFile, insertAfterBlockInFile,
   moveRangeInFile, replaceRangeInFile, deleteRangeInFile, moveSectionInFile, mergeSectionsInFile,
@@ -324,6 +325,108 @@ t("every calendar helper the grid builds is listed in refresh's stray sweep", ()
   const built = new Set([...src.matchAll(/grid\.createDiv\(\{\s*cls: "(sc-cal-[a-z-]+)/g)].map((m) => m[1]));
   assert.ok(built.size >= 4, `expected the dow, month, blank and nav helpers, saw ${[...built]}`);
   for (const cls of built) assert.ok(sweep.includes(`.${cls}`), `${cls} is never swept between renders`);
+});
+
+// ---------- Calendar feed (iCal) ----------
+// The fixture is a Google-style feed with its own America/Toronto zone. Times are read
+// in a fixed local zone so the assertions don't depend on the machine running them.
+const inZone = (tz, fn) => {
+  const was = process.env.TZ;
+  process.env.TZ = tz;
+  try { return fn(); } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; }
+};
+const feed = fixture("feed.ics");
+const dayLines = (iso, asTask = false) => feedDayEvents(feed, iso).map((e) => feedEventLine(e, asTask).replace(FEED_TAG_RE, ""));
+
+t("feed: a day's events — all-day first, then by time; cancelled left out", () => inZone("America/Toronto", () => {
+  assert.deepEqual(dayLines("2026-09-22"), [
+    "- All day: Company holiday",
+    "- All day: Conference",
+    "- 09:00–09:30 Team stand-up",
+    "- 12:00–13:00 Floating lunch",
+    "- 13:00–14:00 Lunch UTC",
+    "- 15:00 Reminder",
+    "- 16:00–16:30 1:1 (pulled in)",
+    "- 22:00–… Night shift",
+  ]);
+}));
+
+t("feed: repeating events — the rule, a skipped date, and occurrences moved either way", () => inZone("America/Toronto", () => {
+  assert.deepEqual(dayLines("2026-09-08"), ["- 14:00–15:00 1:1"], "an ordinary occurrence");
+  assert.deepEqual(dayLines("2026-09-15"), [], "EXDATE skips it");
+  assert.deepEqual(dayLines("2026-09-23"), ["- All day: Conference", "- …–01:00 Night shift", "- 10:00–11:00 1:1 (moved)"],
+    "moved later: shows on its new day, overnight tail and multi-day event too");
+  assert.deepEqual(dayLines("2026-09-29"), [], "pulled earlier: gone from its own day");
+  assert.deepEqual(dayLines("2026-10-06"), ["- 14:00–15:00 1:1"]);
+  assert.deepEqual(dayLines("2026-11-10"), [], "COUNT=10 ended it (Sep 1 … Nov 3)");
+  assert.deepEqual(dayLines("2026-09-24"), [], "an all-day event's end date is exclusive");
+}));
+
+t("feed: times are converted into the local zone", () => inZone("Europe/London", () => {
+  const lines = dayLines("2026-09-22");
+  assert.ok(lines.includes("- 14:00–14:30 Team stand-up"), lines.join(" | "));
+  assert.ok(lines.includes("- 18:00–19:00 Lunch UTC"), "UTC 17:00 is 18:00 BST");
+  assert.ok(lines.includes("- 12:00–13:00 Floating lunch"), "floating times stay put");
+  assert.ok(lines.includes("- All day: Company holiday"), "all-day events don't shift a day");
+}));
+
+t("feed: lines — tasks, tags, and tags stable across reads", () => inZone("America/Toronto", () => {
+  const events = feedDayEvents(feed, "2026-09-22");
+  const standup = events.find((e) => e.title === "Team stand-up");
+  assert.match(feedEventLine(standup, true), /^- \[ \] 09:00–09:30 Team stand-up \^ical-[a-z0-9]{7}$/);
+  assert.equal(feedEventTag(standup.key), feedEventTag(feedDayEvents(feed, "2026-09-22").find((e) => e.title === "Team stand-up").key));
+  // Each occurrence of a series has its own tag.
+  const a = feedDayEvents(feed, "2026-09-08")[0], b = feedDayEvents(feed, "2026-10-06")[0];
+  assert.notEqual(feedEventTag(a.key), feedEventTag(b.key));
+  assert.throws(() => feedDayEvents("not a calendar", "2026-09-22"));
+}));
+
+t("feed merge: adds the heading at the card's end, before a flip marker, only when needed", () => {
+  const lines = ["- 09:00–09:30 Stand-up ^ical-aaaaaaa"];
+  assert.deepEqual(mergeFeedLines(["Notes.", "- [ ] task", ""], 3, "Calendar", lines, "%% flip %%"),
+    ["Notes.", "- [ ] task", "", "#### Calendar", "- 09:00–09:30 Stand-up ^ical-aaaaaaa", ""],
+    "the blank line before the next card's heading stays");
+  assert.deepEqual(mergeFeedLines([], 3, "Calendar", lines, "%% flip %%"), ["#### Calendar", "- 09:00–09:30 Stand-up ^ical-aaaaaaa"]);
+  assert.deepEqual(mergeFeedLines(["Front.", "%% flip %%", "Back."], 3, "Calendar", lines, "%% flip %%"),
+    ["Front.", "", "#### Calendar", "- 09:00–09:30 Stand-up ^ical-aaaaaaa", "", "%% flip %%", "Back."]);
+  assert.equal(mergeFeedLines(["Notes."], 3, "Calendar", [], "%% flip %%"), null, "no events, no heading added");
+  assert.deepEqual(mergeFeedLines(["x"], 6, "Calendar", lines, "")[2], "###### Calendar", "never deeper than H6");
+});
+
+t("feed merge: replaces the feed's lines, keeps the user's and their ticks, leaves other sections", () => {
+  const body = [
+    "Morning notes.",
+    "#### calendar",
+    "- [x] 09:00–09:30 Stand-up ^ical-aaaaaaa",
+    "- [ ] 11:00–12:00 Old meeting ^ical-bbbbbbb",
+    "- my own note about the day",
+    "",
+    "#### Notes",
+    "- keep me",
+    "```",
+    "#### Calendar",
+    "```",
+  ];
+  const fresh = ["- [ ] 09:00–09:30 Stand-up ^ical-aaaaaaa", "- [ ] 14:00–15:00 New meeting ^ical-ccccccc"];
+  assert.deepEqual(mergeFeedLines(body, 3, "Calendar", fresh, "%% flip %%"), [
+    "Morning notes.",
+    "#### calendar",
+    "- [x] 09:00–09:30 Stand-up ^ical-aaaaaaa",
+    "- [ ] 14:00–15:00 New meeting ^ical-ccccccc",
+    "- my own note about the day",
+    "",
+    "#### Notes",
+    "- keep me",
+    "```",
+    "#### Calendar",
+    "```",
+  ]);
+  const same = mergeFeedLines(body, 3, "Calendar", fresh, "%% flip %%");
+  assert.equal(mergeFeedLines(same, 3, "Calendar", fresh, "%% flip %%"), null, "a second refresh changes nothing");
+  // An emptied day drops the feed's lines but keeps the heading and the user's line.
+  assert.deepEqual(mergeFeedLines(same, 3, "Calendar", [], "%% flip %%").slice(1, 4), ["#### calendar", "- my own note about the day", ""]);
+  // A heading at or above the card's level isn't the card's feed heading.
+  assert.deepEqual(mergeFeedLines(["### Calendar"], 3, "Calendar", fresh, "").slice(0, 3), ["### Calendar", "", "#### Calendar"]);
 });
 
 t("every layout has a label and a hint; the planner is among them", () => {
