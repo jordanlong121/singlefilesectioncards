@@ -158,20 +158,30 @@ export const GROUP_BY_ICONS: Record<string, [string, string]> = {
 };
 
 /** How much of the calendar the Calendar layout shows at once. "month" is the
- * scrolling wall of whole months; "week" and "day" show one range with arrows. */
-export type CalendarRange = "month" | "week" | "day";
+ * scrolling wall of whole months; "2weeks", "week" and "day" show one range with arrows. */
+export type CalendarRange = "month" | "2weeks" | "week" | "day";
 
-/** The range picker's choices: value, label, and the tooltip hint. */
+/** The range picker's choices, widest first: value, label, and the tooltip hint. */
 export const CALENDAR_RANGE_OPTIONS: [CalendarRange, string, string][] = [
-	["month", "Month", "Every month between the first and last dated card, scrolling"],
-	["week", "Week", "One week at a time, its seven days side by side (, and . step weeks)"],
-	["day", "Day", "One day at a time, filling the pane (, and . step days)"],
+	["month", "Month", "Every month between the first and last dated card, scrolling (M)"],
+	["2weeks", "2 weeks", "Two weeks side by side — the arrows, and , and ., step one week at a time (2)"],
+	["week", "Week", "One week at a time — , and . step weeks (W)"],
+	["day", "Day", "One day at a time, filling the pane — , and . step days (D)"],
 ];
 
 export const CALENDAR_RANGE_ICONS: Record<CalendarRange, [string, string]> = {
 	month: ["calendar", "calendar"],
+	"2weeks": ["columns-2", "calendar-range"],
 	week: ["calendar-range", "calendar-days"],
 	day: ["calendar-days", "calendar"],
+};
+
+/** The key that picks each range while the Calendar is showing. */
+export const CALENDAR_RANGE_KEYS: Record<CalendarRange, string> = {
+	month: "M",
+	"2weeks": "2",
+	week: "W",
+	day: "D",
 };
 
 export type DeckSort = "recent" | "name-asc" | "name-desc" | "modified" | "created";

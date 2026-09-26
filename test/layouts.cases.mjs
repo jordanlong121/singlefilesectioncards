@@ -8,6 +8,7 @@ import {
   plannerBlockKey, wholeNoteSection, splitCardFaces, parsePeriod, shiftPeriod, formatPeriod,
   detectLevelSetup, movableBlocks, deckExcerpt, LAYOUT_OPTIONS, locateCard,
   weekStartIso, weekDays, clampIso, isoDow, isWeekendIso, CALENDAR_RANGE_OPTIONS, CALENDAR_RANGE_ICONS,
+  CALENDAR_RANGE_KEYS, calendarRangeDays, calendarRangeStep,
   insertSection, deleteSection, retitleSectionInFile, quickAddToSection, pasteAtSectionEnd, pasteAboveSubheadings,
   toggleTaskInFile, moveBlockInFile, deleteBlockInFile, replaceBlockInFile, insertAfterBlockInFile,
   moveRangeInFile, replaceRangeInFile, deleteRangeInFile, moveSectionInFile, mergeSectionsInFile,
@@ -283,9 +284,35 @@ t("the week range splits into five weekdays and a weekend, each run in the week'
 });
 
 t("every calendar range has a label, a hint, and an icon with a fallback", () => {
-  assert.deepEqual(CALENDAR_RANGE_OPTIONS.map(([value]) => value), ["month", "week", "day"]);
+  assert.deepEqual(CALENDAR_RANGE_OPTIONS.map(([value]) => value), ["month", "2weeks", "week", "day"]);
   assert.ok(CALENDAR_RANGE_OPTIONS.every(([value, label, hint]) => value && label && hint));
   assert.ok(CALENDAR_RANGE_OPTIONS.every(([value]) => CALENDAR_RANGE_ICONS[value]?.length === 2));
+  // One key each, all different, and named in the picker's tooltip.
+  const keys = CALENDAR_RANGE_OPTIONS.map(([value]) => CALENDAR_RANGE_KEYS[value]);
+  assert.deepEqual(keys, ["M", "2", "W", "D"]);
+  assert.ok(CALENDAR_RANGE_OPTIONS.every(([value, , hint]) => hint.endsWith(`(${CALENDAR_RANGE_KEYS[value]})`)));
+});
+
+t("calendar ranges: the days each shows, and a step is a week — a day for Day", () => {
+  // 2026-08-19 is a Wednesday.
+  assert.deepEqual(calendarRangeDays("2026-08-19", "day", 1), ["2026-08-19"]);
+  assert.deepEqual(calendarRangeDays("2026-08-19", "week", 1), weekDays("2026-08-19", 1));
+  const two = calendarRangeDays("2026-08-19", "2weeks", 1);
+  assert.equal(two.length, 14);
+  assert.deepEqual([two[0], two[6], two[7], two[13]], ["2026-08-17", "2026-08-23", "2026-08-24", "2026-08-30"],
+    "the anchor's week, then the next one");
+  assert.deepEqual(calendarRangeDays("2026-08-19", "2weeks", 0).slice(0, 1), ["2026-08-16"], "Sunday-first too");
+  // Across a month and a year boundary it still runs fourteen consecutive days.
+  const turn = calendarRangeDays("2026-12-30", "2weeks", 1);
+  assert.deepEqual([turn[0], turn[13]], ["2026-12-28", "2027-01-10"]);
+  assert.ok(turn.every((iso, i) => i === 0 || iso > turn[i - 1]));
+  assert.deepEqual(calendarRangeDays("2026-08-19", "month", 1), [], "Month has no single range");
+  assert.equal(calendarRangeStep("2weeks"), 7, "2 weeks steps one week, keeping a week in view");
+  assert.equal(calendarRangeStep("week"), 7);
+  assert.equal(calendarRangeStep("day"), 1);
+  // A step forward from 2 weeks: the old second week becomes the first.
+  const next = calendarRangeDays("2026-08-26", "2weeks", 1);
+  assert.deepEqual(next.slice(0, 7), two.slice(7));
 });
 
 // Every helper element the calendar builds straight into the grid has to be swept out

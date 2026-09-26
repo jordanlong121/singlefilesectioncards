@@ -81,8 +81,9 @@ If this plugin is useful to you, you can support its development:
   that searches the vault as you type. Type a title that isn't a note yet and the last row
   offers to create it (`Shift+Enter`, or the footer's "Create new note…" button), in Obsidian's default new-note folder —
   or include a `folder/` to place it.
-- **Keyboard shortcuts.** `1`–`6` heading level, `L`/`Shift+L` layouts, `V` view modes, `D` deck, `M` menu,
-  `,`/`.` previous/next heading (week or day on the Calendar), `N` new card, `O` pick a note, `S` starred lines only,
+- **Keyboard shortcuts.** `1`–`6` heading level, `L`/`Shift+L` layouts, `C` Calendar, `V` view modes, `D` deck, `M` menu,
+  `,`/`.` previous/next heading (week or day on the Calendar), on the Calendar `M`/`2`/`W`/`D`
+  pick Month / 2 weeks / Week / Day, `N` new card, `O` pick a note, `S` starred lines only,
   `F` flip the card under the pointer, `Shift+F` all cards face up, arrows move the card focus
   (Enter edits, Space selects), `Ctrl/⌘+A` select all, `Ctrl/⌘+F` filter, `Ctrl/⌘+T` a new task
   in a card editor via the Tasks plugin. Click `?` to show keyboard shortcuts.
@@ -202,13 +203,22 @@ cell ringed even when it has no card yet. Click an empty day to start its card, 
 card onto another day to move it. Needs date headings.
 
 A **range** picker in the toolbar says how much of the calendar one screen holds: a month,
-a week, or a day. The range is remembered per note. Only the Month range shrinks its cards
-to fit thirty-odd days on one screen — Week and Day read at the ordinary card size.
+two weeks, a week, or a day — or press `M`, `2`, `W` or `D` while the Calendar is showing
+(`C` switches to the Calendar from any layout). The range is remembered per note. Month and
+2 weeks shrink their cards to fit their narrow day cells; Week and Day read at the ordinary
+card size.
 
 **Month** — every month between the first and last dated card, scrolling, under a pinned row
 of weekday names. The sort control orders the months.
 
 ![The Calendar's Month range: August 2026 as a grid of day cards](screenshots/calendar.png)
+
+**2 weeks** — the Week range's planner twice, side by side: all ten weekdays across the top,
+each week's weekend in the band beneath it, and a narrow gap setting the second week off.
+Its arrows step one week at a time, so the week you were looking at stays on screen — it
+just moves to the other side.
+
+![The Calendar's 2 weeks range: two weeks of weekdays across the top, each weekend beneath its week](screenshots/calendar-2weeks.png)
 
 **Week** — one week in the shape of a paper planner: the five weekdays across the top, the
 weekend lying along the bottom in a band of its own, all of it filling the pane so a day's
@@ -222,8 +232,8 @@ a month or week cell opens big first.
 
 ![The Calendar's Day range: one day's card filling the pane](screenshots/calendar-day.png)
 
-Week and Day carry a row of arrows: ‹ and › walk a week (or a day) at a time — as do the
-`,` and `.` keys — and **Today** comes back once you've wandered off. They walk past the note's
+2 weeks, Week and Day carry a row of arrows: ‹ and › walk a week (or, for Day, a day) at a
+time — as do the `,` and `.` keys — and **Today** comes back once you've wandered off. They walk past the note's
 dated days too: that's how a day the note has never mentioned gets its card.
 
 ### Heatmap

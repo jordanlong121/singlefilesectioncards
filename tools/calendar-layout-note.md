@@ -1,20 +1,21 @@
 # Daily Notes
 
-<!-- Stages screenshots/calendar.png, calendar-week.png and calendar-day.png (the
-     README's Calendar layout section): August 2026 with cards on most days and a few
+<!-- Stages screenshots/calendar.png, calendar-2weeks.png, calendar-week.png and
+     calendar-day.png (the README's Calendar layout section): August 2026 with cards on most days and a few
      blank days scattered across different weekday columns (4, 9, 15, 19, 24, 28, 30).
      Stage it under the sample vault's filename so the tab and file chip read
      "Daily Notes 2026", and shoot each range in turn — the default TODAY (2026-08-06)
-     puts a ringed card in all three, with a blank Tuesday and a two-card weekend in
+     puts a ringed card in every range, with a blank Tuesday and a two-card weekend in
      the Week range. The committed shots use the default (Sunday-first) week;
      WEEK_START=monday stages the other setting.
        cp tools/calendar-layout-note.md "<outdir>/Daily Notes 2026.md"
-       for r in month week day; do
+       for r in month 2weeks week day; do
          NOTE="<outdir>/Daily Notes 2026.md" CAL_RANGE=$r node tools/preview-harness.mjs <outdir>
          cp <outdir>/calendar.html <outdir>/cal-$r.html
        done
        chrome --headless=new --screenshot=cal-<range>.png --window-size=1280,760 <outdir>/cal-<range>.html
-     Then cal-month.png → calendar.png, cal-week.png → calendar-week.png, cal-day.png → calendar-day.png. -->
+     Then cal-month.png → calendar.png, cal-2weeks.png → calendar-2weeks.png,
+     cal-week.png → calendar-week.png, cal-day.png → calendar-day.png. -->
 
 ## August
 

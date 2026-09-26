@@ -83,7 +83,8 @@ import {
 	retitledDateTitle,
 	heatmapDays,
 	shiftIso,
-	weekDays,
+	calendarRangeDays,
+	calendarRangeStep,
 	isoDow,
 	isWeekendIso,
 	clampIso,
@@ -749,6 +750,12 @@ export class SectionCardsView extends ItemView {
 		return this.layout === "rolodex" || this.layout === "planner";
 	}
 
+	/** M, 2, W and D pick the Calendar's range while it's showing — and only then, so
+	 * everywhere else M still opens the menu, D the Deck, and 2 the heading level. */
+	private calendarRangeKeysOn(): boolean {
+		return this.layout === "calendar" && !this.deckMode && !this.sticky;
+	}
+
 	/** Whether a click on a calendar card opens it big instead of editing it in place:
 	 * a month or week cell is too small to write in. The Day range's one card already
 	 * fills the pane, so it edits on click like a card anywhere else. */
@@ -1208,6 +1215,11 @@ export class SectionCardsView extends ItemView {
 		for (let level = 1; level <= 6; level++) {
 			this.scope.register([], String(level), (evt) => {
 				if (!this.plainShortcutOk(evt)) return true;
+				// 2 on the Calendar picks its 2-weeks range (calendarRangeKeysOn).
+				if (level === 2 && this.calendarRangeKeysOn()) {
+					this.setCalendarRange("2weeks");
+					return false;
+				}
 				// The Calendar follows the note's date-heading level; a manual level
 				// would only be forced back (and churn the stored view) on refresh.
 				if (this.isDateLayout()) return true;
@@ -1259,19 +1271,52 @@ export class SectionCardsView extends ItemView {
 			return false;
 		});
 		// D: show/hide the Deck of note thumbnails — allowed from inside the Deck,
-		// or the key that opened it couldn't close it.
+		// or the key that opened it couldn't close it. On the Calendar, the Day range.
 		this.scope.register([], "D", (evt) => {
 			if (!this.plainShortcutOk(evt, true)) return true;
 			if (this.sticky) return true; // a sticky is one card: nothing to switch
+			if (this.calendarRangeKeysOn()) {
+				this.setCalendarRange("day");
+				return false;
+			}
 			void this.toggleDeck();
 			return false;
 		});
-		// M: the ☰ menu, dropped beneath its toolbar button (in the Deck too).
+		// M: the ☰ menu, dropped beneath its toolbar button (in the Deck too). On the
+		// Calendar, the Month range.
 		this.scope.register([], "M", (evt) => {
-			if (!this.plainShortcutOk(evt, true) || !this.menuBtn) return true;
+			if (!this.plainShortcutOk(evt, true)) return true;
 			if (this.sticky) return true; // a sticky is one card: nothing to switch
+			if (this.calendarRangeKeysOn()) {
+				this.setCalendarRange("month");
+				return false;
+			}
+			if (!this.menuBtn) return true;
 			evt.preventDefault();
 			this.openMainMenu(this.menuBtn);
+			return false;
+		});
+		// W: the Calendar's Week range (only on the Calendar, like M, 2 and D there).
+		this.scope.register([], "W", (evt) => {
+			if (!this.plainShortcutOk(evt) || !this.calendarRangeKeysOn()) return true;
+			this.setCalendarRange("week");
+			return false;
+		});
+		// C: the Calendar layout, from any other. Where it can't show — no date headings,
+		// or hidden for this note — say why rather than doing nothing.
+		this.scope.register([], "C", (evt) => {
+			if (!this.plainShortcutOk(evt)) return true;
+			if (this.sticky || this.deckMode) return true;
+			if (this.layout === "calendar") return false;
+			if (!this.layoutEnabled("calendar")) {
+				new Notice("This note hides the calendar layout — unhide it from the layout menu.");
+				return false;
+			}
+			if (!this.calendarSelectable()) {
+				new Notice("The calendar layout needs date headings in this note.");
+				return false;
+			}
+			this.setLayout("calendar");
 			return false;
 		});
 		// , and .: with the hierarchy columns showing, step the deepest column's
@@ -1553,7 +1598,7 @@ export class SectionCardsView extends ItemView {
 		}
 		// The Calendar's range: month is the scrolling wall of months, week and day show
 		// one range at a time (the CSS resizes the cells and stands the sort control down).
-		for (const range of ["month", "week", "day"] as const) {
+		for (const range of ["month", "2weeks", "week", "day"] as const) {
 			this.contentEl.toggleClass(
 				`is-cal-${range}`,
 				this.layout === "calendar" && !this.deckMode && this.calendarRange === range,
@@ -3660,36 +3705,43 @@ export class SectionCardsView extends ItemView {
 		const todayIso = mo().format("YYYY-MM-DD");
 		const blank = this.calendarBlankHandlers();
 
-		// Week and Day show one range at a time, with arrows above it. Cards for other
-		// days stay in the grid — the reuse pass owns them — and are hidden by class.
+		// 2 weeks, Week and Day show one range at a time, with arrows above it. Cards for
+		// other days stay in the grid — the reuse pass owns them — and are hidden by class.
 		if (this.calendarRange !== "month") {
 			const anchor = this.calendarAnchorIso(isos);
-			const week = this.calendarRange === "week";
-			const days = week ? weekDays(anchor, firstDow) : [anchor];
+			const week = this.calendarRange !== "day";
+			const days = calendarRangeDays(anchor, this.calendarRange, firstDow);
 			const shown = new Set(days);
 			for (const entry of this.cardEntries) {
 				const iso = isoByHeading.get(entry.holder.section.headingRaw);
 				entry.el.toggleClass("is-cal-outside", iso === undefined || !shown.has(iso));
 			}
 			this.buildCalendarNav(grid, days);
-			const place = (iso: string, weekend: boolean) => {
+			// 2 weeks sets its second week off from the first: the first cell of that week in
+			// each row (weekdays, weekend, and their names) carries the split.
+			const second = new Set(this.calendarRange === "2weeks" ? days.slice(7) : []);
+			const place = (iso: string, weekend: boolean, split: boolean) => {
 				const label = week ? String(Number(iso.slice(8))) : "No card for this day yet — click to write one";
-				this.placeCalendarDay(grid, iso, byIso.get(iso), blank, todayIso, label).toggleClass("is-cal-wknd", weekend);
+				const cell = this.placeCalendarDay(grid, iso, byIso.get(iso), blank, todayIso, label);
+				cell.toggleClass("is-cal-wknd", weekend);
+				cell.toggleClass("is-cal-split", split);
 			};
-			// The week takes the shape of a paper planner: the five weekdays across the
-			// top, then the weekend lying along the bottom in a band of its own. Both
-			// runs keep the week's own order, so the days still read first to last.
+			const run = (isos: string[]) => {
+				const firstOfSecond = isos.find((iso) => second.has(iso));
+				this.buildCalendarDayNames(grid, isos, firstOfSecond);
+				for (const iso of isos) place(iso, isWeekendIso(iso), iso === firstOfSecond);
+			};
+			// A week takes the shape of a paper planner: the five weekdays across the top,
+			// then the weekend lying along the bottom in a band of its own. Both runs keep
+			// the week's own order, so the days still read first to last. 2 weeks is two
+			// of those side by side: all ten weekdays across, each weekend under its week.
 			// (A lone day is named in full by the nav label, so it gets no header row.)
 			if (!week) {
-				place(days[0], false);
+				place(days[0], false, false);
 				return;
 			}
-			const weekdays = days.filter((iso) => !isWeekendIso(iso));
-			const weekend = days.filter(isWeekendIso);
-			this.buildCalendarDayNames(grid, weekdays);
-			for (const iso of weekdays) place(iso, false);
-			this.buildCalendarDayNames(grid, weekend);
-			for (const iso of weekend) place(iso, true);
+			run(days.filter((iso) => !isWeekendIso(iso)));
+			run(days.filter(isWeekendIso));
 			return;
 		}
 
@@ -3769,10 +3821,12 @@ export class SectionCardsView extends ItemView {
 
 	/** Names for one run of the Week range's days — the weekdays across the top, or the
 	 * weekend along the bottom, whose two cells are wide and say so. */
-	private buildCalendarDayNames(grid: HTMLElement, isos: string[]): void {
+	private buildCalendarDayNames(grid: HTMLElement, isos: string[], split?: string): void {
 		const names = SectionCardsView.weekdayShortNames();
 		for (const iso of isos) {
-			grid.createDiv({ cls: "sc-cal-dow", text: names[isoDow(iso)] }).toggleClass("is-wknd", isWeekendIso(iso));
+			const cell = grid.createDiv({ cls: "sc-cal-dow", text: names[isoDow(iso)] });
+			cell.toggleClass("is-wknd", isWeekendIso(iso));
+			cell.toggleClass("is-cal-split", iso === split);
 		}
 	}
 
@@ -3840,7 +3894,8 @@ export class SectionCardsView extends ItemView {
 	 * sweep, or each walk to the next week leaves its nav row behind. */
 	private buildCalendarNav(grid: HTMLElement, days: string[]): void {
 		const nav = grid.createDiv({ cls: "sc-cal-nav" });
-		const unit = this.calendarRange === "week" ? "week" : "day";
+		// 2 weeks steps a week at a time too, so its arrows say so.
+		const unit = this.calendarRange === "day" ? "day" : "week";
 		const arrow = (dir: "prev" | "next") => {
 			const btn = nav.createEl("button", { cls: `sc-cal-nav-arrow is-${dir}` });
 			fastIcon(btn, dir === "prev" ? "chevron-left" : "chevron-right");
@@ -3856,7 +3911,7 @@ export class SectionCardsView extends ItemView {
 		const todayIso = mo().format("YYYY-MM-DD");
 		if (!days.includes(todayIso)) {
 			const back = nav.createEl("button", { cls: "sc-cal-nav-today", text: "Today" });
-			back.setAttr("aria-label", `Back to the ${unit} holding today`);
+			back.setAttr("aria-label", this.calendarRange === "2weeks" ? "Back to the weeks holding today" : `Back to the ${unit} holding today`);
 			back.addEventListener("click", () => this.setCalendarAnchor(todayIso));
 		}
 	}
@@ -3896,21 +3951,22 @@ export class SectionCardsView extends ItemView {
 		return this.calendarAnchor;
 	}
 
-	/** Walk the Week or Day range one unit: the nav arrows, and the , and . keys. */
+	/** Walk the 2 weeks, Week or Day range one step — a week, or for Day a day: the nav
+	 * arrows, and the , and . keys. */
 	private stepCalendar(delta: number): void {
 		if (this.layout !== "calendar" || this.calendarRange === "month") return;
 		const from = this.calendarAnchor ?? mo().format("YYYY-MM-DD");
-		this.setCalendarAnchor(shiftIso(from, this.calendarRange === "week" ? delta * 7 : delta));
+		this.setCalendarAnchor(shiftIso(from, delta * calendarRangeStep(this.calendarRange)));
 	}
 
-	/** Before landing on a day's card in the Week or Day range, turn the range to that
+	/** Before landing on a day's card in the 2 weeks, Week or Day range, turn the range to that
 	 * day — outside it the card sits hidden, with nothing on screen to scroll to. A day
 	 * already in the range showing is left alone (no refresh), as is every other layout
 	 * and the Month range, whose grid holds every day. */
 	private async turnCalendarTo(iso: string | null): Promise<void> {
 		if (!iso || this.layout !== "calendar" || this.calendarRange === "month") return;
 		const anchor = this.calendarAnchor;
-		const showing = anchor ? (this.calendarRange === "week" ? weekDays(anchor, this.weekFirstDow()) : [anchor]) : [];
+		const showing = anchor ? calendarRangeDays(anchor, this.calendarRange, this.weekFirstDow()) : [];
 		if (showing.includes(iso)) return;
 		this.calendarAnchor = iso;
 		await this.refresh();
