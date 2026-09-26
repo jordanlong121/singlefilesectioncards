@@ -4490,6 +4490,11 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="section-cards-view"] > .
 	}
 }
 
+/* The action strip's calendar-feed button, on a card that has no day or no feed. */
+.section-card-actions .section-card-feed.is-hidden {
+	display: none;
+}
+
 .sfsc-due-badge.is-hidden {
 	display: none;
 }

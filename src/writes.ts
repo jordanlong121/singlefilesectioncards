@@ -783,6 +783,7 @@ export async function syncFeedIntoSection(
 	heading: string,
 	feedLines: string[],
 	flipMarker: string,
+	placement: "top" | "bottom" = "bottom",
 ): Promise<"changed" | "unchanged" | "missing"> {
 	let result: "changed" | "unchanged" | "missing" = "unchanged";
 	await app.vault.process(file, (data) => {
@@ -795,10 +796,51 @@ export async function syncFeedIntoSection(
 		}
 		const start = bodyStartLine(target);
 		const body = lines.slice(start, target.endLine);
-		const merged = mergeFeedLines(body, level, heading, feedLines, flipMarker);
+		const merged = mergeFeedLines(body, level, heading, feedLines, flipMarker, placement);
 		if (!merged) return data;
 		result = "changed";
 		return [...lines.slice(0, start), ...merged, ...lines.slice(target.endLine)].join(eol);
 	});
 	return result;
+}
+
+/**
+ * Put calendar-feed lines into many cards in one write (mergeFeedLines for each):
+ * "update every day in the note". Cards are handled from the bottom of the file up, so
+ * each one's position is still true when it's reached. Returns how many cards changed,
+ * and how many of the given cards weren't found (the file changed under the update).
+ */
+export async function syncFeedIntoSections(
+	app: App,
+	file: TFile,
+	level: number,
+	targets: { section: Section; lines: string[] }[],
+	heading: string,
+	flipMarker: string,
+	placement: "top" | "bottom" = "bottom",
+): Promise<{ changed: number; missing: number }> {
+	let changed = 0;
+	let missing = 0;
+	await app.vault.process(file, (data) => {
+		changed = 0;
+		missing = 0;
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		let lines = data.split(/\r?\n/);
+		const found = targets
+			.map((t) => ({ ...t, at: locateCard(lines, level, t.section) }))
+			.filter((t): t is { section: Section; lines: string[]; at: Section } => {
+				if (!t.at) missing++;
+				return !!t.at;
+			})
+			.sort((a, b) => b.at.startLine - a.at.startLine);
+		for (const { lines: feedLines, at } of found) {
+			const start = bodyStartLine(at);
+			const merged = mergeFeedLines(lines.slice(start, at.endLine), level, heading, feedLines, flipMarker, placement);
+			if (!merged) continue;
+			lines = [...lines.slice(0, start), ...merged, ...lines.slice(at.endLine)];
+			changed++;
+		}
+		return changed ? lines.join(eol) : data;
+	});
+	return { changed, missing };
 }

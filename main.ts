@@ -135,6 +135,16 @@ export default class SectionCardsPlugin extends Plugin {
 				return true;
 			},
 		});
+		this.addCommand({
+			id: "update-all-days-from-feed",
+			name: "Update every day in this note from the calendar feed",
+			checkCallback: (checking) => {
+				const view = this.app.workspace.getActiveViewOfType(SectionCardsView);
+				if (!view || view.deckMode || !this.getCalendarFeed(view.filePath)) return false;
+				if (!checking) void view.updateAllDaysFromFeed();
+				return true;
+			},
+		});
 
 		const onFileChange = debounce(
 			(file: TFile) => {

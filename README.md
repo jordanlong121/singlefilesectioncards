@@ -207,7 +207,8 @@ card onto another day to move it. Needs date headings.
 
 A **range** picker in the toolbar says how much of the calendar one screen holds: a month,
 two weeks, a week, or a day — or press `M`, `2`, `W` or `D` while the Calendar is showing
-(`C` switches to the Calendar from any layout). The range is remembered per note. Month and
+(`C` switches to the Calendar from any layout), or pick one under **Layouts → Calendar** in the
+☰ or any right-click menu, which switches to the Calendar in that range. The range is remembered per note. Month and
 2 weeks shrink their cards to fit their narrow day cells; Week and Day read at the ordinary
 card size.
 
@@ -301,7 +302,8 @@ neighbouring card; on the Calendar's 2 weeks, Week and Day ranges, `,` and `.` w
 
 ## The action strip
 
-Hovering a card's title bar reveals its buttons just beneath it — quick add, color, delete, make
+Hovering a card's title bar reveals its buttons just beneath it — quick add, update from the
+calendar feed (on a dated card, when the note has a [feed](#calendar-feeds)), color, delete, make
 big, sticky, open in the note, and flip. They sit over the body's first line, so the strip ends
 with an arrow that sends it to the card's bottom edge instead (and back again), leaving the first
 line free to read and click. The move lasts while the note is open.
@@ -595,10 +597,12 @@ Any calendar that publishes one works — in Google Calendar it's the calendar's
 found; **Save** keeps it for that note (each note has its own feed, so a work note can follow the
 work calendar and a personal one yours). It's read-only: nothing is ever sent to the calendar.
 
-Then right-click a day's card — or any line in it — and choose **Update from calendar feed**
-(also ☰ → **Update today from calendar feed**, and the *Update today's card from the calendar
-feed* command, which makes today's card first if the note has none). The day's events land under
-a heading in the card, one level below it:
+Then update a day from its card's action strip (the ↻ button, on dated cards), or right-click
+the card — or any line in it — and choose **Update from calendar feed**. ☰ → **Update today from
+calendar feed** does today's card (making it first if the note has none), and ☰ → **Update all
+days from calendar feed…** does every dated card in the note in one go: it fetches the feed
+first and says how many cards and events it would touch before changing anything. Both are
+commands too. The day's events land under a heading in the card, one level below it:
 
 ```markdown
 ### 2026-07-22, Wednesday
@@ -619,9 +623,13 @@ a heading in the card, one level below it:
 - **Repeating events** follow their rules, skipped dates, and occurrences moved one at a time;
   multi-day and overnight events show on every day they cover (`22:00–…`, `…–01:00`); times are
   shown in your time zone.
-- **Settings → Calendar feeds**: the heading's name (default *Calendar*; it can sit anywhere in
-  the card once it exists), events as open tasks instead of bullets (a task you tick stays ticked
-  through updates), and updating today's card automatically when the note opens.
+- **Settings → Calendar feeds**: the heading's name (default *Calendar*), where it goes the first
+  time — the bottom of the card, or the top, right under its title (after that it stays wherever
+  it is, so you can move it by hand) — events as open tasks instead of bullets (a task you tick
+  stays ticked through updates), and updating today's card automatically when the note opens.
+  With the heading at the top, the rest of the card follows the events, so in Markdown terms it
+  sits under the heading too (the Day Planner shows it inside the heading's card) unless it has a
+  heading of its own.
 
 The address is kept in the plugin's data, not in the note. A secret address lets anyone who has
 it read the calendar, so treat it like a password — and if you use Obsidian Sync with plugin
@@ -643,8 +651,9 @@ settings, it travels with them.
   - `Single File Section Cards: Open section cards in a new tab`
   - `Single File Section Cards: Open section cards for the active note`
   - `Single File Section Cards: Create new card`
-  - `Single File Section Cards: Update today's card from the calendar feed` — when the note in
-    front has a [calendar feed](#calendar-feeds)
+  - `Single File Section Cards: Update today's card from the calendar feed` and
+    `Update every day in this note from the calendar feed` — when the note in front has a
+    [calendar feed](#calendar-feeds)
   - `Single File Section Cards: New note` — the [New note wizard](#new-note)
   - `Single File Section Cards: Manage notes` — the [notes manager](#manage-notes)
 - The toolbar button switches notes: your default note, notes you've viewed as cards, and recently
@@ -684,6 +693,7 @@ settings, it travels with them.
 | Date detection format | An extra moment pattern that marks a heading as a date, with `*` wildcards for text around it (`*MMMM D, YYYY*`) |
 | Start the week on | First day of the Calendar layout's weeks: the language default, Sunday, or Monday |
 | Heading for a day's events | The heading a [calendar feed](#calendar-feeds) writes a day's events under, one level below the card (default *Calendar*) |
+| Where the heading goes | Where a day's card gets the feed heading the first time: the bottom of the card, or the top, under its title (default bottom) |
 | Write events as tasks | Feed events as open tasks instead of plain bullets; a ticked one stays ticked through updates (off by default) |
 | Update today's card when the note opens | Fetch the note's feed and update today's card the first time the note opens as cards in a session (off by default) |
 | Toolbar | Full, or Compact on one line with icons only (also switchable by right-clicking the toolbar) |
