@@ -72,7 +72,8 @@ If this plugin is useful to you, you can support its development:
 - **Arrange freely, and keep the arrangements.** The Custom Grid canvas places sections where
   you drop them; save an arrangement under a name and switch between saved layouts at will.
 - **Calendar feeds.** Give a note a calendar's iCal (.ics) address — Google, Outlook, iCloud —
-  and a day's events fill that day's card under a heading of your choosing, from a right-click
+  and a day's events fill that day's card under a heading of your choosing: one day from its
+  card, or every day at once, making cards for the calendar's days the note doesn't have yet
   (see [Calendar feeds](#calendar-feeds)).
 - **Navigate as cards.** Wikilinks open the linked note's card wall, the ↗ button opens the section in a
   normal editor.
@@ -84,12 +85,12 @@ If this plugin is useful to you, you can support its development:
   that searches the vault as you type. Type a title that isn't a note yet and the last row
   offers to create it (`Shift+Enter`, or the footer's "Create new note…" button), in Obsidian's default new-note folder —
   or include a `folder/` to place it.
-- **Keyboard shortcuts.** `1`–`6` heading level, `L`/`Shift+L` layouts, `C` Calendar, `V` view modes, `D` deck, `M` menu,
+- **Keyboard shortcuts** — see `?` in the app for the full list. `1`–`6` heading level, `L`/`Shift+L` layouts, `C` Calendar, `V` view modes, `D` deck, `M` menu,
   `,`/`.` previous/next heading (week or day on the Calendar), on the Calendar `M`/`2`/`W`/`D`
   pick Month / 2 weeks / Week / Day, `N` new card, `O` pick a note, `S` starred lines only,
   `F` flip the card under the pointer, `Shift+F` all cards face up, arrows move the card focus
   (Enter edits, Space selects), `Ctrl/⌘+A` select all, `Ctrl/⌘+F` filter, `Ctrl/⌘+T` a new task
-  in a card editor via the Tasks plugin. Click `?` to show keyboard shortcuts.
+  in a card editor via the Tasks plugin.
 
 ## Layouts
 
@@ -591,25 +592,20 @@ dated card and for *Open today's section*.
 
 ## Calendar feeds
 
-A note can follow a calendar: ☰ → **Calendar feed…** takes the calendar's iCal (.ics) address.
-Any calendar that publishes one works — in Google Calendar it's the calendar's settings →
-*Integrate calendar* → *Secret address in iCal format*. **Test** fetches it and says what it
-found; **Save** keeps it for that note (each note has its own feed, so a work note can follow the
-work calendar and a personal one yours). It's read-only: nothing is ever sent to the calendar.
+A note can follow a calendar. Give it the calendar's iCal (.ics) address and a day's events
+fill that day's card, under a heading of your choosing — read-only, so nothing is ever sent to
+the calendar. Any calendar that publishes an iCal address works: Google, Outlook, iCloud.
 
-Then update a day from its card's action strip (the ↻ button, on dated cards), or right-click
-the card — or any line in it — and choose **Update from calendar feed**. ☰ → **Update today from
-calendar feed** does today's card (making it first if the note has none), and ☰ → **Update all
-days from calendar feed…** does every dated card in the note in one go: it fetches the feed
-first and says how many cards and events it would touch before changing anything. Both are
-commands too.
+![A week on the Calendar: each day's events under a Calendar heading at the bottom of its card](screenshots/calendar-feed.png)
 
-**Update all** also finds the days on the calendar the note has no card for, and asks how far to
-go making them: **this week**, **this month**, **this year**, or **all** — from the feed's first
-event to a year from today (repeating events with no end would otherwise go on forever) — each
-choice showing how many cards it makes, and *Don't make any* the default. New cards are made the
-way you'd make them yourself: the note's heading format and card template, placed by your
-new-card placement, with that day's events already under the calendar heading. The day's events land under a heading in the card, one level below it:
+**Set it up.** ☰ → **Calendar feed…**, paste the address, and **Test** — it fetches the feed and
+says the calendar's name and how many events it has today — then **Save**. In Google Calendar,
+the address is under the calendar's settings → *Integrate calendar* → *Secret address in iCal
+format*. Each note has its own feed, so a work note can follow the work calendar and a personal
+note yours; ☰ → **Calendar feed…** again changes or removes it.
+
+**What an update writes.** A day's events go under a heading one level below the card, all-day
+events first, then by time:
 
 ```markdown
 ### 2026-07-22, Wednesday
@@ -621,26 +617,50 @@ new-card placement, with that day's events already under the calendar heading. T
 - 14:00–15:00 Design review
 ```
 
-- **Update again at any time.** The feed's lines are replaced — moved, added, and cancelled
-  events all follow — and anything you write under the heading yourself stays, after them. A
-  day with nothing new leaves the file untouched.
+**Updating one day, or all of them.**
+
+- **A card's ↻ button** (on its action strip, on dated cards), or **right-click the card — or any
+  line in it — → Update from calendar feed**: that day.
+- **☰ → Update today from calendar feed**: today's card, made first if the note doesn't have one.
+- **☰ → Update all days from calendar feed…**: every dated card in the note, in one go. It fetches
+  the feed first and tells you how many cards and events it would touch before changing anything.
+  It also finds the days on the calendar the note has no card for, and asks how far to go making
+  them — **this week**, **this month**, **this year**, or **all** (from the feed's first event to
+  a year from today, since repeating events with no end would otherwise go on forever) — each
+  with its count, and *Don't make any* the default. New cards are made the way you'd make them
+  yourself: the note's heading format and card template, placed by your new-card placement, with
+  that day's events already in.
+- The two ☰ updates are commands too, and a setting can update today's card each time the note
+  opens.
+
+**How updates behave.**
+
+- **The feed's lines are replaced, yours stay.** Moved, added, and cancelled events all follow;
+  anything you write under the heading yourself stays, after them. A day with nothing new leaves
+  the file untouched.
 - **Each feed line carries a hidden tag** (`^ical-…`, an Obsidian block id), which is how an
   update tells its lines from yours. It doesn't show when reading; delete it from a line to make
   that line your own.
 - **Repeating events** follow their rules, skipped dates, and occurrences moved one at a time;
   multi-day and overnight events show on every day they cover (`22:00–…`, `…–01:00`); times are
-  shown in your time zone.
-- **Settings → Calendar feeds**: the heading's name (default *Calendar*), where it goes the first
-  time — the bottom of the card, or the top, right under its title (after that it stays wherever
-  it is, so you can move it by hand) — events as open tasks instead of bullets (a task you tick
-  stays ticked through updates), and updating today's card automatically when the note opens.
-  With the heading at the top, the rest of the card follows the events, so in Markdown terms it
-  sits under the heading too (the Day Planner shows it inside the heading's card) unless it has a
-  heading of its own.
+  shown in your time zone, 24-hour.
 
-The address is kept in the plugin's data, not in the note. A secret address lets anyone who has
-it read the calendar, so treat it like a password — and if you use Obsidian Sync with plugin
-settings, it travels with them.
+**Settings → Calendar feeds.**
+
+- **Heading for a day's events** — default *Calendar*.
+- **Where the heading goes** — the bottom of the card, or the top, right under its title. It
+  decides only the first time; after that the heading stays wherever it is, so you can move it by
+  hand. At the top, the rest of the card follows the events, so in Markdown terms it sits under
+  the heading too (the Day Planner shows it inside the heading's card) unless it has a heading of
+  its own.
+- **Write events as tasks** — open tasks instead of bullets; a task you tick stays ticked through
+  updates.
+- **Update today's card when the note opens** — once per note each session, only if today's card
+  exists.
+
+**The address is private.** It's kept in the plugin's data, not in the note. A secret address
+lets anyone who has it read the calendar, so treat it like a password — and if you use Obsidian
+Sync with plugin settings, it travels with them.
 
 ## Usage
 

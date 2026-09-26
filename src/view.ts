@@ -4464,6 +4464,26 @@ export class SectionCardsView extends ItemView {
 					}
 				},
 			});
+			// The Calendar's range sits right after the layout it belongs to: the scrolling
+			// wall of months, two weeks, one week, or one day.
+			if (this.layout === "calendar") {
+				const rangeWrap = cluster.createDiv({ cls: "section-cards-control section-cards-calrange-control" });
+				rangeWrap.setAttr("aria-label", "How much of the calendar one screen shows");
+				this.buildPicker(rangeWrap, {
+					cls: "section-cards-calrange-btn",
+					ariaLabel: "Calendar range",
+					value: this.calendarRange,
+					columns: 4,
+					options: CALENDAR_RANGE_OPTIONS.map(([value, label, hint]) => ({
+						value,
+						label,
+						hint,
+						icon: CALENDAR_RANGE_ICONS[value][0],
+						fallback: CALENDAR_RANGE_ICONS[value][1],
+					})),
+					onPick: (value) => this.setCalendarRange(value as CalendarRange),
+				});
+			}
 		}
 
 		if (this.deckMode) {
@@ -4694,26 +4714,6 @@ export class SectionCardsView extends ItemView {
 		if (modesOff) {
 			modeBtn.toggleAttribute("disabled", true);
 			modeBtn.setAttr("aria-label", "View modes aren't available on the canvas layouts, the Calendar, the Rolodex, or the Day Planner");
-		}
-
-		// The Calendar's range: the scrolling wall of months, one week, or one day.
-		if (this.layout === "calendar") {
-			const rangeWrap = cluster.createDiv({ cls: "section-cards-control section-cards-calrange-control" });
-			rangeWrap.setAttr("aria-label", "How much of the calendar one screen shows");
-			this.buildPicker(rangeWrap, {
-				cls: "section-cards-calrange-btn",
-				ariaLabel: "Calendar range",
-				value: this.calendarRange,
-				columns: 3,
-				options: CALENDAR_RANGE_OPTIONS.map(([value, label, hint]) => ({
-					value,
-					label,
-					hint,
-					icon: CALENDAR_RANGE_ICONS[value][0],
-					fallback: CALENDAR_RANGE_ICONS[value][1],
-				})),
-				onPick: (value) => this.setCalendarRange(value as CalendarRange),
-			});
 		}
 
 		// Tooltips sit on the wrapper as well as the control, so hovering the text
