@@ -14,7 +14,7 @@ import {
 	type SearchResult,
 } from "obsidian";
 import { createEmbeddedEditor, type EmbeddedEditor } from "../editor-embed";
-import { MOD_LABEL, Placement } from "./settings";
+import { MOD_LABEL, Placement, CALENDAR_RANGE_OPTIONS, CALENDAR_RANGE_KEYS } from "./settings";
 import { parseAncestorHeadings } from "./sections";
 import { noteFolderOf, QuickAddPlacement } from "./writes";
 import { LevelRole, LevelSetup, DocumentLevels, LEVEL_ROLE_LABELS, PERIOD_FORMATS, formatPeriod } from "./periods";
@@ -771,8 +771,9 @@ export class ShortcutsModal extends Modal {
 			[
 				"Layout and view",
 				[
-					["1–6", "Show that heading level as cards"],
+					["1–6", "Show that heading level as cards (on the Calendar, 2 is the 2 weeks range)"],
 					["L / Shift+L", "Cycle the layouts forwards / backwards"],
+					["C", "Switch to the Calendar layout"],
 					["V", "Cycle the view modes: default / hierarchy / dividers"],
 					[", / .", "Previous / next heading in the Hierarchy and Dividers view modes, card in the Rolodex and Day Planner, or week/day on the Calendar"],
 					["S", "Show only starred lines / show everything"],
@@ -780,11 +781,17 @@ export class ShortcutsModal extends Modal {
 				],
 			],
 			[
+				// While the Calendar shows, these keys pick its range — so M, D and 2 mean
+				// the range there, and the menu, the Deck and heading level 2 elsewhere.
+				"On the Calendar",
+				CALENDAR_RANGE_OPTIONS.map(([value, label]): [string, string] => [CALENDAR_RANGE_KEYS[value], `${label} range`]),
+			],
+			[
 				"Notes",
 				[
 					["O", "Open a different note"],
-					["D", "Show or hide the Deck of notes"],
-					["M", "Open the ☰ menu"],
+					["D", "Show or hide the Deck of notes (on the Calendar: the Day range)"],
+					["M", "Open the ☰ menu (on the Calendar: the Month range)"],
 				],
 			],
 		];

@@ -133,7 +133,7 @@ const CAL_SORT_LABELS = { asc: "Ascending", desc: "Descending", doc: "Ascending"
 /* CAL_RANGE=month|week|day stages the Calendar's range picker — the whole scrolling
    wall of months, one week, or one day. CAL_ANCHOR=<ISO> picks which one. */
 const CAL_RANGE = process.env.CAL_RANGE ?? "month";
-const CAL_RANGE_LABELS = { month: "Month", week: "Week", day: "Day" };
+const CAL_RANGE_LABELS = { month: "Month", "2weeks": "2 weeks", week: "Week", day: "Day" };
 
 const CAL_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-calendar-days"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`;
 const CHEVRON_LEFT = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-chevron-left"><path d="m15 18-6-6 6-6"/></svg>`;
@@ -229,7 +229,7 @@ function calendarHtml() {
 	}
 	if (SORT === "desc") months.reverse();
 	const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-	// Week and Day: one range, anchored on CAL_ANCHOR (today, held inside the note's span).
+	// 2 weeks, Week and Day: one range, anchored on CAL_ANCHOR (today, held inside the note's span).
 	if (CAL_RANGE !== "month") {
 		const anchor = process.env.CAL_ANCHOR ?? (TODAY < isos[0] ? isos[0] : TODAY > isos[isos.length - 1] ? isos[isos.length - 1] : TODAY);
 		const shift = (iso, delta) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + delta); return d.toISOString().slice(0, 10); };
@@ -237,16 +237,19 @@ function calendarHtml() {
 		// WEEK_START=monday mirrors the plugin's "Start the week on" setting.
 		const firstDow = process.env.WEEK_START === "monday" ? 1 : 0;
 		const start = shift(anchor, -((dowOf(anchor) - firstDow + 7) % 7));
-		const days = CAL_RANGE === "week" ? Array.from({ length: 7 }, (_, i) => shift(start, i)) : [anchor];
+		const span = CAL_RANGE === "2weeks" ? 14 : CAL_RANGE === "week" ? 7 : 0;
+		const days = span ? Array.from({ length: span }, (_, i) => shift(start, i)) : [anchor];
 		const weekend = (iso) => dowOf(iso) === 0 || dowOf(iso) === 6;
-		const cell = (iso, wknd) => {
+		// 2 weeks: the second week's first cell in each run starts past the spacer track.
+		const second = new Set(CAL_RANGE === "2weeks" ? days.slice(7) : []);
+		const cell = (iso, wknd, split = false) => {
 			const s = byIso.get(iso);
-			const mark = wknd ? " is-cal-wknd" : "";
+			const mark = (wknd ? " is-cal-wknd" : "") + (split ? " is-cal-split" : "");
 			if (s) return cardHtml(s).replace('class="section-card', `class="section-card${mark}`);
-			const label = CAL_RANGE === "week" ? String(Number(iso.slice(8))) : "No card for this day yet — click to write one";
+			const label = span ? String(Number(iso.slice(8))) : "No card for this day yet — click to write one";
 			return `<div class="sc-cal-blank${mark}${iso === TODAY ? " is-today" : ""}" role="button">${label}</div>`;
 		};
-		if (CAL_RANGE !== "week") {
+		if (!span) {
 			return `<div class="section-cards-pinned"></div>
 <div class="section-cards-grid">
 ${calNavHtml(days)}
@@ -255,16 +258,18 @@ ${cell(days[0], false)}
 <div class="section-cards-tray"></div>`;
 		}
 		// The weekdays across the top, the weekend along the bottom — each run named above it.
-		const head = (isos) => isos.map((iso) => `<div class="sc-cal-dow${weekend(iso) ? " is-wknd" : ""}">${DOW[dowOf(iso)]}</div>`).join("\n");
-		const weekdays = days.filter((iso) => !weekend(iso));
-		const wknd = days.filter(weekend);
+		const run = (isos) => {
+			const split = isos.find((iso) => second.has(iso));
+			return [
+				...isos.map((iso) => `<div class="sc-cal-dow${weekend(iso) ? " is-wknd" : ""}${iso === split ? " is-cal-split" : ""}">${DOW[dowOf(iso)]}</div>`),
+				...isos.map((iso) => cell(iso, weekend(iso), iso === split)),
+			].join("\n");
+		};
 		return `<div class="section-cards-pinned"></div>
 <div class="section-cards-grid">
 ${calNavHtml(days)}
-${head(weekdays)}
-${weekdays.map((iso) => cell(iso, false)).join("\n")}
-${head(wknd)}
-${wknd.map((iso) => cell(iso, true)).join("\n")}
+${run(days.filter((iso) => !weekend(iso)))}
+${run(days.filter(weekend))}
 </div>
 <div class="section-cards-tray"></div>`;
 	}

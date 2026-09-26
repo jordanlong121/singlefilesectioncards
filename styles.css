@@ -1045,20 +1045,24 @@ body.is-mobile .is-layout-tight .section-card-body {
 	min-height: 0;
 }
 
-/* ---------- the Month range's shrunken cards ----------
-   Only a month has to fit thirty-odd days on one screen, so only a month pays for
-   it: smaller type, tight padding, half-size checkboxes and flush lists. The Week
-   and Day ranges give a day room, and read at the size every other layout uses. */
-.is-cal-month .section-card .section-card-header {
+/* ---------- the Month and 2 weeks ranges' shrunken cards ----------
+   A month fits thirty-odd days on one screen and 2 weeks lays ten weekdays side by
+   side — cells narrower than a month's — so only those two pay for it: smaller type,
+   tight padding, half-size checkboxes and flush lists. The Week and Day ranges give
+   a day room, and read at the size every other layout uses. */
+.is-cal-month .section-card .section-card-header,
+.is-cal-2weeks .section-card .section-card-header {
 	padding: 0 8px;
 }
 
-.is-cal-month .section-card .section-card-title {
+.is-cal-month .section-card .section-card-title,
+.is-cal-2weeks .section-card .section-card-title {
 	font-size: calc(var(--font-ui-smaller) * 0.85);
 	line-height: 1.4;
 }
 
-.is-cal-month .section-card .section-card-body {
+.is-cal-month .section-card .section-card-body,
+.is-cal-2weeks .section-card .section-card-body {
 	padding: 4px 8px 6px;
 	font-size: calc(var(--font-ui-smaller) * 0.85);
 	overflow: hidden;
@@ -1071,7 +1075,8 @@ body.is-mobile .is-layout-tight .section-card-body {
 
 /* A day made big is a normal card again: the checkbox size falls back to what
    the theme sets everywhere else (inherit reaches past the cell-size override). */
-.is-cal-month .section-card.is-maximized .section-card-body {
+.is-cal-month .section-card.is-maximized .section-card-body,
+.is-cal-2weeks .section-card.is-maximized .section-card-body {
 	--checkbox-size: inherit;
 }
 
@@ -1079,7 +1084,9 @@ body.is-mobile .is-layout-tight .section-card-body {
    Bullet/number markers move inside the line so zero margin can't clip them;
    task items render their checkbox inline and need no room at all. */
 .is-cal-month .section-card .section-card-body ul > li,
-.is-cal-month .section-card .section-card-body ol > li {
+.is-cal-2weeks .section-card .section-card-body ul > li,
+.is-cal-month .section-card .section-card-body ol > li,
+.is-cal-2weeks .section-card .section-card-body ol > li {
 	margin-inline-start: 0;
 	list-style-position: inside;
 }
@@ -1097,13 +1104,13 @@ body.is-mobile .is-layout-tight .section-card-body {
 	visibility: hidden;
 }
 
-/* A day outside the Week or Day range: its card stays in the grid, so the reuse pass
+/* A day outside the 2 weeks, Week or Day range: its card stays in the grid, so the reuse pass
    keeps it and its rendered markdown, but it has no cell to sit on. */
 .is-layout-calendar .section-card.is-cal-outside {
 	display: none;
 }
 
-/* ---------- the Calendar's Week and Day ranges ----------
+/* ---------- the Calendar's 2 weeks, Week and Day ranges ----------
    One range at a time under a row of arrows, filling the pane instead of scrolling
    through the months. The cells stretch to the row rather than standing at the month
    grid's fixed day height.
@@ -1111,6 +1118,7 @@ body.is-mobile .is-layout-tight .section-card-body {
    The pane becomes a flex column, as the Rolodex's does, so the grid can take
    whatever the toolbar leaves — the base view is a plain scrolling block. */
 .workspace-leaf-content .view-content.section-cards-view.is-cal-week,
+.workspace-leaf-content .view-content.section-cards-view.is-cal-2weeks,
 .workspace-leaf-content .view-content.section-cards-view.is-cal-day {
 	display: flex;
 	flex-direction: column;
@@ -1119,12 +1127,14 @@ body.is-mobile .is-layout-tight .section-card-body {
 
 /* Nothing scrolls under it any more, so the toolbar is a plain first row. */
 .is-cal-week .section-cards-toolbar,
+.is-cal-2weeks .section-cards-toolbar,
 .is-cal-day .section-cards-toolbar {
 	position: static;
 	flex: 0 0 auto;
 }
 
 .is-cal-week .section-cards-grid,
+.is-cal-2weeks .section-cards-grid,
 .is-cal-day .section-cards-grid {
 	flex: 1 1 auto;
 	min-height: 0;
@@ -1135,7 +1145,8 @@ body.is-mobile .is-layout-tight .section-card-body {
    weekend lying along the bottom in a shorter band of its own. Ten columns, so a
    weekday cell spans two and a weekend day spans five.
    Rows: the nav, the weekday names, the weekdays, the weekend's names, the weekend. */
-.is-cal-week .section-cards-grid {
+.is-cal-week .section-cards-grid,
+.is-cal-2weeks .section-cards-grid {
 	grid-template-columns: repeat(10, minmax(0, 1fr));
 	grid-template-rows:
 		auto auto minmax(var(--sfsc-cal-cell, 112px), 1fr)
@@ -1143,27 +1154,57 @@ body.is-mobile .is-layout-tight .section-card-body {
 }
 
 .is-cal-week .sc-cal-dow,
+.is-cal-2weeks .sc-cal-dow,
 .is-cal-week .section-cards-grid .section-card,
-.is-cal-week .sc-cal-blank {
+.is-cal-2weeks .section-cards-grid .section-card,
+.is-cal-week .sc-cal-blank,
+.is-cal-2weeks .sc-cal-blank {
 	grid-column: span 2;
 }
 
 .is-cal-week .sc-cal-dow.is-wknd,
+.is-cal-2weeks .sc-cal-dow.is-wknd,
 .is-cal-week .section-cards-grid .section-card.is-cal-wknd,
-.is-cal-week .sc-cal-blank.is-cal-wknd {
+.is-cal-2weeks .section-cards-grid .section-card.is-cal-wknd,
+.is-cal-week .sc-cal-blank.is-cal-wknd,
+.is-cal-2weeks .sc-cal-blank.is-cal-wknd {
 	grid-column: span 5;
 }
 
 /* The weekend band is shorter than a weekday column, so its cells must not carry the
    full day-cell floor — that would push the band back to a weekday's height. */
 .is-cal-week .section-cards-grid .section-card.is-cal-wknd,
-.is-cal-week .sc-cal-blank.is-cal-wknd {
+.is-cal-2weeks .section-cards-grid .section-card.is-cal-wknd,
+.is-cal-week .sc-cal-blank.is-cal-wknd,
+.is-cal-2weeks .sc-cal-blank.is-cal-wknd {
 	min-height: calc(var(--sfsc-cal-cell, 112px) * 0.7);
 }
 
 /* A little air between the weekdays and the weekend band, so the two read as two. */
-.is-cal-week .sc-cal-dow.is-wknd {
+.is-cal-week .sc-cal-dow.is-wknd,
+.is-cal-2weeks .sc-cal-dow.is-wknd {
 	padding-top: 10px;
+}
+
+/* 2 weeks: the week's planner twice, side by side — twenty columns, so the ten
+   weekdays run across the top (spanning two each, as in a week) and each week's
+   weekend lies in the band beneath it (five each). A narrow spacer track between
+   the weeks sets the second off without narrowing any day: the second week's first
+   cell in every row (.is-cal-split) starts past it, and the rest flow on after. */
+.is-cal-2weeks .section-cards-grid {
+	grid-template-columns: repeat(10, minmax(0, 1fr)) 8px repeat(10, minmax(0, 1fr));
+}
+
+.is-cal-2weeks .sc-cal-dow.is-cal-split,
+.is-cal-2weeks .section-cards-grid .section-card.is-cal-split,
+.is-cal-2weeks .sc-cal-blank.is-cal-split {
+	grid-column: 12 / span 2;
+}
+
+.is-cal-2weeks .sc-cal-dow.is-wknd.is-cal-split,
+.is-cal-2weeks .section-cards-grid .section-card.is-cal-wknd.is-cal-split,
+.is-cal-2weeks .sc-cal-blank.is-cal-wknd.is-cal-split {
+	grid-column: 12 / span 5;
 }
 
 /* One day is one column, under its nav row. */
@@ -1173,8 +1214,10 @@ body.is-mobile .is-layout-tight .section-card-body {
 }
 
 .is-cal-week .section-cards-grid .section-card,
+.is-cal-2weeks .section-cards-grid .section-card,
 .is-cal-day .section-cards-grid .section-card,
 .is-cal-week .sc-cal-blank,
+.is-cal-2weeks .sc-cal-blank,
 .is-cal-day .sc-cal-blank {
 	height: 100%;
 	min-height: var(--sfsc-cal-cell, 112px);
@@ -1188,6 +1231,7 @@ body.is-mobile .is-layout-tight .section-card-body {
 /* Only the months scroll under their weekday names; one range holds still, and a
    second sticky row would sit on top of the nav row's. */
 .is-cal-week .sc-cal-dow,
+.is-cal-2weeks .sc-cal-dow,
 .is-cal-day .sc-cal-dow {
 	position: static;
 }
@@ -4571,20 +4615,20 @@ body.is-mobile .section-card-body {
    so the item indents by exactly that hang. Top-level lists lose the 1.4em
    padding; nested ones keep it as the per-level step. The Calendar keeps its
    own flush, markers-inside rule. */
-.section-cards-view:not(.is-cal-month) .section-card-body > ul,
-.section-cards-view:not(.is-cal-month) .section-card-body > ol {
+.section-cards-view:not(.is-cal-month):not(.is-cal-2weeks) .section-card-body > ul,
+.section-cards-view:not(.is-cal-month):not(.is-cal-2weeks) .section-card-body > ol {
 	padding-inline-start: 0;
 }
 
-.section-cards-view:not(.is-cal-month) .section-card-body ul > li {
+.section-cards-view:not(.is-cal-month):not(.is-cal-2weeks) .section-card-body ul > li {
 	margin-inline-start: 0.8em;
 }
 
-.section-cards-view:not(.is-cal-month) .section-card-body ol > li {
+.section-cards-view:not(.is-cal-month):not(.is-cal-2weeks) .section-card-body ol > li {
 	margin-inline-start: 2ch;
 }
 
-.section-cards-view:not(.is-cal-month) .section-card-body ul > li.task-list-item {
+.section-cards-view:not(.is-cal-month):not(.is-cal-2weeks) .section-card-body ul > li.task-list-item {
 	margin-inline-start: calc(var(--checkbox-size, 1em) * 1.5);
 }
 

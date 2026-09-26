@@ -3,6 +3,7 @@
 import { moment } from "obsidian";
 import { Section, moParse, ISO_DATE_RE, validIsoDate, parseAncestorHeadings } from "./sections";
 import { TASK_RE, taskLineIndexes } from "./tasks";
+import type { CalendarRange } from "./settings";
 
 /**
  * Does a date heading refer to today? Matches an ISO date anywhere in the heading
@@ -227,6 +228,22 @@ export function weekStartIso(iso: string, firstDow: number): string {
 export function weekDays(iso: string, firstDow: number): string[] {
 	const start = weekStartIso(iso, firstDow);
 	return Array.from({ length: 7 }, (_, i) => shiftIso(start, i));
+}
+
+/** The ISO days a Calendar range shows around its anchor: the anchor's week and the
+ * one after it (2 weeks), the anchor's week, or the anchor alone. Month has no single
+ * range — its grid holds every month — so it has no days here. */
+export function calendarRangeDays(anchor: string, range: CalendarRange, firstDow: number): string[] {
+	if (range === "day") return [anchor];
+	if (range === "week") return weekDays(anchor, firstDow);
+	if (range === "2weeks") return [...weekDays(anchor, firstDow), ...weekDays(shiftIso(anchor, 7), firstDow)];
+	return [];
+}
+
+/** How many days one step of a range's arrows (or , and .) moves: a day for Day, and
+ * a week for Week — and for 2 weeks too, so each step keeps a week in view. */
+export function calendarRangeStep(range: CalendarRange): number {
+	return range === "day" ? 1 : 7;
 }
 
 /** An ISO day held inside a span (both ends inclusive); either end may be missing. */
