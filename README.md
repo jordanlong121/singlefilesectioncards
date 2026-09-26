@@ -51,7 +51,7 @@ If this plugin is useful to you, you can support its development:
 
 - **One card per heading.** Pick which level becomes a card (H1–H6). Multiple layouts, sort
   orders, and per-card colors.
-- **Work directly on the cards.** Click a card to edit its body (the heading stays in the title. Rename cards, tick task checkboxes, delete cards, pin to top.
+- **Work directly on the cards.** Click a card to edit its body (the heading stays in the title bar). Rename cards, tick task checkboxes, delete cards, pin to top.
 - **Drag and drop.** Reorder cards, or drag a task, paragraph, or image onto another card.
 - **Select many.** Click a title bar to select its card, Shift-click to select multiple cards.
 - **Group by.** Divider bars over buckets — first tag, date, open tasks, stars, or length —
@@ -72,7 +72,6 @@ If this plugin is useful to you, you can support its development:
   wizard's built-in structures, your preset notes, or the headings of any note.
 - **Deck.** The toolbar's deck button (or `D`) flips the view to thumbnails of your pinned
   and most recent card notes, each wearing its note's background — click one to hop over.
-
 
 ## Layouts
 
@@ -497,7 +496,6 @@ creating the card `2026-08-20, Thursday` produces:
 - [ ] Review Thursday's plan
 - [ ] Shutdown checklist (2026-08-20, Thursday)
 ```
-
 
 ### New note
 
