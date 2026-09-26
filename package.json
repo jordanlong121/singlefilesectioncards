@@ -1,6 +1,6 @@
 {
   "name": "obsidian-single-file-section-cards",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "description": "Obsidian plugin: view a single note's sections as editable cards",
   "main": "main.js",
   "scripts": {
