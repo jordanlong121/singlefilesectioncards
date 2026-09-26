@@ -319,6 +319,27 @@ export class SectionCardsSettingTab extends PluginSettingTab {
 			},
 			{
 				type: "group",
+				heading: "Calendar feeds",
+				items: [
+					{
+						name: "Heading for a day's events",
+						desc: "A note with a calendar feed (☰ → Calendar feed…) writes a day's events as lines under this heading in the day's card, one level below the card. Updating replaces only the feed's lines; anything you add under the heading stays.",
+						control: { type: "text", key: "feedHeading", placeholder: "Calendar" },
+					},
+					{
+						name: "Write events as tasks",
+						desc: "Each event becomes an open task instead of a plain bullet. A task you tick stays ticked when the day is updated.",
+						control: { type: "toggle", key: "feedAsTasks" },
+					},
+					{
+						name: "Update today's card when the note opens",
+						desc: "Fetch the note's feed and update today's card the first time the note opens as cards in a session. Off: update from a card's or a line's right-click menu, the ☰ menu, or the command.",
+						control: { type: "toggle", key: "feedAutoUpdate" },
+					},
+				],
+			},
+			{
+				type: "group",
 				heading: "Feedback",
 				items: [
 					{

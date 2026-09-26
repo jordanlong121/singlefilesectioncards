@@ -71,6 +71,9 @@ If this plugin is useful to you, you can support its development:
   and tune the look with the [Style Settings](https://github.com/mgmeyers/obsidian-style-settings) plugin.
 - **Arrange freely, and keep the arrangements.** The Custom Grid canvas places sections where
   you drop them; save an arrangement under a name and switch between saved layouts at will.
+- **Calendar feeds.** Give a note a calendar's iCal (.ics) address — Google, Outlook, iCloud —
+  and a day's events fill that day's card under a heading of your choosing, from a right-click
+  (see [Calendar feeds](#calendar-feeds)).
 - **Navigate as cards.** Wikilinks open the linked note's card wall, the ↗ button opens the section in a
   normal editor.
 - **Templates.** New cards can start from a template note, and new notes from the New note
@@ -416,8 +419,12 @@ Background edits the Deck's own backdrop.
 
 **Background** gives the note's card wall an image — from the vault, your computer, or a URL
 (downloaded once into the attachment folder) — or a generated gradient, with live sliders for
-transparency, brightness, and saturation, all remembered per note. That one URL download is the
-plugin's only network access; everything else works fully offline.
+transparency, brightness, and saturation, all remembered per note.
+
+**Network use.** The plugin goes online for two things only: downloading a background image
+from a URL (once, when you pick one), and fetching a note's [calendar feed](#calendar-feeds)
+from the address you gave it (when you update a day — or when the note opens, if you turn that
+on). Nothing is sent anywhere else, and everything else works fully offline.
 
 ## Style Settings
 
@@ -580,6 +587,46 @@ On the Calendar's 2 weeks, Week and Day ranges, the calendar first turns to the 
 that day, so the card (or its empty cell) is on screen to land on. The same goes for a link to a
 dated card and for *Open today's section*.
 
+## Calendar feeds
+
+A note can follow a calendar: ☰ → **Calendar feed…** takes the calendar's iCal (.ics) address.
+Any calendar that publishes one works — in Google Calendar it's the calendar's settings →
+*Integrate calendar* → *Secret address in iCal format*. **Test** fetches it and says what it
+found; **Save** keeps it for that note (each note has its own feed, so a work note can follow the
+work calendar and a personal one yours). It's read-only: nothing is ever sent to the calendar.
+
+Then right-click a day's card — or any line in it — and choose **Update from calendar feed**
+(also ☰ → **Update today from calendar feed**, and the *Update today's card from the calendar
+feed* command, which makes today's card first if the note has none). The day's events land under
+a heading in the card, one level below it:
+
+```markdown
+### 2026-07-22, Wednesday
+- [ ] tidy the shared drive
+
+#### Calendar
+- All day: Offsite
+- 09:00–09:30 Stand-up
+- 14:00–15:00 Design review
+```
+
+- **Update again at any time.** The feed's lines are replaced — moved, added, and cancelled
+  events all follow — and anything you write under the heading yourself stays, after them. A
+  day with nothing new leaves the file untouched.
+- **Each feed line carries a hidden tag** (`^ical-…`, an Obsidian block id), which is how an
+  update tells its lines from yours. It doesn't show when reading; delete it from a line to make
+  that line your own.
+- **Repeating events** follow their rules, skipped dates, and occurrences moved one at a time;
+  multi-day and overnight events show on every day they cover (`22:00–…`, `…–01:00`); times are
+  shown in your time zone.
+- **Settings → Calendar feeds**: the heading's name (default *Calendar*; it can sit anywhere in
+  the card once it exists), events as open tasks instead of bullets (a task you tick stays ticked
+  through updates), and updating today's card automatically when the note opens.
+
+The address is kept in the plugin's data, not in the note. A secret address lets anyone who has
+it read the calendar, so treat it like a password — and if you use Obsidian Sync with plugin
+settings, it travels with them.
+
 ## Usage
 
 - Click the deck icon in a note's top-right corner: that tab becomes the note's cards view
@@ -596,6 +643,8 @@ dated card and for *Open today's section*.
   - `Single File Section Cards: Open section cards in a new tab`
   - `Single File Section Cards: Open section cards for the active note`
   - `Single File Section Cards: Create new card`
+  - `Single File Section Cards: Update today's card from the calendar feed` — when the note in
+    front has a [calendar feed](#calendar-feeds)
   - `Single File Section Cards: New note` — the [New note wizard](#new-note)
   - `Single File Section Cards: Manage notes` — the [notes manager](#manage-notes)
 - The toolbar button switches notes: your default note, notes you've viewed as cards, and recently
@@ -634,6 +683,9 @@ dated card and for *Open today's section*.
 | Card text size / Divider text size | Scale the text on cards (titles, bodies, editors) and, separately, on the divider bars, relative to the theme |
 | Date detection format | An extra moment pattern that marks a heading as a date, with `*` wildcards for text around it (`*MMMM D, YYYY*`) |
 | Start the week on | First day of the Calendar layout's weeks: the language default, Sunday, or Monday |
+| Heading for a day's events | The heading a [calendar feed](#calendar-feeds) writes a day's events under, one level below the card (default *Calendar*) |
+| Write events as tasks | Feed events as open tasks instead of plain bullets; a ticked one stays ticked through updates (off by default) |
+| Update today's card when the note opens | Fetch the note's feed and update today's card the first time the note opens as cards in a session (off by default) |
 | Toolbar | Full, or Compact on one line with icons only (also switchable by right-clicking the toolbar) |
 | Deck thumbnails | How many notes the Deck shows: pinned notes first, then the most recently opened |
 | Card editor | Live preview, source mode, or a plain text box when editing a card |
@@ -677,4 +729,5 @@ Yes, please open an issue on the [GitHub page](https://github.com/jordanlong121/
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Calendar feeds are read with [ical.js](https://github.com/kewisch/ical.js)
+(Mozilla Public License 2.0), bundled unmodified.

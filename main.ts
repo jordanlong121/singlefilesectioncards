@@ -1,4 +1,4 @@
-import { addIcon, MarkdownView, Notice, Platform, Plugin, WorkspaceLeaf, TFile, TFolder, debounce, normalizePath } from "obsidian";
+import { addIcon, MarkdownView, Notice, Platform, Plugin, WorkspaceLeaf, TFile, TFolder, debounce, normalizePath, requestUrl } from "obsidian";
 import {
 	VIEW_TYPE_SECTION_CARDS,
 	DECK_ICON,
@@ -45,6 +45,7 @@ export * from "./src/writes";
 export * from "./src/planner";
 export * from "./src/periods";
 export * from "./src/canvas";
+export * from "./src/icalfeed";
 export * from "./src/editing";
 export * from "./src/background";
 export * from "./src/modals";
@@ -119,6 +120,18 @@ export default class SectionCardsPlugin extends Plugin {
 				const file = this.app.workspace.getActiveFile();
 				if (!file || file.extension !== "md") return false;
 				if (!checking) void this.openCardsView(file.path);
+				return true;
+			},
+		});
+
+		// Calendar feeds: update today's card in the cards view in front, from its note's feed.
+		this.addCommand({
+			id: "update-today-from-feed",
+			name: "Update today's card from the calendar feed",
+			checkCallback: (checking) => {
+				const view = this.app.workspace.getActiveViewOfType(SectionCardsView);
+				if (!view || view.deckMode || !this.getCalendarFeed(view.filePath)) return false;
+				if (!checking) void view.updateTodayFromFeed();
 				return true;
 			},
 		});
@@ -1018,6 +1031,49 @@ export default class SectionCardsPlugin extends Plugin {
 		else delete current.collapsed;
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
+	}
+
+	/** A note's calendar feed address (an iCal .ics URL), or null when it has none. */
+	getCalendarFeed(path: string): string | null {
+		return this.settings.perFile?.[path]?.calendarFeed ?? null;
+	}
+
+	/** Set or clear (null) a note's calendar feed address. */
+	async setCalendarFeed(path: string, url: string | null, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (url?.trim()) current.calendarFeed = url.trim();
+		else delete current.calendarFeed;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
+	/** Notes whose today card was updated from their feed on opening, this session. */
+	feedAutoUpdated = new Set<string>();
+
+	/** Recently fetched feeds, so updating several days (or the same one twice) in a
+	 * few minutes asks the calendar once. In memory only: nothing about a feed is saved. */
+	private feedCache = new Map<string, { at: number; text: string }>();
+
+	/** A calendar feed's text. webcal:// is fetched as https://. Throws a readable
+	 * message when the address can't be reached or doesn't answer with a calendar. */
+	async fetchFeed(url: string, fresh = false): Promise<string> {
+		const address = url.trim().replace(/^webcal:\/\//i, "https://");
+		const cached = this.feedCache.get(address);
+		if (!fresh && cached && Date.now() - cached.at < 5 * 60_000) return cached.text;
+		let text: string;
+		try {
+			const res = await requestUrl({ url: address, throw: false });
+			if (res.status < 200 || res.status >= 300) throw new Error(`the calendar answered HTTP ${res.status}`);
+			text = res.text;
+		} catch (err) {
+			const reason = err instanceof Error ? err.message : String(err);
+			throw new Error(reason.startsWith("the calendar") ? reason : `couldn't reach it (${reason})`);
+		}
+		if (!/BEGIN:VCALENDAR/i.test(text)) throw new Error("that address didn't return a calendar (.ics)");
+		this.feedCache.set(address, { at: Date.now(), text });
+		return text;
 	}
 
 	/** A note's own heading-name format, or null when it uses the global default. */

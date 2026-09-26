@@ -1416,3 +1416,102 @@ export class SavedLayoutChangesModal extends Modal {
 		this.contentEl.empty();
 	}
 }
+
+/**
+ * A note's calendar feed: paste the calendar's iCal (.ics) address, test it, then
+ * save or clear it. The address is kept in the plugin's data, never in the note.
+ */
+export class CalendarFeedModal extends Modal {
+	private readonly noteName: string;
+	private readonly current: string | null;
+	private readonly test: (url: string) => Promise<string>;
+	private readonly onSave: (url: string | null) => void;
+
+	/** @param test  Fetches the address and describes what it found (or throws why not). */
+	constructor(
+		app: App,
+		noteName: string,
+		current: string | null,
+		test: (url: string) => Promise<string>,
+		onSave: (url: string | null) => void,
+	) {
+		super(app);
+		this.noteName = noteName;
+		this.current = current;
+		this.test = test;
+		this.onSave = onSave;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.addClass("sfsc-feed-modal");
+		contentEl.createEl("h3", { text: `Calendar feed for “${this.noteName}”` });
+		contentEl.createEl("p", {
+			cls: "sfsc-feed-help",
+			text: "Paste the calendar's feed address — it ends in .ics. A day's events then fill that day's card under your calendar heading, from a card's or a line's right-click menu. For a Google calendar: open its settings, find the section on integrating the calendar, and copy the secret address.",
+		});
+		contentEl.createEl("p", {
+			cls: "sfsc-feed-help",
+			text: "The address is saved in this plugin's data, not in the note. A secret address lets anyone who has it read the calendar — keep it private.",
+		});
+		const input = contentEl.createEl("input", {
+			cls: "sfsc-text-input",
+			attr: { type: "url", spellcheck: "false", placeholder: "https://calendar.google.com/calendar/ical/…/basic.ics" },
+		});
+		input.value = this.current ?? "";
+		const status = contentEl.createDiv({ cls: "sfsc-feed-status" });
+		const valid = () => {
+			const url = input.value.trim();
+			if (/^(https?|webcal):\/\/\S+$/i.test(url)) return url;
+			status.setText("That doesn't look like a web address — paste the whole link, as the calendar gives it.");
+			status.addClass("is-error");
+			return null;
+		};
+		const save = () => {
+			const url = valid();
+			if (!url) return;
+			this.close();
+			this.onSave(url);
+		};
+		input.addEventListener("keydown", (evt) => {
+			if (evt.key !== "Enter") return;
+			evt.preventDefault();
+			save();
+		});
+		const buttons = new Setting(contentEl);
+		if (this.current) {
+			buttons.addButton((b) =>
+				b
+					.setButtonText("Remove feed")
+					.setDestructive()
+					.onClick(() => {
+						this.close();
+						this.onSave(null);
+					}),
+			);
+		}
+		buttons
+			.addButton((b) =>
+				b.setButtonText("Test").onClick(async () => {
+					const url = valid();
+					if (!url) return;
+					status.removeClass("is-error");
+					status.setText("Fetching…");
+					try {
+						status.setText(await this.test(url));
+					} catch (err) {
+						status.addClass("is-error");
+						status.setText(`Couldn't read it: ${err instanceof Error ? err.message : String(err)}.`);
+					}
+				}),
+			)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) => b.setButtonText("Save").setCta().onClick(save));
+		input.focus();
+		input.select();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}

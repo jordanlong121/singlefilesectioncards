@@ -250,6 +250,12 @@ export interface SectionCardsSettings {
 	toolbarStyle: "full" | "compact";
 	/** First day of the Calendar layout's weeks; "locale" follows the language default. */
 	weekStart: "locale" | "sunday" | "monday";
+	/** Calendar feeds: the heading a day's events go under, inside the day's card. */
+	feedHeading: string;
+	/** Calendar feeds: events written as open tasks ("- [ ]") rather than plain bullets. */
+	feedAsTasks: boolean;
+	/** Calendar feeds: update today's card from the note's feed when the note opens. */
+	feedAutoUpdate: boolean;
 	/** Extra date-detection pattern: a moment format, optionally wrapped in `*`
 	 * wildcards standing for text before/after the date. Empty = built-ins only. */
 	dateDetectFormat: string;
@@ -331,6 +337,9 @@ export interface PerFileView extends ViewSettings {
 	backgroundSaturation?: number;
 	/** This note's heading-name format for new cards, overriding the global default. */
 	newCardFormat?: string;
+	/** This note's calendar feed: an iCal (.ics) address whose events fill a day's card.
+	 * Kept here, in the plugin's data, not in the note — it's usually a secret address. */
+	calendarFeed?: string;
 }
 
 /** The bit of view state that is remembered per note. */
@@ -556,6 +565,9 @@ export const DEFAULT_SETTINGS: SectionCardsSettings = {
 	starEmoji: "⭐",
 	toolbarStyle: "compact",
 	weekStart: "locale",
+	feedHeading: "Calendar",
+	feedAsTasks: false,
+	feedAutoUpdate: false,
 	dateDetectFormat: "",
 	editorMode: "live",
 	saveOnLeave: true,

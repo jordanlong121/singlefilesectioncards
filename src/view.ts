@@ -133,7 +133,9 @@ import {
 	moveSectionsInFile,
 	insertSection,
 	writeSection,
+	syncFeedIntoSection,
 } from "./writes";
+import { feedDayEvents, feedEventLine } from "./icalfeed";
 import {
 	PlannerSlot,
 	plannerBlockKey,
@@ -213,6 +215,7 @@ import { SavedLayoutChangesModal, ConfirmActionModal,
 	ConfirmClearModal,
 	ShortcutsModal,
 	CreateDateCardModal,
+	CalendarFeedModal,
 	PlannerMissingDayModal,
 	DocumentSetupModal,
 	DuplicateCardModal,
@@ -2887,6 +2890,7 @@ export class SectionCardsView extends ItemView {
 				evt.stopPropagation();
 				const menu = new Menu();
 				menu.addItem((item) => item.setTitle("Rename card…").setIcon("pencil").onClick(() => this.promptRenameCard(section)));
+				this.addFeedItem(menu, section);
 				this.addStickyItems(menu, file, section);
 				menu.showAtMouseEvent(evt);
 			});
@@ -5010,17 +5014,112 @@ export class SectionCardsView extends ItemView {
 		new CreateDateCardModal(this.app, formatted, () => this.createDateCard(iso)).open();
 	}
 
-	/** Scroll the card whose heading is the picked ISO date into view, like the today jump. */
-	private async jumpToDate(iso: string): Promise<void> {
+	/** The card whose heading names this ISO day. The quick textual match first; the
+	 * detect pattern finds the rest — a card the calendar places must be findable here
+	 * too, or jump-to-date would offer a duplicate and the feed would miss its day. */
+	private dateEntry(iso: string): CardEntry | undefined {
 		const formatted = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
 		const detect = this.plugin.settings.dateDetectFormat;
-		// The quick textual match first; the detect pattern finds the rest — a card the
-		// calendar places must be findable here too, or this would offer a duplicate.
-		const find = () =>
+		return (
 			this.cardEntries.find((e) => isTodayTitle(e.holder.section.title, iso, formatted)) ??
-			(detect
-				? this.cardEntries.find((e) => titleToIso(e.holder.section.title, this.cardFormat(), detect) === iso)
-				: undefined);
+			(detect ? this.cardEntries.find((e) => titleToIso(e.holder.section.title, this.cardFormat(), detect) === iso) : undefined)
+		);
+	}
+
+	// ---------- calendar feed ----------
+
+	/** The day a card's calendar-feed update would fill: its ISO date, when this note has
+	 * a feed and the card's title names a day. Null hides the menu items. */
+	private feedDayOf(section: Section): string | null {
+		if (section.unfiled || !this.plugin.getCalendarFeed(this.filePath)) return null;
+		return titleToIso(section.title, this.cardFormat(), this.plugin.settings.dateDetectFormat);
+	}
+
+	/** "Update from calendar feed" on a menu, when the card can take it. Says whether it
+	 * added the item, so a caller can follow it with a separator. */
+	private addFeedItem(menu: Menu, section: Section, title = "Update from calendar feed"): boolean {
+		if (!this.feedDayOf(section)) return false;
+		menu.addItem((item) =>
+			item
+				.setTitle(title)
+				.setIcon("refresh-cw")
+				.onClick(() => void this.updateDayFromFeed(section)),
+		);
+		return true;
+	}
+
+	/**
+	 * Fill a day's card from this note's calendar feed: that day's events become the
+	 * lines under the feed heading (settings → Calendar feeds), replacing the feed's
+	 * earlier lines and keeping anything else written there. `quiet` — the update when
+	 * a note opens — reports only failures, and may use a feed fetched moments ago.
+	 */
+	async updateDayFromFeed(section: Section, quiet = false): Promise<void> {
+		const file = this.getFile();
+		const url = this.plugin.getCalendarFeed(this.filePath);
+		if (!file || !url) {
+			if (!quiet) this.promptCalendarFeed();
+			return;
+		}
+		const title = section.title || "(untitled)";
+		const iso = titleToIso(section.title, this.cardFormat(), this.plugin.settings.dateDetectFormat);
+		if (!iso) {
+			if (!quiet) new Notice(`“${title}” doesn't name a day, so the calendar has nothing to put there.`);
+			return;
+		}
+		let lines: string[];
+		try {
+			const events = feedDayEvents(await this.plugin.fetchFeed(url, !quiet), iso);
+			lines = events.map((event) => feedEventLine(event, this.plugin.settings.feedAsTasks));
+		} catch (err) {
+			new Notice(`Couldn't update from the calendar feed: ${err instanceof Error ? err.message : String(err)}.`);
+			return;
+		}
+		const heading = this.plugin.settings.feedHeading.trim() || "Calendar";
+		const result = await syncFeedIntoSection(this.app, file, this.headingLevel, section, heading, lines, this.flipMarker());
+		if (result === "missing") {
+			new Notice("Couldn't find that card — the file changed on disk.");
+			return;
+		}
+		if (result === "changed") await this.refresh();
+		if (quiet) return;
+		const events = `${lines.length} event${lines.length === 1 ? "" : "s"}`;
+		if (result === "changed") new Notice(lines.length ? `${events} from the calendar in “${title}”.` : `No events on “${title}” — cleared the calendar's lines.`);
+		else new Notice(lines.length ? `“${title}” already has the calendar's ${events}.` : `No events on “${title}” in the calendar.`);
+	}
+
+	/** Today's card from the feed — made first when the note has none yet (not by the
+	 * update when a note opens, which never writes a card of its own accord). */
+	async updateTodayFromFeed(create = true, quiet = false): Promise<void> {
+		const iso = mo().format("YYYY-MM-DD");
+		if (!this.dateEntry(iso) && create) await this.createDateCard(iso);
+		const entry = this.dateEntry(iso);
+		if (entry) await this.updateDayFromFeed(entry.holder.section, quiet);
+	}
+
+	/** Set, test, or remove this note's calendar feed address. */
+	private promptCalendarFeed(): void {
+		const note = this.getFile()?.basename ?? this.filePath;
+		const test = async (url: string): Promise<string> => {
+			const text = await this.plugin.fetchFeed(url, true);
+			const name = /^X-WR-CALNAME:(.*)$/im.exec(text)?.[1]?.trim();
+			const today = feedDayEvents(text, mo().format("YYYY-MM-DD")).length;
+			return `It works${name ? `: “${name}”` : ""} — ${today} event${today === 1 ? "" : "s"} today.`;
+		};
+		new CalendarFeedModal(this.app, note, this.plugin.getCalendarFeed(this.filePath), test, (url) => {
+			void this.plugin.setCalendarFeed(this.filePath, url, this.viewSettings()).then(() => {
+				new Notice(
+					url
+						? "Calendar feed saved. Right-click a day's card (or a line in it) and choose Update from calendar feed."
+						: "Calendar feed removed from this note.",
+				);
+			});
+		}).open();
+	}
+
+	/** Scroll the card whose heading is the picked ISO date into view, like the today jump. */
+	private async jumpToDate(iso: string): Promise<void> {
+		const find = () => this.dateEntry(iso);
 		// The Calendar's Week and Day ranges show one range at a time: turn to the one
 		// holding the day, so its card — or its empty cell — is on screen to land on.
 		await this.turnCalendarTo(iso);
@@ -5204,6 +5303,15 @@ export class SectionCardsView extends ItemView {
 					).open();
 				}),
 		);
+		// Calendar feeds: this note's iCal address, whose events fill a day's card.
+		menu.addItem((item) =>
+			item
+				.setTitle("Calendar feed…")
+				.setIcon("rss")
+				.setChecked(!!this.plugin.getCalendarFeed(this.filePath))
+				.setDisabled(this.deckMode)
+				.onClick(() => this.promptCalendarFeed()),
+		);
 		// Re-read the note and redraw — the file changed outside Obsidian, say.
 		menu.addItem((item) =>
 			item
@@ -5259,6 +5367,14 @@ export class SectionCardsView extends ItemView {
 						.setIcon("calendar-days")
 						.onClick(() => this.openJumpPicker?.()),
 				);
+				if (this.plugin.getCalendarFeed(this.filePath)) {
+					menu.addItem((item) =>
+						item
+							.setTitle("Update today from calendar feed")
+							.setIcon("refresh-cw")
+							.onClick(() => void this.updateTodayFromFeed()),
+					);
+				}
 			}
 			if (showHides) {
 				// Relative to today; today's own card always shows, undated cards too. Not on
@@ -6461,6 +6577,19 @@ export class SectionCardsView extends ItemView {
 		this.observeCards();
 		if (deferred.length) this.scheduleDeferredRenders(deferred, gen);
 
+		// Calendar feed, when asked to: the first render of a note with a feed brings
+		// today's card up to date — once per note per session, since the write re-renders.
+		// Only a card that exists: opening a note never makes one.
+		if (
+			this.plugin.settings.feedAutoUpdate &&
+			!this.sticky &&
+			!this.plugin.feedAutoUpdated.has(file.path) &&
+			this.plugin.getCalendarFeed(file.path)
+		) {
+			this.plugin.feedAutoUpdated.add(file.path);
+			void this.updateTodayFromFeed(false, true);
+		}
+
 		// A note's first render in this view brings today's card into view. A pending
 		// edit or maximize means the user just made a card — that scroll wins instead.
 		this.todayJumpPending = false;
@@ -6635,6 +6764,7 @@ export class SectionCardsView extends ItemView {
 						.onClick(() => this.promptRenameCard(holder.section)),
 				);
 			}
+			this.addFeedItem(menu, holder.section);
 			menu.addItem((item) => item.setTitle("Delete card").setIcon("trash-2").onClick(confirmDeleteCard));
 			this.addStickyItems(menu, file, holder.section);
 			// The Rolodex card already fills the pane, so "big" has nothing to do there.
@@ -9291,6 +9421,7 @@ export class SectionCardsView extends ItemView {
 			);
 		}
 		if (prev || next || showToday) menu.addSeparator();
+		if (this.addFeedItem(menu, section, "Update this day from calendar feed")) menu.addSeparator();
 
 		menu.addItem((item) =>
 			item
