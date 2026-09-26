@@ -4,3 +4,4 @@ test/.tmp/
 .DS_Store
 harness-out/
 sample-vault/.obsidian/
+__pycache__/
