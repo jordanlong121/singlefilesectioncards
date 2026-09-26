@@ -5324,22 +5324,6 @@ export class SectionCardsView extends ItemView {
 		if (!this.deckMode) {
 			menu.addSeparator();
 			this.addLayoutItems(menu);
-			// The Calendar's range, mirroring the toolbar picker: whole months, one week,
-			// or one day. Only where there's a calendar to range over.
-			if (this.layout === "calendar") {
-				for (const [value, label, hint] of CALENDAR_RANGE_OPTIONS) {
-					menu.addItem((item) => {
-						const [icon, fallback] = CALENDAR_RANGE_ICONS[value];
-						item.setIcon(icon);
-						if (!(item as MenuItem & { iconEl?: HTMLElement }).iconEl?.querySelector("svg")) item.setIcon(fallback);
-						item
-							.setTitle(`${label} at a time`)
-							.setChecked(this.calendarRange === value)
-							.onClick(() => this.setCalendarRange(value));
-						(item as MenuItem & { dom?: HTMLElement }).dom?.setAttr("title", hint);
-					});
-				}
-			}
 			// The canvases' tray can be folded away; this is the way back that's always
 			// in reach (the zoom bar's panel button is the other).
 			if (this.isCanvasLayout()) {
@@ -5444,6 +5428,21 @@ export class SectionCardsView extends ItemView {
 	 * (it stays listed, dimmed, and a click brings it back), remembered per note.
 	 */
 	private addLayoutItems(menu: Menu): void {
+		const calendarRanges = this.layout === "calendar" || this.calendarSelectable();
+		// A layout item's click: switch to it, or with Ctrl/⌘/Alt hide it from the note.
+		// Each click acts once, however many handlers see it (the Calendar's item has two).
+		const seen = new WeakSet<Event>();
+		const choose = (evt: MouseEvent | KeyboardEvent, value: Layout = "calendar"): boolean => {
+			if (seen.has(evt)) return false;
+			seen.add(evt);
+			const modified = evt instanceof MouseEvent && (evt.ctrlKey || evt.metaKey || evt.altKey);
+			if (modified) {
+				if (value !== this.layout) void this.toggleLayoutEnabled(value);
+				return true;
+			}
+			if (this.layout !== value) this.setLayout(value);
+			return true;
+		};
 		const addOptions = (target: Menu) => {
 			for (const [value, label] of LAYOUT_OPTIONS) {
 				const enabled = this.layoutEnabled(value);
@@ -5466,15 +5465,22 @@ export class SectionCardsView extends ItemView {
 						.setDisabled(
 							(value === "calendar" || value === "heatmap") && this.layout !== value && !this.calendarSelectable(),
 						)
-						.onClick((evt) => {
-							const modified = evt instanceof MouseEvent && (evt.ctrlKey || evt.metaKey || evt.altKey);
-							if (modified) {
-								if (value !== this.layout) void this.toggleLayoutEnabled(value);
-								return;
-							}
-							if (this.layout !== value) this.setLayout(value);
+						.onClick((evt) => choose(evt, value));
+					// The Calendar's ranges sit under it, in a submenu (only where it can show).
+					// An item with a submenu gets no onClick — a click only opens the submenu —
+					// so a listener of its own keeps a click switching to the Calendar and a
+					// Ctrl/⌘-click hiding it, like every other layout.
+					if (value === "calendar" && calendarRanges && SectionCardsView.submenuSupported()) {
+						this.addCalendarRangeItems((item as MenuItem & { setSubmenu: () => Menu }).setSubmenu());
+						(item as MenuItem & { dom?: HTMLElement }).dom?.addEventListener("click", (evt) => {
+							if (choose(evt)) menu.hide();
 						});
+					}
 				});
+				// Where menus don't nest, the ranges follow the Calendar item instead.
+				if (value === "calendar" && enabled && calendarRanges && !SectionCardsView.submenuSupported()) {
+					this.addCalendarRangeItems(target, "Calendar: ");
+				}
 			}
 			if (!Platform.isMobile) {
 				target.addItem((item) =>
@@ -5491,6 +5497,34 @@ export class SectionCardsView extends ItemView {
 			item.setTitle("Layouts").setIcon("layout-grid");
 			addOptions((item as MenuItem & { setSubmenu: () => Menu }).setSubmenu());
 		});
+	}
+
+	/** The Calendar's ranges as menu items — Month, 2 weeks, Week, Day — the one it
+	 * shows (or will show, from another layout) checked. Picking one from another layout
+	 * switches to the Calendar in that range. */
+	private addCalendarRangeItems(menu: Menu, prefix = ""): void {
+		for (const [value, label, hint] of CALENDAR_RANGE_OPTIONS) {
+			menu.addItem((item) => {
+				const [icon, fallback] = CALENDAR_RANGE_ICONS[value];
+				item.setIcon(icon);
+				if (!(item as MenuItem & { iconEl?: HTMLElement }).iconEl?.querySelector("svg")) item.setIcon(fallback);
+				item
+					.setTitle(`${prefix}${label}`)
+					.setChecked(this.calendarRange === value)
+					.onClick(() => this.pickCalendarRange(value));
+				(item as MenuItem & { dom?: HTMLElement }).dom?.setAttr("title", hint);
+			});
+		}
+	}
+
+	/** Show the Calendar in this range — switching to the Calendar first if need be. */
+	private pickCalendarRange(range: CalendarRange): void {
+		if (this.layout === "calendar") {
+			this.setCalendarRange(range);
+			return;
+		}
+		this.calendarRange = range;
+		this.setLayout("calendar");
 	}
 
 	/** The shared tail every right-click menu carries beneath its context-specific
