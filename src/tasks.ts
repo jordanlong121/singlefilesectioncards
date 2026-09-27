@@ -1,6 +1,7 @@
 // Task lines: counts, due dates, toggling (with the Tasks plugin's API when present).
 
 import { App, TFile } from "obsidian";
+import { processNote } from "./history";
 import { SortOrder } from "./settings";
 import { Section, FENCE_RE, sortSections, bodyStartLine, locateCard } from "./sections";
 import { titleToIso } from "./dates";
@@ -153,7 +154,7 @@ export async function toggleTaskInFile(
 ): Promise<boolean | null> {
 	let result: boolean | null = null;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Toggle task", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, original);
@@ -190,7 +191,7 @@ export async function toggleTaskWithTasksApi(
 ): Promise<boolean | null> {
 	let result: boolean | null = null;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Toggle task", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, original);

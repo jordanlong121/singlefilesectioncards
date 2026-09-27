@@ -1,6 +1,7 @@
 // Every write to the note: sections, blocks, and ranges, re-located and verified at write time.
 
 import { App, Notice, TFile } from "obsidian";
+import { processNote } from "./history";
 import { Placement } from "./settings";
 import { Section, HEADING_RE, parseSections, bodyStartLine, insertionLine, locateSection, locateCard } from "./sections";
 import {
@@ -27,7 +28,7 @@ export async function deleteBlockInFile(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Delete line", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, from);
@@ -62,7 +63,7 @@ export async function moveBlockInFile(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Move line", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const from = locateCard(lines, level, moved);
@@ -97,7 +98,7 @@ export async function toggleStarInFile(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Star line", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, from);
@@ -192,7 +193,7 @@ export async function moveSectionInFile(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Move card", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const sections = parseSections(lines, level);
@@ -242,7 +243,7 @@ export async function mergeSectionsInFile(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Merge cards", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const from = locateCard(lines, level, fromOriginal);
@@ -267,7 +268,7 @@ export async function retitleSectionInFile(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Rename card", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, original);
@@ -337,7 +338,7 @@ export async function quickAddToSection(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Add line", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, original);
@@ -382,7 +383,7 @@ export async function pasteAtSectionEnd(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Paste", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, original);
@@ -416,7 +417,7 @@ export async function pasteAboveSubheadings(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Paste", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, original);
@@ -461,7 +462,7 @@ export async function replaceBlockInFile(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Edit line", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, from);
@@ -503,7 +504,7 @@ export async function moveRangeInFile(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Move lines", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const fromT = locateCard(lines, level, from);
@@ -553,7 +554,7 @@ export async function replaceRangeInFile(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Edit lines", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, from);
@@ -589,7 +590,7 @@ export async function deleteRangeInFile(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Delete lines", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, from);
@@ -622,7 +623,7 @@ export async function insertAfterBlockInFile(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Add line", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, original);
@@ -647,7 +648,7 @@ export async function insertAfterBlockInFile(
 export async function deleteSection(app: App, file: TFile, level: number, original: Section): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Delete card", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, original);
@@ -666,7 +667,7 @@ export async function deleteSection(app: App, file: TFile, level: number, origin
 /** Delete several sections in one write; each is re-located by content before its splice. */
 export async function deleteSectionsInFile(app: App, file: TFile, level: number, targets: Section[]): Promise<number> {
 	let removed = 0;
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Delete cards", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		for (const original of targets) {
@@ -695,7 +696,7 @@ export async function moveSectionsInFile(
 	before: boolean,
 ): Promise<boolean> {
 	let ok = true;
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Move cards", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		let lines = data.split(/\r?\n/);
 		const order = [...moved].sort((a, b) => a.startLine - b.startLine);
@@ -733,7 +734,7 @@ export async function insertSection(
 	const bodyLines = body?.trim() ? body.replace(/^(?:[ \t]*\r?\n)+/, "").replace(/\s+$/, "").split(/\r?\n/) : [];
 	let duplicate = false;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "New card", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		duplicate = parseSections(lines, level).some((s) => s.title === title);
@@ -758,7 +759,7 @@ export async function writeSection(
 ): Promise<boolean> {
 	let ok = true;
 
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Edit card", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, original);
@@ -771,7 +772,7 @@ export async function writeSection(
 		const replacement = newRaw.split(/\r?\n/);
 		lines.splice(target.startLine, target.endLine - target.startLine, ...replacement);
 		return lines.join(eol);
-	});
+	}, `edit:${original.headingRaw}`);
 
 	if (!ok) {
 		new Notice("Couldn't find that section — the file changed on disk. Edit not saved.");
@@ -795,7 +796,7 @@ export async function syncFeedIntoSection(
 	placement: "top" | "bottom" = "bottom",
 ): Promise<"changed" | "unchanged" | "missing"> {
 	let result: "changed" | "unchanged" | "missing" = "unchanged";
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Update from calendar feed", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const target = locateCard(lines, level, original);
@@ -830,7 +831,7 @@ export async function syncFeedIntoSections(
 ): Promise<{ changed: number; missing: number }> {
 	let changed = 0;
 	let missing = 0;
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Update from calendar feed", (data) => {
 		changed = 0;
 		missing = 0;
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
@@ -867,7 +868,7 @@ export async function insertSections(
 	placement: Placement,
 ): Promise<number> {
 	let added = 0;
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "New cards", (data) => {
 		added = 0;
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
@@ -907,7 +908,7 @@ export async function nestSectionsInFile(
 	flipMarker: string,
 ): Promise<NestResult> {
 	let result: NestResult = { ok: false, reason: "missing" };
-	await app.vault.process(file, (data) => {
+	await processNote(app, file, "Nest card", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		const into = locateCard(lines, level, target);

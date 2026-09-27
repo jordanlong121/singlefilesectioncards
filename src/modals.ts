@@ -427,9 +427,12 @@ export class ConfirmActionModal extends Modal {
 	private readonly cta: string;
 	private readonly destructive: boolean;
 	private readonly onConfirm: () => void;
+	private readonly onCancel?: () => void;
+	private confirmed = false;
 
-	constructor(app: App, title: string, body: string, cta: string, destructive: boolean, onConfirm: () => void) {
+	constructor(app: App, title: string, body: string, cta: string, destructive: boolean, onConfirm: () => void, onCancel?: () => void) {
 		super(app);
+		this.onCancel = onCancel;
 		this.title = title;
 		this.body = body;
 		this.cta = cta;
@@ -447,6 +450,7 @@ export class ConfirmActionModal extends Modal {
 				b.setButtonText(this.cta)
 					.setCta()
 					.onClick(() => {
+						this.confirmed = true;
 						this.close();
 						this.onConfirm();
 					});
@@ -457,6 +461,7 @@ export class ConfirmActionModal extends Modal {
 
 	onClose(): void {
 		this.contentEl.empty();
+		if (!this.confirmed) this.onCancel?.();
 	}
 }
 
@@ -763,6 +768,7 @@ export class ShortcutsModal extends Modal {
 					[`${MOD_LABEL}+click`, "Make the card big"],
 					["F", "Flip the card under the pointer over / back"],
 					["Shift+F", "Flip every card back to the front"],
+					["Ctrl/⌘+Z / Ctrl/⌘+Shift+Z", "Undo / redo the last card change to the note (moves, nests, deletes, edits, drags)"],
 				],
 			],
 			[
