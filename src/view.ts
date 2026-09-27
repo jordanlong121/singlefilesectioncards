@@ -136,7 +136,9 @@ import {
 	syncFeedIntoSection,
 	syncFeedIntoSections,
 	insertSections,
+	nestSectionsInFile,
 } from "./writes";
+import { nestBoundaries, nestInsertLine } from "./nesting";
 import { feedDayEvents, feedEventLine, feedEventsByDays, parseFeed, feedFirstDay, daysBetween, mergeFeedLines } from "./icalfeed";
 import {
 	PlannerSlot,
@@ -7418,16 +7420,8 @@ export class SectionCardsView extends ItemView {
 				}
 				return;
 			}
-			if (this.sortOrder !== "doc") {
-				evt.preventDefault();
-				new SwitchToDocumentOrderModal(this.app, SORT_LABELS[this.sortOrder], async () => {
-					this.sortOrder = "doc";
-					this.rememberView();
-					await this.syncView();
-					this.app.workspace.requestSaveLayout();
-				}).open();
-				return;
-			}
+			// Any sort order may drag: nesting into another card's body doesn't depend on
+			// the order. Reordering does — a drop on a title bar asks for Document order.
 			this.dragging = holder;
 			card.addClass("is-dragging");
 			// Dragging one of several selected cards moves them all, in document order.
@@ -7452,6 +7446,7 @@ export class SectionCardsView extends ItemView {
 			}
 			this.setDropMarker(null, false);
 			this.setCalDrop(null);
+			this.clearBlockDropMarks();
 			this.dragging = null;
 		});
 		card.addEventListener("dragover", (evt) => {
@@ -7476,8 +7471,20 @@ export class SectionCardsView extends ItemView {
 			evt.preventDefault();
 			if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
 			// Calendar: the whole day is the target (a merge), not a before/after slot.
-			if (this.layout === "calendar") this.setCalDrop(card);
-			else this.setDropMarker(card, this.isDropBefore(evt, card));
+			if (this.layout === "calendar") {
+				this.setCalDrop(card);
+				return;
+			}
+			// Over the body: nest the card here, as a section — the mark shows where.
+			const nestLine = this.nestDropLine(evt, card, bodyEl, holder.section);
+			if (nestLine !== null) {
+				this.setDropMarker(null, false);
+				this.showNestMark(card, bodyEl, holder.section, nestLine);
+				return;
+			}
+			// Over the title bar: reorder — marked only in Document order, where it applies.
+			this.clearBlockDropMarks();
+			this.setDropMarker(this.sortOrder === "doc" ? card : null, this.isDropBefore(evt, card));
 		});
 		card.addEventListener("drop", (evt) => {
 			if (this.draggingBlock) {
@@ -7517,6 +7524,23 @@ export class SectionCardsView extends ItemView {
 			}
 			const many = this.draggingMany;
 			this.draggingMany = null;
+			// Into the body: the dragged card (or the selection) becomes a section here.
+			const nestLine = this.nestDropLine(evt, card, bodyEl, holder.section);
+			this.clearBlockDropMarks();
+			if (nestLine !== null) {
+				void this.completeNest(file, many && many.length > 1 ? many : [moved], holder.section, nestLine);
+				return;
+			}
+			// Onto the title bar: a reorder, which follows the file — Document order only.
+			if (this.sortOrder !== "doc") {
+				new SwitchToDocumentOrderModal(this.app, SORT_LABELS[this.sortOrder], async () => {
+					this.sortOrder = "doc";
+					this.rememberView();
+					await this.syncView();
+					this.app.workspace.requestSaveLayout();
+				}).open();
+				return;
+			}
 			if (many && many.length > 1) {
 				// Dropping onto one of the dragged cards has nowhere sensible to land.
 				if (many.some((m) => m.headingRaw === holder.section.headingRaw)) return;
@@ -9906,6 +9930,82 @@ export class SectionCardsView extends ItemView {
 		} else {
 			new Notice("Couldn't move that card — the file changed on disk.");
 		}
+		await this.refresh();
+	}
+
+	/**
+	 * Where a card dropped at this point would nest into `target`, as a line of its body
+	 * (before snapping to a section boundary) — or null when the drop isn't a nest: over
+	 * the title bar (that's a reorder), on a layout that places cards itself, or into a
+	 * card that can't hold one (the preamble, the properties, an H6 card).
+	 */
+	private nestDropLine(evt: DragEvent, card: HTMLElement, bodyEl: HTMLElement, target: Section): number | null {
+		if (this.layoutOwnsPlacement() || this.deckMode || this.headingLevel >= 6) return null;
+		if (target.unfiled || target.properties || target.whole) return null;
+		const over = evt.target as HTMLElement | null;
+		if (!over || !card.contains(over) || over.closest(".section-card-header")) return null;
+		const front = this.cardFaces(target.body).front.split("\n");
+		const at = this.blockDropAt(evt, bodyEl);
+		if (typeof at.anchorIndex === "number") {
+			const block = movableBlocks(front)[at.anchorIndex];
+			if (block) return at.anchorSide === "before" ? block.start : block.end;
+		}
+		return at.anchorIndex === "start" ? 0 : front.length;
+	}
+
+	/** Mark where a nest would land: before the sub-heading it snaps to, or the card's end. */
+	private showNestMark(card: HTMLElement, bodyEl: HTMLElement, target: Section, dropLine: number): void {
+		this.clearBlockDropMarks();
+		const front = this.cardFaces(target.body).front.split("\n");
+		const boundaries = nestBoundaries(front, this.headingLevel + 1);
+		const at = nestInsertLine(boundaries, dropLine);
+		if (at >= front.length) {
+			card.addClass("sc-blockdrop-end");
+			this.blockDropEndEl = card;
+			return;
+		}
+		// The boundary is a heading line: its rendered element is that heading, counted
+		// among the body's own headings (fenced code holds none).
+		let nth = 0;
+		let fence: string | null = null;
+		for (let i = 0; i < at; i++) {
+			const open = /^\s*(`{3,}|~{3,})/.exec(front[i]);
+			if (fence) {
+				if (open && open[1][0] === fence[0] && open[1].length >= fence.length) fence = null;
+				continue;
+			}
+			if (open) fence = open[1];
+			else if (HEADING_RE.test(front[i])) nth++;
+		}
+		const el = bodyEl.querySelectorAll<HTMLElement>(":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6")[nth];
+		if (el) {
+			el.addClass("sc-blockdrop-before");
+			this.blockDropMarkEl = el;
+		} else {
+			card.addClass("sc-blockdrop-end");
+			this.blockDropEndEl = card;
+		}
+	}
+
+	/** Nest dragged cards into `target` as sections (nestSectionsInFile), and say so. */
+	private async completeNest(file: TFile, moved: Section[], target: Section, dropLine: number): Promise<void> {
+		const result = await nestSectionsInFile(this.app, file, this.headingLevel, moved, target, dropLine, this.flipMarker());
+		const into = target.title || "(untitled)";
+		if (result.ok) {
+			const what = moved.length === 1 ? `“${moved[0].title || "(untitled)"}”` : `${moved.length} cards`;
+			new Notice(`Moved ${what} into “${into}” as ${moved.length === 1 ? "a section" : "sections"} (H${result.level}).`);
+			await this.refresh();
+			const hit = this.cardsByHeading.get(target.headingRaw);
+			if (hit) {
+				hit.el.addClass("is-linked");
+				window.setTimeout(() => hit.el.removeClass("is-linked"), 1600);
+			}
+			return;
+		}
+		const title = result.title ? `“${result.title}”` : "That card";
+		if (result.reason === "has-back") new Notice(`${title} has a back side (Card Flip) — nested, its marker would split “${into}” in two. Move its back into its front first.`);
+		else if (result.reason === "too-deep") new Notice(`${title} can't go a level deeper: it has an H6 heading, and there's no H7.`);
+		else if (result.reason === "missing") new Notice("Couldn't nest — the file changed on disk.");
 		await this.refresh();
 	}
 
