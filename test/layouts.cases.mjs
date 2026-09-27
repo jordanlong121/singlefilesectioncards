@@ -12,7 +12,7 @@ import {
   feedDayEvents, feedEventsByDays, parseFeed, feedEventLine, feedEventTag, mergeFeedLines, FEED_TAG_RE, feedFirstDay, daysBetween,
   insertSection, deleteSection, retitleSectionInFile, quickAddToSection, pasteAtSectionEnd, pasteAboveSubheadings,
   syncFeedIntoSection, syncFeedIntoSections, insertSections, nestSectionsInFile, folderOfPath,
-  demoteSection, nestBoundaries, nestInsertLine, spliceSection,
+  demoteSection, nestBoundaries, nestInsertLine, spliceSection, bodyForRender,
   toggleTaskInFile, moveBlockInFile, deleteBlockInFile, replaceBlockInFile, insertAfterBlockInFile,
   moveRangeInFile, replaceRangeInFile, deleteRangeInFile, moveSectionInFile, mergeSectionsInFile,
 } from "./.tmp/main.js";
@@ -799,3 +799,16 @@ ta("write: CRLF notes keep their line endings through a write", async () => {
   assert.ok(!/[^\r]\n/.test(v.text), "no bare LF crept in");
   assert.ok(byTitle(cards(v.text, 3), "2026-09-14").body.includes("- [ ] c"));
 });
+
+t("blocks: a line indented 1–3 spaces is a paragraph, as rendered — the lines below it still drag", () => {
+  const body = lines("https://www.novusglass.com/en-ca/\n- lucern, beside body shoo\n- (819) 684-4805\n\n speedyglass.ca\n- (613) 596-9673\n- 954W+77 Nepean, Ottawa, ON\n\n\nJay's Mobile Autoglass\n- (613) 799-3901\n");
+  const got = movableBlocks(body).map((b) => [b.kind, body[b.start].trim()]);
+  assert.deepEqual(got, [
+    ["paragraph", "https://www.novusglass.com/en-ca/"], ["item", "- lucern, beside body shoo"], ["item", "- (819) 684-4805"],
+    ["paragraph", "speedyglass.ca"], ["item", "- (613) 596-9673"], ["item", "- 954W+77 Nepean, Ottawa, ON"],
+    ["paragraph", "Jay's Mobile Autoglass"], ["item", "- (613) 799-3901"],
+  ]);
+  const cont = lines("- item\n\n  its second paragraph\n\n    code-ish\n\n\tTabbed");
+  assert.deepEqual(movableBlocks(cont).map((b) => cont[b.start]), ["- item"], "an item's own continuation, 4+ spaces, and tabs stay undraggable");
+});
+
