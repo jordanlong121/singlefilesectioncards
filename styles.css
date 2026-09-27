@@ -3927,6 +3927,58 @@ body.is-mobile .sfsc-library-btn {
 	box-shadow: inset 0 -2px 0 var(--interactive-accent);
 }
 
+/* The insertion bar a line or card drag shows where it will land: an accent line with a
+   dot at its start, in a fixed layer over the page (placed by the view on every dragover),
+   and for a card being nested a label naming it and its new level. */
+.sfsc-drop-bar {
+	position: fixed;
+	z-index: var(--layer-popover, 30);
+	height: 3px;
+	border-radius: 2px;
+	background-color: var(--interactive-accent);
+	box-shadow: 0 0 0 1px var(--background-primary);
+	pointer-events: none;
+}
+
+.sfsc-drop-bar::before {
+	content: "";
+	position: absolute;
+	left: -5px;
+	top: -3px;
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	background-color: var(--interactive-accent);
+}
+
+.sfsc-drop-bar.is-hidden {
+	display: none;
+}
+
+.sfsc-drop-bar-label {
+	display: none;
+	position: absolute;
+	left: 10px;
+	bottom: 6px;
+	padding: 1px 7px;
+	border-radius: var(--radius-s, 4px);
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	white-space: nowrap;
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+}
+
+.sfsc-drop-bar.has-label .sfsc-drop-bar-label {
+	display: block;
+}
+
+/* The card a dragged card would nest into. */
+.section-card.is-nest-target {
+	outline: 2px dashed var(--interactive-accent);
+	outline-offset: 2px;
+}
+
 /* Dropping on the card generally appends to the section's end. */
 .section-card.sc-blockdrop-end {
 	border-color: var(--interactive-accent);
