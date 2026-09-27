@@ -46,6 +46,7 @@ export * from "./src/planner";
 export * from "./src/periods";
 export * from "./src/canvas";
 export * from "./src/icalfeed";
+export * from "./src/nesting";
 export * from "./src/editing";
 export * from "./src/background";
 export * from "./src/modals";

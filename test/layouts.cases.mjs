@@ -11,7 +11,8 @@ import {
   CALENDAR_RANGE_KEYS, calendarRangeDays, calendarRangeStep,
   feedDayEvents, feedEventsByDays, parseFeed, feedEventLine, feedEventTag, mergeFeedLines, FEED_TAG_RE, feedFirstDay, daysBetween,
   insertSection, deleteSection, retitleSectionInFile, quickAddToSection, pasteAtSectionEnd, pasteAboveSubheadings,
-  syncFeedIntoSection, syncFeedIntoSections, insertSections,
+  syncFeedIntoSection, syncFeedIntoSections, insertSections, nestSectionsInFile,
+  demoteSection, nestBoundaries, nestInsertLine, spliceSection,
   toggleTaskInFile, moveBlockInFile, deleteBlockInFile, replaceBlockInFile, insertAfterBlockInFile,
   moveRangeInFile, replaceRangeInFile, deleteRangeInFile, moveSectionInFile, mergeSectionsInFile,
 } from "./.tmp/main.js";
@@ -481,6 +482,62 @@ t("feed merge: replaces the feed's lines, keeps the user's and their ticks, leav
 t("every layout has a label and a hint; the planner is among them", () => {
   assert.ok(LAYOUT_OPTIONS.every(([value, label, hint]) => value && label && hint));
   assert.ok(LAYOUT_OPTIONS.some(([value]) => value === "planner"));
+});
+
+// ---------- Nesting a card into another ----------
+t("nest: demote a card's headings one level, fenced code untouched; H6 refuses", () => {
+  assert.deepEqual(demoteSection(["### Meeting", "notes", "#### Actions", "- [ ] x", "```", "# not a heading", "```"]),
+    ["#### Meeting", "notes", "##### Actions", "- [ ] x", "```", "# not a heading", "```"]);
+  assert.equal(demoteSection(["### A", "###### deep"]), null, "an H6 inside can't go deeper");
+  assert.equal(demoteSection(["###### A"]), null);
+});
+
+t("nest: boundaries sit before sub-headings at the new level or above, and at the front's end", () => {
+  const body = ["loose line", "", "#### Plan", "- a", "##### Detail", "x", "#### Notes", "y", ""];
+  assert.deepEqual(nestBoundaries(body, 4), [2, 6, 9], "an H5 is inside the H4 above it, not a boundary");
+  assert.deepEqual(nestBoundaries(body, 5), [2, 4, 6, 9]);
+  assert.deepEqual(nestBoundaries(["a", "%% flip %%", "#### back"], 4, 1), [1], "nothing on the back counts");
+  assert.deepEqual(nestBoundaries([], 4), [0]);
+  assert.deepEqual(nestBoundaries(["```", "#### fenced", "```"], 4), [3]);
+  // A drop snaps forward to the next boundary, never through a section's text.
+  assert.equal(nestInsertLine([2, 6, 9], 0), 2, "dropped into the loose text: after it, before Plan");
+  assert.equal(nestInsertLine([2, 6, 9], 3), 6, "dropped inside Plan: after Plan's text, before Notes");
+  assert.equal(nestInsertLine([2, 6, 9], 6), 6, "dropped just before Notes");
+  assert.equal(nestInsertLine([2, 6, 9], 99), 9, "past the end: the end");
+});
+
+t("nest: splice keeps one blank line either side, never two", () => {
+  assert.deepEqual(spliceSection(["a", "b"], 1, ["#### X", "x", ""]), ["a", "", "#### X", "x", "", "b"]);
+  assert.deepEqual(spliceSection(["a", "", "b"], 2, ["#### X"]), ["a", "", "#### X", "", "b"]);
+  assert.deepEqual(spliceSection(["a"], 1, ["#### X"]), ["a", "", "#### X"]);
+  assert.deepEqual(spliceSection([], 0, ["#### X"]), ["#### X"]);
+});
+
+ta("write: nest cards into another — demoted, at the snapped boundary, the rest untouched", async () => {
+  const note = "# Log\n\n### Monday\nloose\n\n#### Plan\n- a\n\n#### Notes\n- n\n\n### Meeting\nagenda\n#### Actions\n- [ ] x\n\n### Idea\none line\n\n### Friday\nend\n";
+  const v = fakeApp(note);
+  const secs = cards(note, 3);
+  const [monday, meeting, idea] = secs;
+  // Dropped inside Plan (body line 3 = "- a"): lands after Plan's text, before Notes.
+  assert.deepEqual(await nestSectionsInFile(v.app, v.file, 3, [meeting], monday, 3, "%% flip %%"), { ok: true, level: 4 });
+  assert.equal(v.text,
+    "# Log\n\n### Monday\nloose\n\n#### Plan\n- a\n\n#### Meeting\nagenda\n##### Actions\n- [ ] x\n\n#### Notes\n- n\n\n### Idea\none line\n\n### Friday\nend\n");
+  assert.deepEqual(cards(v.text, 3).map((c) => c.title), ["Monday", "Idea", "Friday"], "Meeting is no longer a card");
+  // Two at once, from either side of the target, go in together in document order, at the end.
+  const w = fakeApp(note);
+  const all = cards(note, 3);
+  assert.deepEqual(await nestSectionsInFile(w.app, w.file, 3, [all[3], all[0]], all[2], 99, ""), { ok: true, level: 4 });
+  assert.equal(w.text, "# Log\n\n### Meeting\nagenda\n#### Actions\n- [ ] x\n\n### Idea\none line\n\n#### Monday\nloose\n\n##### Plan\n- a\n\n##### Notes\n- n\n\n#### Friday\nend\n");
+  // Refusals write nothing.
+  const x = fakeApp("### A\nfront\n%% flip %%\nback\n\n### B\nb\n");
+  const [a, b] = cards(x.text, 3);
+  const before = x.text;
+  assert.deepEqual(await nestSectionsInFile(x.app, x.file, 3, [a], b, 99, "%% flip %%"), { ok: false, reason: "has-back", title: "A" });
+  assert.deepEqual(await nestSectionsInFile(x.app, x.file, 3, [b], b, 0, ""), { ok: false, reason: "same" });
+  assert.equal(x.text, before);
+  const y = fakeApp("###### A\na\n\n###### B\nb\n");
+  const [ya, yb] = cards(y.text, 6);
+  assert.deepEqual(await nestSectionsInFile(y.app, y.file, 6, [ya], yb, 99, ""), { ok: false, reason: "too-deep", title: "A" });
 });
 
 // ---------- Writes: calendar feed ----------

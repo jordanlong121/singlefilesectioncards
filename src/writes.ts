@@ -14,6 +14,7 @@ import {
 } from "./blocks";
 import { plannerCards } from "./planner";
 import { mergeFeedLines } from "./icalfeed";
+import { demoteSection, nestBoundaries, nestInsertLine, spliceSection } from "./nesting";
 
 /** Delete a block at write time, re-locating the section and verifying the block's text. */
 export async function deleteBlockInFile(
@@ -873,4 +874,81 @@ export async function insertSections(
 		return added ? lines.join(eol) : data;
 	});
 	return added;
+}
+
+/** Why a nest was refused, or that it happened. */
+export type NestResult =
+	| { ok: true; level: number }
+	| { ok: false; reason: "missing" | "too-deep" | "has-back" | "same"; title?: string };
+
+/**
+ * Nest cards into another: each moved card leaves its place and becomes a section of
+ * `target`, its heading (and every heading within it) one level down. They go in together,
+ * in document order, at the boundary nestInsertLine picks for a drop before target body
+ * line `dropLine` — so they never split text away from its heading. Refused, with nothing
+ * written, when a card has a Card Flip back (its marker would split the target's faces),
+ * when a heading would pass H6, or when the target is one of the moved cards.
+ */
+export async function nestSectionsInFile(
+	app: App,
+	file: TFile,
+	level: number,
+	moved: Section[],
+	target: Section,
+	dropLine: number,
+	flipMarker: string,
+): Promise<NestResult> {
+	let result: NestResult = { ok: false, reason: "missing" };
+	await app.vault.process(file, (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const into = locateCard(lines, level, target);
+		const found = moved.map((m) => locateCard(lines, level, m));
+		if (!into || found.some((f) => !f)) {
+			result = { ok: false, reason: "missing" };
+			return data;
+		}
+		const cards = (found as Section[]).sort((a, b) => a.startLine - b.startLine);
+		if (cards.some((c) => c.startLine === into.startLine)) {
+			result = { ok: false, reason: "same" };
+			return data;
+		}
+		const blocks: string[][] = [];
+		for (const card of cards) {
+			const text = lines.slice(card.startLine, card.endLine);
+			if (flipMarker && flipMarkerLine(text.slice(1), flipMarker) >= 0) {
+				result = { ok: false, reason: "has-back", title: card.title };
+				return data;
+			}
+			const demoted = demoteSection(text);
+			if (!demoted || level >= 6) {
+				result = { ok: false, reason: "too-deep", title: card.title };
+				return data;
+			}
+			while (demoted.length && demoted[demoted.length - 1].trim() === "") demoted.pop();
+			blocks.push(demoted);
+		}
+		// Out of their places, bottom-up so each range is still where it was found. Where a
+		// card leaves a blank line on both sides of its gap, one of them goes too.
+		let out = lines.slice();
+		for (const card of [...cards].reverse()) {
+			out.splice(card.startLine, card.endLine - card.startLine);
+			const at = card.startLine;
+			if (at > 0 && at < out.length && out[at - 1].trim() === "" && out[at].trim() === "") out.splice(at, 1);
+		}
+		const again = locateCard(out, level, target);
+		if (!again) {
+			result = { ok: false, reason: "missing" };
+			return data;
+		}
+		const start = bodyStartLine(again);
+		const body = out.slice(start, again.endLine);
+		const markerAt = flipMarker ? flipMarkerLine(body, flipMarker) : -1;
+		const at = nestInsertLine(nestBoundaries(body, level + 1, markerAt < 0 ? body.length : markerAt), dropLine);
+		const joined = blocks.flatMap((b, i) => (i ? ["", ...b] : b));
+		out = spliceSection(out, start + at, joined);
+		result = { ok: true, level: level + 1 };
+		return out.join(eol);
+	});
+	return result;
 }

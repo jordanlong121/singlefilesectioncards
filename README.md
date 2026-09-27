@@ -52,7 +52,8 @@ If this plugin is useful to you, you can support its development:
 - **One card per heading.** Pick which level becomes a card (H1–H6). Multiple layouts, sort
   orders, and per-card colors.
 - **Work directly on the cards.** Click a card to edit its body (the heading stays in the title bar). Rename cards, tick task checkboxes, delete cards, pin to top.
-- **Drag and drop.** Reorder cards, or drag a task, paragraph, or image onto another card.
+- **Drag and drop.** Reorder cards, drag one into another to make it a section there (see
+  [Nesting a card](#nesting-a-card)), or drag a task, paragraph, or image onto another card.
 - **Select many.** Click a title bar to select its card, Shift-click to select multiple cards.
 - **Group by.** Divider bars over buckets — first tag, date, open tasks, stars, or length —
   from the toolbar's Group picker. Collapse any card to its title bar; both are remembered.
@@ -266,6 +267,15 @@ headings: **Tag** (a card's first `#tag`), **Date** (the heading's date, else th
 the body — Upcoming, Today, Yesterday, This week, This month, Older), **Open tasks** (6+, 3–5,
 1–2, none), **Stars**, or **Length** (long, medium, short). Cards keep the active sort inside a
 bucket; click a bar to collapse its bucket. The choice is remembered per note, like the sort.
+
+## Nesting a card
+
+Drag a card onto another card's **body** and it becomes a section of that card: its heading
+moves one level down (H3 → H4), with any headings inside it. It lands at the first sub-heading,
+or the card's end, after where you drop it — never between two lines of text, which would pull
+them under its heading — and the drop mark shows the spot. Drop on a **title bar** instead to
+reorder. Nesting works in any sort order and with a selection of cards; a card with a back side
+(Card Flip), or one already holding an H6 heading, can't be nested.
 
 ## Selecting many cards
 
