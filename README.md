@@ -259,7 +259,9 @@ selected column row in Hierarchy, scrolling the previous/next bar to the top in 
 The plugin works reasonably well on iOS devices, though it isn't fully tested there
 yet. The **Horizontal** layout in particular makes an excellent way to input data
 while on the go: one full-width card per section, with quick add, checkboxes, and
-in-place editing a thumb-tap away.
+in-place editing a thumb-tap away. On a phone or tablet the cards' action strip stays out of the
+title bar; tap a card's **⋯** button for its menu instead: quick add, color, delete, rename, open
+in the note, and the rest.
 
 <img src="screenshots/mobile-horizontal.png" alt="The Horizontal layout on an iPhone" width="320">
 

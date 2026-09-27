@@ -4290,17 +4290,37 @@ body.theme-dark .section-card[data-sfsc-color] .section-card-actions {
 	border: none;
 }
 
-/* No hover on touch: the actions stay in the title row, always visible (sized below). */
+/* No hover on touch: the action strip would sit in the title row and crowd out the
+   title, so it's hidden there — the title bar's ⋯ button opens a menu with the same
+   actions. (The strip's buttons still exist: the menu's Quick add and Flip use them.) */
 body.is-mobile .section-card-actions {
-	position: static;
-	visibility: visible;
-	padding: 0;
-	background: none;
+	display: none;
 }
 
-body.is-mobile .section-card-actions button {
-	width: auto;
-	height: auto;
+.section-card-header button.section-card-more,
+.section-card-header button.section-card-more:hover,
+.section-card-header button.section-card-more:active,
+.section-card-header button.section-card-more:focus,
+.section-card-header button.section-card-more:focus-visible {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	padding: 6px 9px;
+	border: none;
+	background: transparent;
+	box-shadow: none;
+	cursor: pointer;
+}
+
+/* A bare class, so a colored title bar's contrast color (--sfsc-fg) wins. */
+.section-card-more {
+	color: var(--text-muted);
+}
+
+.section-card-more svg {
+	display: block;
+	width: 16px;
+	height: 16px;
 }
 
 .section-card-delete:focus-visible,

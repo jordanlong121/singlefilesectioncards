@@ -6944,11 +6944,32 @@ export class SectionCardsView extends ItemView {
 			}).open();
 		};
 
-		// Right-click on the title bar: copy the card's contents, or delete the card.
-		header.addEventListener("contextmenu", (evt) => {
-			evt.preventDefault();
-			evt.stopPropagation();
+		// Right-click on the title bar (on touch, its ⋯ button): the card's menu — copy,
+		// rename, delete, and the rest. On touch it also carries the hover strip's
+		// actions, since the strip is hidden there (it crowded out the title).
+		const openCardMenu = (evt: MouseEvent) => {
 			const menu = new Menu();
+			if (Platform.isMobile) {
+				menu.addItem((item) =>
+					item
+						.setTitle("Quick add…")
+						.setIcon("plus")
+						.onClick(() => card.querySelector<HTMLElement>(".section-card-quickadd")?.click()),
+				);
+				menu.addItem((item) =>
+					item
+						.setTitle("Card color…")
+						.setIcon("palette")
+						.onClick(() => this.openColorMenu(evt, file, holder.section.headingRaw)),
+				);
+				menu.addItem((item) =>
+					item
+						.setTitle("Open in the note")
+						.setIcon("external-link")
+						.onClick(() => void this.plugin.revealSection(file, holder.section.headingLine)),
+				);
+				menu.addSeparator();
+			}
 			menu.addItem((item) =>
 				item
 					.setTitle("Copy card contents")
@@ -7001,6 +7022,11 @@ export class SectionCardsView extends ItemView {
 			this.addSelectionMenuItems(menu, holder.section);
 			this.addCommonMenuItems(menu);
 			menu.showAtMouseEvent(evt);
+		};
+		header.addEventListener("contextmenu", (evt) => {
+			evt.preventDefault();
+			evt.stopPropagation();
+			openCardMenu(evt);
 		});
 
 		// The pin sits in the title bar's right corner, always visible as a bare glyph:
@@ -7019,6 +7045,16 @@ export class SectionCardsView extends ItemView {
 			evt.stopPropagation();
 			void this.plugin.togglePin(file.path, holder.section.headingRaw, this.viewSettings());
 		});
+		// Touch: the ⋯ glyph opens the card's menu, standing in for the hidden hover strip.
+		if (Platform.isMobile) {
+			const moreBtn = header.createEl("button", { cls: "section-card-more" });
+			fastIcon(moreBtn, "more-horizontal");
+			moreBtn.setAttr("aria-label", "Card actions");
+			moreBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				openCardMenu(evt);
+			});
+		}
 
 		// On the canvas, dragging the title bar repositions the card (buttons excluded).
 		header.addEventListener("pointerdown", (evt) => {
