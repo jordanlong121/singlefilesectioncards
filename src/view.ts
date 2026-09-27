@@ -1628,6 +1628,7 @@ export class SectionCardsView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		this.removeDropBar(); // it lives on the document, outside the view
 		this.imageLightboxClose?.(); // its Escape listener lives on the document
 		if (this.autosaveTimer !== null) {
 			window.clearInterval(this.autosaveTimer);
@@ -7392,6 +7393,7 @@ export class SectionCardsView extends ItemView {
 			this.draggingBlock?.el.removeClass("is-dragging-block");
 			this.draggingBlock = null;
 			this.clearBlockDropMarks();
+			this.removeDropBar();
 		});
 
 		// Drag a card onto another to reorder the sections in the file. Only meaningful
@@ -7447,6 +7449,7 @@ export class SectionCardsView extends ItemView {
 			this.setDropMarker(null, false);
 			this.setCalDrop(null);
 			this.clearBlockDropMarks();
+			this.removeDropBar();
 			this.dragging = null;
 		});
 		card.addEventListener("dragover", (evt) => {
@@ -7458,9 +7461,12 @@ export class SectionCardsView extends ItemView {
 				if (at.el) {
 					at.el.addClass(at.before ? "sc-blockdrop-before" : "sc-blockdrop-after");
 					this.blockDropMarkEl = at.el;
+					const r = at.el.getBoundingClientRect();
+					this.showDropBar(bodyEl, at.before ? r.top : r.bottom);
 				} else {
 					card.addClass("sc-blockdrop-end");
 					this.blockDropEndEl = card;
+					this.showDropBar(bodyEl, SectionCardsView.bodyEndY(bodyEl));
 				}
 				return;
 			}
@@ -9465,7 +9471,17 @@ export class SectionCardsView extends ItemView {
 
 	/** Normalise a source line / DOM text for the drag-start sanity check. */
 	private static blockKey(text: string): string {
-		return SectionCardsView.normalizeBlockText(text.replace(/^\s*(?:[-*+]|\d+[.)])\s*(?:\[[ xX]\]\s*)?/, "")).slice(0, 24);
+		return SectionCardsView.normalizeBlockText(
+			SectionCardsView.visibleSource(text).replace(/^\s*(?:[-*+]|\d+[.)])\s*(?:\[[ xX]\]\s*)?/, ""),
+		).slice(0, 24);
+	}
+
+	/** A source line as reading view shows it: a trailing ^block-id (a calendar feed's
+	 * ^ical- tag, a block you've linked to) and %%comments%% render as nothing, so they
+	 * can't be part of what the rendered text is checked against — a short line's
+	 * 24-character key used to reach the hidden id, and its drag was refused. */
+	private static visibleSource(text: string): string {
+		return text.replace(/%%[\s\S]*?%%/g, "").replace(/\s\^[A-Za-z0-9-]+\s*$/, "");
 	}
 
 	/** Text with markdown punctuation dropped and whitespace folded, lower-cased — applied
@@ -9489,6 +9505,46 @@ export class SectionCardsView extends ItemView {
 		this.blockDropMarkEl = null;
 		this.blockDropEndEl?.removeClass("sc-blockdrop-end");
 		this.blockDropEndEl = null;
+		this.nestTargetEl?.removeClass("is-nest-target");
+		this.nestTargetEl = null;
+		// Hidden, not removed: the next dragover usually shows it again at once.
+		this.dropBarEl?.addClass("is-hidden");
+	}
+
+	/** The insertion bar a drag shows where it will land — a line and a dot, and for a
+	 * nest a label naming what goes there. Drawn in a fixed layer over the page (never in
+	 * the card's own flow, which would shift the lines being aimed at), re-placed on every
+	 * dragover. */
+	private dropBarEl: HTMLElement | null = null;
+	/** The card a dragged card would nest into, outlined while it's the target. */
+	private nestTargetEl: HTMLElement | null = null;
+
+	private showDropBar(bodyEl: HTMLElement, y: number, label?: string): void {
+		if (!this.dropBarEl) {
+			this.dropBarEl = this.contentEl.doc.body.createDiv({ cls: "sfsc-drop-bar" });
+			this.dropBarEl.createSpan({ cls: "sfsc-drop-bar-label" });
+		}
+		const bar = this.dropBarEl;
+		bar.removeClass("is-hidden");
+		const r = bodyEl.getBoundingClientRect();
+		// Held inside the body's visible box, so a spot scrolled out of view still shows
+		// at the edge nearest it.
+		const top = Math.max(r.top + 2, Math.min(r.bottom - 2, y));
+		bar.setCssStyles({ left: `${r.left + 8}px`, width: `${Math.max(24, r.width - 16)}px`, top: `${top - 1.5}px` });
+		bar.toggleClass("has-label", !!label);
+		bar.querySelector(".sfsc-drop-bar-label")?.setText(label ?? "");
+	}
+
+	private removeDropBar(): void {
+		this.dropBarEl?.remove();
+		this.dropBarEl = null;
+	}
+
+	/** Where a drop at a body's end lands on screen: just under its last shown element. */
+	private static bodyEndY(bodyEl: HTMLElement): number {
+		const kids = Array.from(bodyEl.children).filter((el) => (el as HTMLElement).offsetParent !== null);
+		const last = kids[kids.length - 1];
+		return last ? last.getBoundingClientRect().bottom + 3 : bodyEl.getBoundingClientRect().top + 10;
 	}
 
 	/** Where in the hovered card a dragged block would land. */
@@ -9956,12 +10012,17 @@ export class SectionCardsView extends ItemView {
 	/** Mark where a nest would land: before the sub-heading it snaps to, or the card's end. */
 	private showNestMark(card: HTMLElement, bodyEl: HTMLElement, target: Section, dropLine: number): void {
 		this.clearBlockDropMarks();
+		card.addClass("is-nest-target");
+		this.nestTargetEl = card;
+		const moving = this.draggingMany && this.draggingMany.length > 1 ? `${this.draggingMany.length} cards` : `“${this.dragging?.section.title || "(untitled)"}”`;
+		const label = `↳ ${moving} as H${this.headingLevel + 1}`;
 		const front = this.cardFaces(target.body).front.split("\n");
 		const boundaries = nestBoundaries(front, this.headingLevel + 1);
 		const at = nestInsertLine(boundaries, dropLine);
 		if (at >= front.length) {
 			card.addClass("sc-blockdrop-end");
 			this.blockDropEndEl = card;
+			this.showDropBar(bodyEl, SectionCardsView.bodyEndY(bodyEl), label);
 			return;
 		}
 		// The boundary is a heading line: its rendered element is that heading, counted
@@ -9981,9 +10042,11 @@ export class SectionCardsView extends ItemView {
 		if (el) {
 			el.addClass("sc-blockdrop-before");
 			this.blockDropMarkEl = el;
+			this.showDropBar(bodyEl, el.getBoundingClientRect().top - 2, label);
 		} else {
 			card.addClass("sc-blockdrop-end");
 			this.blockDropEndEl = card;
+			this.showDropBar(bodyEl, SectionCardsView.bodyEndY(bodyEl), label);
 		}
 	}
 
