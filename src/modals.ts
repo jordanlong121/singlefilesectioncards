@@ -10,6 +10,7 @@ import {
 	Setting,
 	setIcon,
 	TFile,
+	TFolder,
 		normalizePath,
 	prepareFuzzySearch,
 	type SearchResult,
@@ -17,7 +18,7 @@ import {
 import { createEmbeddedEditor, type EmbeddedEditor } from "../editor-embed";
 import { MOD_LABEL, Placement, CALENDAR_RANGE_OPTIONS, CALENDAR_RANGE_KEYS } from "./settings";
 import { parseAncestorHeadings } from "./sections";
-import { noteFolderOf, QuickAddPlacement } from "./writes";
+import { noteFolderOf, folderOfPath, QuickAddPlacement } from "./writes";
 import { LevelRole, LevelSetup, DocumentLevels, LEVEL_ROLE_LABELS, PERIOD_FORMATS, formatPeriod } from "./periods";
 import type SectionCardsPlugin from "../main";
 
@@ -131,11 +132,14 @@ export class FileSuggestModal extends SuggestModal<FileSuggestion> {
 	}
 
 	private async createAndChoose(path: string): Promise<void> {
+		// Never a new folder (the New note wizard's rule too): a title with a folder/ must
+		// name one that exists.
+		const folder = folderOfPath(path);
+		if (folder && !(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) {
+			new Notice(`There's no folder “${folder}” — create it first, or leave the folder out of the name.`);
+			return;
+		}
 		try {
-			const folder = path.slice(0, path.lastIndexOf("/"));
-			if (folder && !this.app.vault.getAbstractFileByPath(folder)) {
-				await this.app.vault.createFolder(folder);
-			}
 			const file = await this.app.vault.create(path, "");
 			this.onChoose(file.path);
 		} catch (err) {
