@@ -50,6 +50,19 @@ export const SETEXT_RE = /^ {0,3}(?:=+|-+)[ \t]*$/;
  * the Card Flip marker sits on such a line, and must never be swept into a paragraph. */
 export const COMMENT_LINE_RE = /^\s*(?:%%.*%%|<!--.*-->)\s*$/;
 
+/**
+ * Whether an indented line starting a block is a plain paragraph as the renderer shows it:
+ * up to three spaces of indent (no tab) is still a paragraph — unless it's indented to the
+ * content column of the list item just above the blank line, which makes it that item's
+ * continuation.
+ */
+function indentedParagraph(line: string, blocks: BodyBlock[], body: string[]): boolean {
+	const ws = /^[ \t]*/.exec(line)?.[0] ?? "";
+	if (ws.includes("\t") || ws.length > 3) return false;
+	const prev = blocks[blocks.length - 1];
+	return !(prev?.kind === "item" && ws.length >= itemContentColumn(body[prev.start]));
+}
+
 export function sectionBlocks(body: string[]): BodyBlock[] {
 	const blocks: BodyBlock[] = [];
 	let i = 0;
@@ -105,7 +118,7 @@ export function sectionBlocks(body: string[]): BodyBlock[] {
 				i++;
 			}
 			blocks.push({ kind: "item", start, end: i });
-		} else if (/^[\t ]/.test(line)) {
+		} else if (/^[\t ]/.test(line) && !indentedParagraph(line, blocks, body)) {
 			// stray indented run (indent-style code, continuation) — not draggable
 			while (i < body.length && !isBlank(body[i]) && /^[\t ]/.test(body[i])) i++;
 			blocks.push({ kind: "other", start, end: i });
