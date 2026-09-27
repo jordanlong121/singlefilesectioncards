@@ -119,6 +119,14 @@ export async function toggleStarInFile(
 	return ok;
 }
 
+/** The folder a vault path sits in — "" for a note at the vault root, which has no "/".
+ * (Slicing to the last "/" there would keep all but the last character: a note's own
+ * name, minus its "d", once became a folder that way.) */
+export function folderOfPath(path: string): string {
+	const slash = path.lastIndexOf("/");
+	return slash > 0 ? path.slice(0, slash) : "";
+}
+
 /** A note's folder prefix ("Senstar/" or "" at the vault root), for sibling paths. */
 export function noteFolderOf(file: TFile): string {
 	return file.parent && file.parent.path !== "/" ? `${file.parent.path}/` : "";

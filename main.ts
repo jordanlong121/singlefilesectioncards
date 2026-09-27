@@ -25,7 +25,7 @@ import {
 import { mo, parseSections, applyTemplatePlaceholders } from "./src/sections";
 import { isTodayTitle, dateHeadingCounts, bestDateLevel } from "./src/dates";
 import { TasksApiV1 } from "./src/tasks";
-import { noteFolderOf, insertSection } from "./src/writes";
+import { noteFolderOf, folderOfPath, insertSection } from "./src/writes";
 import { PlannerSlot } from "./src/planner";
 import { DocumentLevels } from "./src/periods";
 import { CardRect, SavedCanvasLayout, snapshotCanvasLayout, applyCanvasLayout } from "./src/canvas";
@@ -434,7 +434,7 @@ export default class SectionCardsPlugin extends Plugin {
 		}
 		const noteName = path.split("/").pop()?.replace(/\.md$/, "") ?? name;
 		// Never a new folder: a name with a folder/ must name one that exists.
-		const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+		const folder = folderOfPath(path);
 		if (folder && !(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) {
 			new Notice(`There's no folder “${folder}” — create it first, or leave the folder out of the name.`);
 			return;

@@ -11,7 +11,7 @@ import {
   CALENDAR_RANGE_KEYS, calendarRangeDays, calendarRangeStep,
   feedDayEvents, feedEventsByDays, parseFeed, feedEventLine, feedEventTag, mergeFeedLines, FEED_TAG_RE, feedFirstDay, daysBetween,
   insertSection, deleteSection, retitleSectionInFile, quickAddToSection, pasteAtSectionEnd, pasteAboveSubheadings,
-  syncFeedIntoSection, syncFeedIntoSections, insertSections, nestSectionsInFile,
+  syncFeedIntoSection, syncFeedIntoSections, insertSections, nestSectionsInFile, folderOfPath,
   demoteSection, nestBoundaries, nestInsertLine, spliceSection,
   toggleTaskInFile, moveBlockInFile, deleteBlockInFile, replaceBlockInFile, insertAfterBlockInFile,
   moveRangeInFile, replaceRangeInFile, deleteRangeInFile, moveSectionInFile, mergeSectionsInFile,
@@ -482,6 +482,14 @@ t("feed merge: replaces the feed's lines, keeps the user's and their ticks, leav
 t("every layout has a label and a hint; the planner is among them", () => {
   assert.ok(LAYOUT_OPTIONS.every(([value, label, hint]) => value && label && hint));
   assert.ok(LAYOUT_OPTIONS.some(([value]) => value === "planner"));
+});
+
+// ---------- New notes never make folders ----------
+t("folderOfPath: a vault-root note has no folder (it once became \"Name.m\")", () => {
+  assert.equal(folderOfPath("Windshield Repair.md"), "", "no slash: the vault root, not the name minus its last letter");
+  assert.equal(folderOfPath("Projects/Windshield Repair.md"), "Projects");
+  assert.equal(folderOfPath("a/b/c.md"), "a/b");
+  assert.equal(folderOfPath("/rooted.md"), "", "a leading slash is the root too");
 });
 
 // ---------- Nesting a card into another ----------
