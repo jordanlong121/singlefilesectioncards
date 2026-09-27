@@ -34,6 +34,7 @@ import { TextInputModal, NoteLibraryModal } from "./src/modals";
 import { SectionCardsSettingTab } from "./src/settings-tab";
 import { StructuredNoteModal, StructuredSpec, specFormat, structuredNoteContent, structuredPlacements, structuredNotePath } from "./src/structured";
 import { SectionCardsView } from "./src/view";
+import { NoteHistory, setNoteRecorder } from "./src/history";
 
 export * from "./src/settings";
 export * from "./src/sections";
@@ -47,6 +48,7 @@ export * from "./src/periods";
 export * from "./src/canvas";
 export * from "./src/icalfeed";
 export * from "./src/nesting";
+export * from "./src/history";
 export * from "./src/editing";
 export * from "./src/background";
 export * from "./src/modals";
@@ -56,9 +58,12 @@ export * from "./src/view";
 
 export default class SectionCardsPlugin extends Plugin {
 	settings: SectionCardsSettings = DEFAULT_SETTINGS;
+	/** Undo and redo for the cards' writes, per note (processNote records them). */
+	readonly history = new NoteHistory();
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
+		setNoteRecorder((file, before, after, label, key) => this.history.record(file.path, before, after, label, key));
 
 		addIcon(DECK_ICON, DECK_SVG);
 		addIcon(FLIP_ICON, FLIP_SVG);
@@ -113,6 +118,20 @@ export default class SectionCardsPlugin extends Plugin {
 				return true;
 			},
 		});
+
+		for (const redo of [false, true]) {
+			this.addCommand({
+				id: redo ? "redo-card-change" : "undo-card-change",
+				name: redo ? "Redo the last undone card change" : "Undo the last card change",
+				checkCallback: (checking) => {
+					const view = this.app.workspace.getActiveViewOfType(SectionCardsView);
+					const file = view && !view.deckMode ? view.getFile() : null;
+					if (!file) return false;
+					if (!checking) void this.stepHistory(file, redo);
+					return true;
+				},
+			});
+		}
 
 		this.addCommand({
 			id: "open-section-cards-current",
@@ -184,6 +203,7 @@ export default class SectionCardsPlugin extends Plugin {
 		// and Images-canvas placements attached to a renamed image, on every note.
 		this.registerEvent(
 			this.app.vault.on("rename", (file, oldPath) => {
+				this.history.rename(oldPath, file.path);
 				let changed = false;
 				for (const entry of Object.values(this.settings.perFile ?? {})) {
 					const rect = entry.imagesGrid?.[oldPath];
@@ -269,6 +289,34 @@ export default class SectionCardsPlugin extends Plugin {
 		this.armMidnightRefresh();
 	}
 
+	/**
+	 * Undo (or redo) the last card change to a note: its text goes back to what it was
+	 * before — only while the note still reads as that change left it. Says what it did.
+	 */
+	async stepHistory(file: TFile, redo: boolean): Promise<void> {
+		const pending = redo ? this.history.peekRedo(file.path) : this.history.peekUndo(file.path);
+		if (!pending) {
+			new Notice(redo ? "Nothing to redo in this note." : "No card change to undo in this note.");
+			return;
+		}
+		let outcome: ReturnType<NoteHistory["undo"]> = null;
+		// Straight to the vault, not processNote: stepping through the history isn't itself recorded.
+		await this.app.vault.process(file, (data) => {
+			outcome = redo ? this.history.redo(file.path, data) : this.history.undo(file.path, data);
+			return outcome && outcome !== "changed" ? outcome.text : data;
+		});
+		const done = outcome as ReturnType<NoteHistory["undo"]>;
+		if (done === "changed") {
+			new Notice(`Can't ${redo ? "redo" : "undo"} “${pending.label}”: ${file.basename} was changed outside the cards since.`);
+		} else if (done) {
+			new Notice(`${redo ? "Redid" : "Undid"}: ${done.change.label}.`);
+		}
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
+			const view = leaf.view;
+			if (view instanceof SectionCardsView && view.filePath === file.path && !view.isEditing()) await view.refresh();
+		}
+	}
+
 	/** The note-header buttons this plugin added, per markdown view, so they can be removed. */
 	private noteActions = new WeakMap<MarkdownView, HTMLElement>();
 
@@ -323,6 +371,7 @@ export default class SectionCardsPlugin extends Plugin {
 	}
 
 	onunload(): void {
+		setNoteRecorder(null);
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			if (leaf.view instanceof MarkdownView) this.noteActions.get(leaf.view)?.remove();
 		}

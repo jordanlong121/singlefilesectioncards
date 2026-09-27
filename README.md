@@ -54,6 +54,9 @@ If this plugin is useful to you, you can support its development:
 - **Work directly on the cards.** Click a card to edit its body (the heading stays in the title bar). Rename cards, tick task checkboxes, delete cards, pin to top.
 - **Drag and drop.** Reorder cards, drag one into another to make it a section there (see
   [Nesting a card](#nesting-a-card)), or drag a task, paragraph, or image onto another card.
+- **Undo.** `Ctrl/⌘+Z` takes back the last card change to the note — a move, nest, delete,
+  edit, drag, or tick — and `Ctrl/⌘+Shift+Z` redoes it (also in the ☰ menu). See
+  [Undo](#undo).
 - **Select many.** Click a title bar to select its card, Shift-click to select multiple cards.
 - **Group by.** Divider bars over buckets — first tag, date, open tasks, stars, or length —
   from the toolbar's Group picker. Collapse any card to its title bar; both are remembered.
@@ -273,9 +276,23 @@ bucket; click a bar to collapse its bucket. The choice is remembered per note, l
 Drag a card onto another card's **body** and it becomes a section of that card: its heading
 moves one level down (H3 → H4), with any headings inside it. It lands at the first sub-heading,
 or the card's end, after where you drop it — never between two lines of text, which would pull
-them under its heading — and the drop mark shows the spot. Drop on a **title bar** instead to
-reorder. Nesting works in any sort order and with a selection of cards; a card with a back side
-(Card Flip), or one already holding an H6 heading, can't be nested.
+them under its heading. While you drag, the target card is outlined and a bar marks the spot,
+labelled with the new heading level. The drop asks before it nests (settings → *Ask before
+nesting a dragged card* turns the prompt off), and the notice afterwards has an **Undo** button.
+Drop on a **title bar** instead to reorder. Nesting works in any sort order and with a selection
+of cards; a card with a back side (Card Flip), or one already holding an H6 heading, can't be
+nested.
+
+## Undo
+
+Every change the cards make to a note can be taken back: moving, nesting, merging, renaming,
+creating, or deleting cards; editing a card (one step per edit, however often it saves); dragging,
+starring, or deleting lines; ticking tasks; calendar feed updates. Press `Ctrl/⌘+Z` in the cards
+view (or ☰ → *Undo …*, or the *Undo the last card change* command) to step back, and
+`Ctrl/⌘+Shift+Z` to redo. The delete and nest notices carry an Undo button too. Each note keeps
+its own history, about 30 steps, for the session. If the note was changed some other way since
+(in the editor, by sync, by another plugin), undo refuses rather than overwrite that change. View
+settings such as pins, colors, and canvas positions aren't part of it.
 
 ## Selecting many cards
 
@@ -650,6 +667,7 @@ Sync with plugin settings, it travels with them.
   - `Single File Section Cards: Open section cards in a new tab`
   - `Single File Section Cards: Open section cards for the active note`
   - `Single File Section Cards: Create new card`
+  - `Single File Section Cards: Undo the last card change` / `Redo the last undone card change`
   - `Single File Section Cards: Update today's card from the calendar feed` and
     `Update every day in this note from the calendar feed` — when the note in front has a
     [calendar feed](#calendar-feeds)
@@ -681,6 +699,7 @@ Sync with plugin settings, it travels with them.
 | Default heading name | Date format used to pre-fill "New card" (any note can set its own from the toolbar's new-card options menu) |
 | Default placement | Where a new card is inserted |
 | Default card for undated notes | Card that "Open default card" / "Open today's section" opens (creating it if needed) when the default note doesn't use date headings; empty just opens the note |
+| Ask before nesting a dragged card | Confirm before a card dropped on another card's body becomes its section (on by default) |
 | Autosave open card editors | Write an open editor's content to the note every few minutes, and when the view closes, so an edit left open isn't lost (on by default) |
 | Autosave interval | Minutes between autosaves while a card editor is open (default 5) |
 | Toggle tasks with the Tasks plugin | Route checkbox ticks through the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin when it's installed (recurrence, its done dates) |

@@ -234,6 +234,11 @@ export class SectionCardsSettingTab extends PluginSettingTab {
 						control: { type: "toggle", key: "saveOnLeave" },
 					},
 					{
+						name: "Ask before nesting a dragged card",
+						desc: "Dropping a card onto another card's body makes it a section of that card, one heading level down. When on, a prompt confirms it first.",
+						control: { type: "toggle", key: "confirmNest" },
+					},
+					{
 						name: "Autosave open card editors",
 						desc: "While a card is being edited, write its content to the note every few minutes — and when the view closes — so an edit left open isn't lost.",
 						control: { type: "toggle", key: "autosaveEnabled" },

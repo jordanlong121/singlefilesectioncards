@@ -206,6 +206,7 @@ import {
 	GradientBackgroundModal,
 	BACKGROUND_EXTENSIONS,
 } from "./background";
+import { processNote } from "./history";
 import { SavedLayoutChangesModal, ConfirmActionModal,
 	FileSuggestModal,
 	ConfirmDeleteModal,
@@ -1430,6 +1431,18 @@ export class SectionCardsView extends ItemView {
 			this.startEditing(hit.el, file, hit.section);
 			return false;
 		});
+		// Ctrl/⌘+Z, Ctrl/⌘+Shift+Z: undo / redo the last card change to this note. While
+		// a card editor or a field has the keys, they pass through to it.
+		for (const redo of [false, true]) {
+			this.scope.register(redo ? ["Mod", "Shift"] : ["Mod"], "Z", (evt) => {
+				if (!this.plainShortcutOk(evt)) return true;
+				const file = this.getFile();
+				if (!file) return true;
+				evt.preventDefault();
+				void this.plugin.stepHistory(file, redo);
+				return false;
+			});
+		}
 		this.scope.register([], " ", (evt) => {
 			if (!this.plainShortcutOk(evt) || !this.focusedKey) return true;
 			evt.preventDefault();
@@ -2184,7 +2197,7 @@ export class SectionCardsView extends ItemView {
 		if (!file || !targets.length) return;
 		new ConfirmDeleteModal(this.app, `${targets.length} selected cards`, async () => {
 			const removed = await deleteSectionsInFile(this.app, file, this.headingLevel, targets);
-			new Notice(`Deleted ${removed} of ${targets.length} cards from ${file.basename}.`);
+			this.noticeWithUndo(`Deleted ${removed} of ${targets.length} cards from ${file.basename}.`, file);
 			this.clearSelection(true);
 			await this.refresh();
 		}).open();
@@ -2950,7 +2963,7 @@ export class SectionCardsView extends ItemView {
 		action("section-card-delete", "trash-2", "Delete this card", () => {
 			new ConfirmDeleteModal(this.app, section.title || "(untitled)", async () => {
 				const ok = await deleteSection(this.app, file, this.headingLevel, section);
-				if (ok) new Notice(`Deleted “${section.title || "(untitled)"}” from ${file.basename}`);
+				if (ok) this.noticeWithUndo(`Deleted “${section.title || "(untitled)"}” from ${file.basename}`, file);
 				else new Notice("Couldn't find that section — the file changed on disk.");
 				await this.refresh();
 			}).open();
@@ -5358,6 +5371,28 @@ export class SectionCardsView extends ItemView {
 		// Two groups: what acts on this note's cards, then what acts on the note (and the
 		// notes) — templates for each side sit with their side.
 		addHeading("Card");
+		// Undo / redo the last card change to this note (not in the Deck: no note).
+		if (!this.deckMode) {
+			const undo = this.plugin.history.peekUndo(this.filePath);
+			const redo = this.plugin.history.peekRedo(this.filePath);
+			const file = this.getFile();
+			menu.addItem((item) =>
+				item
+					.setTitle(undo ? `Undo ${undo.label.toLowerCase()}` : "Undo")
+					.setIcon("undo-2")
+					.setDisabled(!undo || !file)
+					.onClick(() => file && void this.plugin.stepHistory(file, false)),
+			);
+			if (redo) {
+				menu.addItem((item) =>
+					item
+						.setTitle(`Redo ${redo.label.toLowerCase()}`)
+						.setIcon("redo-2")
+						.setDisabled(!file)
+						.onClick(() => file && void this.plugin.stepHistory(file, true)),
+				);
+			}
+		}
 		// Greyed out in the Deck: no note is showing, so it's unclear which one the
 		// card would land in.
 		menu.addItem((item) =>
@@ -6901,7 +6936,7 @@ export class SectionCardsView extends ItemView {
 			new ConfirmDeleteModal(this.app, target.title || "(untitled)", async () => {
 				const ok = await deleteSection(this.app, file, this.headingLevel, target);
 				if (ok) {
-					new Notice(`Deleted “${target.title || "(untitled)"}” from ${file.basename}`);
+					this.noticeWithUndo(`Deleted “${target.title || "(untitled)"}” from ${file.basename}`, file);
 				} else {
 					new Notice("Couldn't find that section — the file changed on disk.");
 				}
@@ -8614,7 +8649,7 @@ export class SectionCardsView extends ItemView {
 				const created = await this.app.vault.createBinary(path, await pasted.arrayBuffer());
 				const link = this.app.fileManager.generateMarkdownLink(created, file.path);
 				const embed = link.startsWith("!") ? link : `!${link}`;
-				await this.app.vault.process(file, (data) => {
+				await processNote(this.app, file, "Paste image", (data) => {
 					const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 					if (where === "end") return data.replace(/\s*$/, "") + eol + eol + embed + eol;
 					const lines = data.split(/\r?\n/);
@@ -8630,7 +8665,7 @@ export class SectionCardsView extends ItemView {
 	/** Excise every link markup in the note that resolves to this tile. */
 	private async removeImageLinks(file: TFile, image: NoteImage): Promise<number> {
 		let removed = 0;
-		await this.app.vault.process(file, (data) => {
+		await processNote(this.app, file, "Remove image", (data) => {
 			const spans = imageLinkSpans(data).filter(
 				(span) => this.imageLinkKey(span.target, span.external, file.path) === image.key,
 			);
@@ -10050,13 +10085,47 @@ export class SectionCardsView extends ItemView {
 		}
 	}
 
+	/** A notice with an Undo button that steps this note's card history back once. */
+	private noticeWithUndo(message: string, file: TFile): void {
+		const notice = new Notice(
+			createFragment((frag) => {
+				frag.createSpan({ text: message });
+				const btn = frag.createEl("button", { cls: "sfsc-notice-undo", text: "Undo" });
+				btn.addEventListener("click", (evt) => {
+					evt.stopPropagation();
+					notice.hide();
+					void this.plugin.stepHistory(file, false);
+				});
+			}),
+			8000,
+		);
+	}
+
 	/** Nest dragged cards into `target` as sections (nestSectionsInFile), and say so. */
 	private async completeNest(file: TFile, moved: Section[], target: Section, dropLine: number): Promise<void> {
+		if (this.plugin.settings.confirmNest) {
+			const what = moved.length === 1 ? `“${moved[0].title || "(untitled)"}”` : `these ${moved.length} cards`;
+			const confirmed = await new Promise<boolean>((resolve) => {
+				new ConfirmActionModal(
+					this.app,
+					"Nest into another card?",
+					`Move ${what} into “${target.title || "(untitled)"}” as ${moved.length === 1 ? "a section" : "sections"}, one heading level down? (Turn this prompt off in settings → Editing.)`,
+					"Nest",
+					false,
+					() => resolve(true),
+					() => resolve(false),
+				).open();
+			});
+			if (!confirmed) {
+				this.clearBlockDropMarks();
+				return;
+			}
+		}
 		const result = await nestSectionsInFile(this.app, file, this.headingLevel, moved, target, dropLine, this.flipMarker());
 		const into = target.title || "(untitled)";
 		if (result.ok) {
 			const what = moved.length === 1 ? `“${moved[0].title || "(untitled)"}”` : `${moved.length} cards`;
-			new Notice(`Moved ${what} into “${into}” as ${moved.length === 1 ? "a section" : "sections"} (H${result.level}).`);
+			this.noticeWithUndo(`Moved ${what} into “${into}” as ${moved.length === 1 ? "a section" : "sections"} (H${result.level}).`, file);
 			await this.refresh();
 			const hit = this.cardsByHeading.get(target.headingRaw);
 			if (hit) {

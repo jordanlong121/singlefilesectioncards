@@ -267,6 +267,8 @@ export interface SectionCardsSettings {
 	 * (switching notes or layouts, opening the Deck, an external change) instead of
 	 * discarding the typing. Escape on an edited card asks before discarding. */
 	saveOnLeave: boolean;
+	/** Ask before a card dragged onto another's body is nested into it. */
+	confirmNest: boolean;
 	/** Periodically write an open card editor's content back to the note. */
 	autosaveEnabled: boolean;
 	/** Minutes between autosaves while a card editor is open. */
@@ -574,6 +576,7 @@ export const DEFAULT_SETTINGS: SectionCardsSettings = {
 	dateDetectFormat: "",
 	editorMode: "live",
 	saveOnLeave: true,
+	confirmNest: true,
 	autosaveEnabled: true,
 	autosaveMinutes: 5,
 	layout: "grid",

@@ -3930,6 +3930,14 @@ body.is-mobile .sfsc-library-btn {
 /* The insertion bar a line or card drag shows where it will land: an accent line with a
    dot at its start, in a fixed layer over the page (placed by the view on every dragover),
    and for a card being nested a label naming it and its new level. */
+/* The Undo button on a delete or nest notice. */
+.sfsc-notice-undo {
+	margin-left: var(--size-4-3);
+	padding: 0 var(--size-4-2);
+	height: auto;
+	font-size: var(--font-ui-small);
+}
+
 .sfsc-drop-bar {
 	position: fixed;
 	z-index: var(--layer-popover, 30);
