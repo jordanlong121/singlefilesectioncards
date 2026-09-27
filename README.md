@@ -499,39 +499,25 @@ creating the card `2026-08-20, Thursday` produces:
 
 ### New note
 
-☰ → Note → **New note…** (also a command) creates a note: blank by default (**None**), or with
-a well-known shape — a **Kanban board**, a **SWOT analysis**, an **Eisenhower matrix**, or a
-**GTD** system — or on an **existing note (headings only)**: its headings become the sections
-and its text stays behind, so any note you write can serve as a template. Pick the template, name the note, choose the heading level (a vault note's is read from its headings),
-edit the section names, switch on an **Introduction** section, an **Additional notes**
-section, and a one-line hint under each heading, and pick the **Layout** the note opens in
-(the template's own unless you choose another). The placeholders above are filled — `{{title}}`
-is the note's name. The note opens as cards in the layout that suits it: columns side by side
-for a board, a 2×2 canvas for a matrix, the wall for GTD, and — for a note made on another
-note's headings — that note's remembered view, placements included.
+☰ → Note → **New note…** (also a command) makes a note: blank, or shaped as a **Kanban board**,
+**SWOT analysis**, **Eisenhower matrix**, or **GTD** system — or on the headings of any existing
+note, so any note can serve as a template. Name it, rename its sections, add an **Introduction**,
+**Additional notes**, or a hint under each heading, and pick the layout it opens in (a board
+opens as columns, a matrix as a 2×2 canvas). Placeholders like `{{title}}` are filled in.
 
-**Your own presets.** Any note with `cards-preset: true` in its properties appears in the
-wizard's template list, after the built-ins. Its sections are the headings at its shallowest
-level (renameable in the wizard like the built-ins'), an italic first line under a heading is
-that section's hint (the Hints toggle applies), and anything further under a heading is kept —
-example tasks, say. Three more properties are optional: `cards-description` for the line under
-the picker, `cards-layout` for the layout the new note opens in (`grid`, `vertical`, `custom`,
-…), and `cards-matrix: true` to place the sections 2×2 on the Custom Grid. A preset note you've
-arranged on a canvas lends the copy its placements too.
+**Your own presets.** Add `cards-preset: true` to a note's properties and it joins the template
+list. Optional: `cards-description` (the line under the picker), `cards-layout` (the layout it
+opens in), and `cards-matrix: true` (a 2×2 canvas). An italic line under a heading becomes that
+section's hint.
 
 ```markdown
 ---
 cards-preset: true
-cards-description: Weekly review — what happened, what's next, what's stuck.
 cards-layout: custom
 cards-matrix: true
 ---
 ## Went well
 *Wins worth repeating.*
-
-## Went badly
-*What to stop or fix.*
-- [ ] one thing to change this week
 ```
 
 ## Dates, per note
@@ -542,14 +528,10 @@ clicked, it decides from the note itself; click it once and your choice is remem
 
 ## Hide future or past dates
 
-With **Dates** on, two toggle buttons beside the toolbar's calendar button (and the same items in
-the toolbar menu) offer **Hide future dates** and **Hide past dates**: dated
-cards after today, or before it, drop out of the wall (today's card and undated cards always
-show). A status bar along the pane's bottom says which are hidden, with a button to show them
-again; jumping to a hidden date turns the hide off. Remembered per note. The Calendar, Heatmap,
-and Day Planner ignore them — the grids place every day, and the planner shows one day at a
-time and walks to the next with its arrows — so the toggles step aside on those layouts and
-come back, still set, when you return to a wall layout.
+With **Dates** on, the two buttons beside the toolbar's calendar button (also in the ☰ menu) hide
+dated cards after today, or before it; today's card and undated cards always show. A bar along the
+bottom says what's hidden, with a button to show it again, and jumping to a hidden date turns the
+hide off. Remembered per note. The Calendar, Heatmap, and Day Planner ignore it.
 
 ## Text a level leaves out
 
