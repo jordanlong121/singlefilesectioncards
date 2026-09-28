@@ -604,11 +604,11 @@ export class SectionCardsView extends ItemView {
 	private sectionBars: { el: HTMLElement; keys: string[] }[] = [];
 	/** Collapsed Sections groups, keyed by ancestor heading raw. In-memory, per note. */
 	private collapsedSections = new Set<string>();
-	/** Cards whose action strip the user sent to the bottom edge, by heading. A nudge to
-	 * reach the line the strip covers, not a preference: it lasts as long as the note is
-	 * in view. */
-	private actionsBottom = new Set<string>();
-	private actionsBottomFile: string | null = null;
+	/** Cards whose action strip the user brought up from the bottom edge (its default)
+	 * to the top, by heading. A nudge to reach the line the strip covers, not a
+	 * preference: it lasts as long as the note is in view. */
+	private actionsTop = new Set<string>();
+	private actionsTopFile: string | null = null;
 	/** Which note's collapsed set is loaded; a different note starts expanded. */
 	private collapsedFile: string | null = null;
 	/** Open-task counts per parsed section. Sections are fresh objects every refresh,
@@ -1721,6 +1721,12 @@ export class SectionCardsView extends ItemView {
 	private updateToolbarOffset(): void {
 		if (!this.toolbarEl) return;
 		this.contentEl.setCssProps({ "--sc-toolbar-h": `${this.toolbarEl.offsetHeight}px` });
+	}
+
+	/** The strip rides the card's bottom edge unless sent to the top — except on touch,
+	 * where it sits in the title row and covers nothing. */
+	private isActionsBottom(key: string): boolean {
+		return !Platform.isMobile && !this.actionsTop.has(key);
 	}
 
 	/** Sync a card's pinned look: the class plus the pin button's icon and label. */
@@ -6666,9 +6672,9 @@ export class SectionCardsView extends ItemView {
 		};
 
 		// The strip's position is a nudge for the note in view; another note starts clean.
-		if (this.actionsBottomFile !== file.path) {
-			this.actionsBottomFile = file.path;
-			this.actionsBottom.clear();
+		if (this.actionsTopFile !== file.path) {
+			this.actionsTopFile = file.path;
+			this.actionsTop.clear();
 		}
 
 		this.cardsByHeading.clear();
@@ -6694,7 +6700,7 @@ export class SectionCardsView extends ItemView {
 			const isPinned = pinnedKeys.has(section.headingRaw);
 			if (entry.el.hasClass("is-pinned") !== isPinned) this.applyPinState(entry.el, isPinned);
 			// A reused element may now hold a different card: match the strip to this one.
-			const atBottom = this.actionsBottom.has(section.headingRaw);
+			const atBottom = this.isActionsBottom(section.headingRaw);
 			if (entry.el.hasClass("is-actions-bottom") !== atBottom) this.applyActionsBottom(entry.el, atBottom);
 			this.applyCardColor(entry.el, cardColors[section.headingRaw]);
 			queueBody(entry);
@@ -7244,20 +7250,20 @@ export class SectionCardsView extends ItemView {
 			});
 			buildFlipButton?.();
 
-			// The strip hangs over the body's first line. This sends it to the card's
-			// bottom edge and back, so either end of the card can be read and clicked.
+			// The strip rides the card's bottom edge. This brings it up over the body's
+			// first line and back, so either end of the card can be read and clicked.
 			// On touch the strip sits in the title row and covers nothing.
 			if (!Platform.isMobile) {
 				const moveBtn = actions.createEl("button", { cls: "section-card-movestrip" });
 				moveBtn.addEventListener("click", (evt) => {
 					evt.stopPropagation();
 					const key = holder.section.headingRaw;
-					const atBottom = !this.actionsBottom.has(key);
-					if (atBottom) this.actionsBottom.add(key);
-					else this.actionsBottom.delete(key);
+					const atBottom = !this.isActionsBottom(key);
+					if (atBottom) this.actionsTop.delete(key);
+					else this.actionsTop.add(key);
 					this.applyActionsBottom(card, atBottom);
 				});
-				this.applyActionsBottom(card, this.actionsBottom.has(holder.section.headingRaw));
+				this.applyActionsBottom(card, this.isActionsBottom(holder.section.headingRaw));
 			}
 		};
 		card.addEventListener("pointerenter", ensureActions);
