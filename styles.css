@@ -557,6 +557,20 @@ body.is-phone .sfsc-picker-pop:not(.is-compact) {
 	padding: 0;
 }
 
+/* The toolbar wraps to rows on a phone: the filter box stays a short stub there,
+   in both toolbar styles, instead of growing into the row. */
+body.is-mobile .section-cards-toolbar .section-cards-filter {
+	width: 10ch;
+	min-width: 10ch;
+	max-width: 14ch;
+	flex: 0 1 auto;
+}
+
+body.is-mobile .section-cards-toolbar .section-cards-filter-input {
+	width: 100%;
+	min-width: 0;
+}
+
 /* ---------- filter box ---------- */
 
 .section-cards-filter {
@@ -702,6 +716,17 @@ body.is-phone .sfsc-picker-pop:not(.is-compact) {
 	pointer-events: none;
 	border: 0;
 	padding: 0;
+}
+
+.section-cards-jump-anchor {
+	position: relative;
+	display: inline-flex;
+}
+
+/* On touch the invisible date input takes the tap itself (iOS opens its picker for
+   nothing else); the button beneath is the look. */
+body.is-mobile .section-cards-jump-date input.section-cards-jump-input {
+	pointer-events: auto;
 }
 
 .section-cards-jump-btn svg,

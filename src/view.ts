@@ -4617,10 +4617,12 @@ export class SectionCardsView extends ItemView {
 		const jumpWrap = datesWrap.createDiv({ cls: "section-cards-jump-date" });
 		this.jumpDateWrap = jumpWrap;
 		jumpWrap.toggleClass("is-hidden", !this.hasDateHeadings);
-		const jumpBtn = jumpWrap.createEl("button", { cls: "section-cards-icon-btn section-cards-jump-btn" });
+		// The button and its input share an anchor, so the input covers the button alone.
+		const jumpAnchor = jumpWrap.createSpan({ cls: "section-cards-jump-anchor" });
+		const jumpBtn = jumpAnchor.createEl("button", { cls: "section-cards-icon-btn section-cards-jump-btn" });
 		fastIcon(jumpBtn, "calendar-days");
 		jumpBtn.setAttr("aria-label", "Jump to a date's card");
-		const jumpInput = jumpWrap.createEl("input", {
+		const jumpInput = jumpAnchor.createEl("input", {
 			cls: "section-cards-jump-input",
 			attr: { type: "date", "aria-hidden": "true", tabindex: "-1" },
 		});
@@ -4641,6 +4643,10 @@ export class SectionCardsView extends ItemView {
 		};
 		this.openJumpPicker = openJumpPicker;
 		jumpBtn.addEventListener("click", openJumpPicker);
+		// iOS opens a date picker only for a tap on the input itself — showPicker() and
+		// focus() from a button do nothing there — so on touch the invisible input takes
+		// the tap (CSS), starting empty for the same reason as above.
+		if (Platform.isMobile) jumpInput.addEventListener("pointerdown", () => (jumpInput.value = ""));
 		jumpInput.addEventListener("change", () => {
 			if (jumpInput.value) void this.jumpToDate(jumpInput.value);
 		});
@@ -4835,6 +4841,8 @@ export class SectionCardsView extends ItemView {
 
 	/** The ? button ends every toolbar variant — full, compact, and the Deck's. */
 	private addHelpButton(bar: HTMLElement): void {
+		// No keyboard on a phone or tablet, as a rule — the shortcuts list is desktop's.
+		if (Platform.isMobile) return;
 		const helpBtn = bar.createEl("button", { cls: "section-cards-help-btn", text: "?" });
 		helpBtn.setAttr("aria-label", "Keyboard shortcuts");
 		helpBtn.addEventListener("click", () => new ShortcutsModal(this.app).open());
