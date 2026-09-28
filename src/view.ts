@@ -1496,6 +1496,43 @@ export class SectionCardsView extends ItemView {
 			{ capture: true },
 		);
 
+		// A card dropped on the wall between or past the cards (beside the last column,
+		// say) reorders against the nearest card, as if dropped on its title bar.
+		this.registerDomEvent(this.gridEl, "dragover", (evt: DragEvent) => {
+			const near = this.wallDropTarget(evt);
+			if (!near) return;
+			evt.preventDefault();
+			if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
+			this.clearBlockDropMarks();
+			this.setDropMarker(this.sortOrder === "doc" ? near.el : null, this.isDropBefore(evt, near.el));
+		});
+		this.registerDomEvent(this.gridEl, "drop", (evt: DragEvent) => {
+			const near = this.wallDropTarget(evt);
+			const file = this.getFile();
+			if (!near || !file || !this.dragging) return;
+			evt.preventDefault();
+			const moved = this.dragging.section;
+			const many = this.draggingMany;
+			const before = this.isDropBefore(evt, near.el);
+			this.setDropMarker(null, false);
+			this.dragging = null;
+			this.draggingMany = null;
+			if (this.sortOrder !== "doc") {
+				new SwitchToDocumentOrderModal(this.app, SORT_LABELS[this.sortOrder], async () => {
+					this.sortOrder = "doc";
+					this.rememberView();
+					await this.syncView();
+					this.app.workspace.requestSaveLayout();
+				}).open();
+				return;
+			}
+			if (many && many.length > 1) {
+				void this.completeDragMany(file, many, near.holder.section, before);
+				return;
+			}
+			void this.completeDrag(file, moved, near.holder.section, before);
+		});
+
 		// Middle-click drag pans the canvas layouts (Custom Grid and Images).
 		this.registerDomEvent(this.gridEl, "pointerdown", (evt: PointerEvent) => {
 			if (!this.isCanvasLayout() || evt.button !== 1) return;
@@ -10019,6 +10056,30 @@ export class SectionCardsView extends ItemView {
 	}
 
 	/** Which side of a card the pointer is on, along the layout's flow axis. */
+	/** The card nearest a card drag over the bare wall (not over any card), to reorder
+	 * against — skipping the preamble and the dragged cards; null when it doesn't apply. */
+	private wallDropTarget(evt: DragEvent): CardEntry | null {
+		if (!this.dragging || this.draggingBlock || this.deckMode || this.layoutOwnsPlacement()) return null;
+		const over = evt.target as HTMLElement | null;
+		if (!over || over.closest(".section-card")) return null;
+		const moving = new Set((this.draggingMany ?? [this.dragging.section]).map((s) => s.headingRaw));
+		let best: CardEntry | null = null;
+		let bestDist = Infinity;
+		for (const entry of this.cardEntries) {
+			const s = entry.holder.section;
+			if (s.unfiled || moving.has(s.headingRaw) || entry.el.offsetParent === null) continue;
+			const r = entry.el.getBoundingClientRect();
+			const dx = Math.max(r.left - evt.clientX, 0, evt.clientX - r.right);
+			const dy = Math.max(r.top - evt.clientY, 0, evt.clientY - r.bottom);
+			const dist = dx * dx + dy * dy;
+			if (dist < bestDist) {
+				bestDist = dist;
+				best = entry;
+			}
+		}
+		return best;
+	}
+
 	private isDropBefore(evt: DragEvent, card: HTMLElement): boolean {
 		const rect = card.getBoundingClientRect();
 		// Horizontal flows top-to-bottom (one card per row); everything else row-major.
@@ -10079,6 +10140,9 @@ export class SectionCardsView extends ItemView {
 		if (target.unfiled || target.properties || target.whole) return null;
 		const over = evt.target as HTMLElement | null;
 		if (!over || !card.contains(over) || over.closest(".section-card-header")) return null;
+		// Vertical columns run the full pane height: the blank space below a column's
+		// content reorders, like its title bar, so a column can be dropped beside another.
+		if (this.layout === "vertical" && evt.clientY > SectionCardsView.bodyEndY(bodyEl) + 24) return null;
 		const front = this.cardFaces(target.body).front.split("\n");
 		const at = this.blockDropAt(evt, bodyEl);
 		if (typeof at.anchorIndex === "number") {
