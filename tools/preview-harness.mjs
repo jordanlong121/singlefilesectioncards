@@ -202,7 +202,7 @@ function toolbarHtml(layout, mode = "default") {
 	</div>
 	<div class="section-cards-cluster section-cards-cluster-mid">
 	<div class="section-cards-control">
-		<div class="section-cards-jump-date${NOTE_HAS_DATES && !["heatmap", "images", "links"].includes(layout) ? "" : " is-hidden"}"><button class="section-cards-icon-btn section-cards-jump-btn">${CAL_ICON}</button><input class="section-cards-jump-input" type="date" aria-hidden="true" tabindex="-1"><button class="section-cards-icon-btn section-cards-datehide-btn">${HIDE_FUTURE_ICON}</button><button class="section-cards-icon-btn section-cards-datehide-btn">${HIDE_PAST_ICON}</button></div>
+		<div class="section-cards-jump-date${NOTE_HAS_DATES && !["heatmap", "images", "links"].includes(layout) ? "" : " is-hidden"}"><span class="section-cards-jump-anchor"><button class="section-cards-icon-btn section-cards-jump-btn">${CAL_ICON}</button><input class="section-cards-jump-input" type="date" aria-hidden="true" tabindex="-1"></span><button class="section-cards-icon-btn section-cards-datehide-btn">${HIDE_FUTURE_ICON}</button><button class="section-cards-icon-btn section-cards-datehide-btn">${HIDE_PAST_ICON}</button></div>
 		<label class="section-cards-dates-label${datesHidden}"><span class="section-cards-label section-cards-dates-text">Dates</span><input type="checkbox" class="section-cards-dates-toggle"${NOTE_HAS_DATES ? " checked" : ""}></label>
 	</div>
 	</div>
@@ -215,7 +215,7 @@ function toolbarHtml(layout, mode = "default") {
 	${layout === "tasks" ? `<div class="section-cards-control"><span class="section-cards-label">Tasks</span><select class="dropdown"><option>All</option></select></div>` : ""}
 	<button class="section-cards-icon-btn section-cards-template-btn">${TEMPLATE_ICON}</button>
 	
-	<button class="section-cards-help-btn">?</button>
+	${MOBILE ? "" : `<button class="section-cards-help-btn">?</button>`}
 	</div>
 </div>`;
 }
@@ -487,7 +487,7 @@ function deckToolbarHtml() {
 	</div>
 	<div class="section-cards-cluster section-cards-cluster-mid"></div>
 	<div class="section-cards-cluster section-cards-cluster-right">
-	<button class="section-cards-help-btn">?</button>
+	${MOBILE ? "" : `<button class="section-cards-help-btn">?</button>`}
 	</div>
 </div>`;
 }
