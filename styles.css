@@ -4227,6 +4227,25 @@ body.theme-dark .section-card[data-sfsc-color] .section-card-actions {
 	bottom: 0;
 }
 
+/* The bottom strip, the default, gets its own room under the body's last line, so
+   revealing it covers no text; the top gap it no longer needs shrinks to match. */
+.section-card.is-actions-bottom:not(.is-editing) > .section-card-body {
+	padding-bottom: 36px;
+}
+
+.section-cards-view:not(.is-layout-rolodex) .section-card.is-actions-bottom > .section-card-body {
+	padding-top: 12px;
+}
+
+.section-cards-view.is-layout-tight .section-card.is-actions-bottom > .section-card-body {
+	padding-top: 8px;
+}
+
+/* While a card is being edited its strip stays out of the way, at either edge. */
+.section-card.is-editing .section-card-actions {
+	display: none;
+}
+
 @media (hover: hover) {
 	/* The header's hover extension reaches under the title bar, where the strip no
 	   longer is; hovering anywhere on the card reveals it at the bottom instead. */
