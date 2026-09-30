@@ -80,3 +80,15 @@ export const prepareFuzzySearch = (query) => {
 		return { score: -t.length, matches: [] };
 	};
 };
+// Link helpers, as far as src/headinglinks.ts leans on them: "Note#A#B" splits at the
+// first #, and a heading subpath resolves to the heading its last segment names (in the
+// real app, spaces and case normalized; here, exact text).
+export const parseLinktext = (link) => {
+	const i = link.indexOf("#");
+	return i === -1 ? { path: link, subpath: "" } : { path: link.slice(0, i), subpath: link.slice(i) };
+};
+export const resolveSubpath = (cache, subpath) => {
+	const last = subpath.split("#").pop();
+	const current = (cache.headings ?? []).find((h) => h.heading === last);
+	return current ? { type: "heading", current } : null;
+};

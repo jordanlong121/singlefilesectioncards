@@ -43,6 +43,7 @@ export * from "./src/dates";
 export * from "./src/blocks";
 export * from "./src/tasks";
 export * from "./src/writes";
+export * from "./src/headinglinks";
 export * from "./src/planner";
 export * from "./src/periods";
 export * from "./src/canvas";

@@ -16,6 +16,7 @@ import {
 import { plannerCards } from "./planner";
 import { mergeFeedLines } from "./icalfeed";
 import { demoteSection, nestBoundaries, nestInsertLine, spliceSection } from "./nesting";
+import { LinkEdit, applyLinkEdits } from "./headinglinks";
 
 /** Delete a block at write time, re-locating the section and verifying the block's text. */
 export async function deleteBlockInFile(
@@ -258,25 +259,28 @@ export async function mergeSectionsInFile(
 	return ok;
 }
 
-/** Rewrite a card's heading line (Calendar day move); the body stays byte-for-byte. */
+/** Rewrite a card's heading line (a rename, or a Calendar day move); the body stays
+ * byte-for-byte but for `linkEdits` — the note's own links to the heading, rewritten in
+ * the same write so a rename is one undo step. They change no line count, so the card
+ * located before them is still where it was. */
 export async function retitleSectionInFile(
 	app: App,
 	file: TFile,
 	level: number,
 	original: Section,
 	newHeading: string,
+	linkEdits: LinkEdit[] = [],
 ): Promise<boolean> {
 	let ok = true;
 
 	await processNote(app, file, "Rename card", (data) => {
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
-		const lines = data.split(/\r?\n/);
-		const target = locateCard(lines, level, original);
+		const target = locateCard(data.split(/\r?\n/), level, original);
 		if (!target || target.unfiled) {
 			ok = false;
 			return data;
 		}
-		const out = lines.slice();
+		const out = applyLinkEdits(data, linkEdits).text.split(/\r?\n/);
 		out[target.startLine] = newHeading;
 		return out.join(eol);
 	});
