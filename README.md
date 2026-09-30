@@ -217,8 +217,10 @@ just moves to the other side.
 
 ![The Calendar's 2 weeks range: two weeks of weekdays across the top, each weekend beneath its week](screenshots/calendar-2weeks.png)
 
-**Day** — one day, filling the pane. It edits on click like a card in any other layout, where
-a cell in the other ranges opens big first.
+**Day** — one day, filling the pane.
+
+In 2 weeks, Week and Day, a click on a day's card edits it in place, like a card in any other
+layout; a Month cell is too small for that, so a click there opens the day big first.
 
 ![The Calendar's Day range: one day's card filling the pane](screenshots/calendar-day.png)
 
