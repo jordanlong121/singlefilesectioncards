@@ -139,6 +139,7 @@ import {
 	nestSectionsInFile,
 } from "./writes";
 import { nestBoundaries, nestInsertLine } from "./nesting";
+import { headingLinkEdits, applyLinkEditsElsewhere } from "./headinglinks";
 import { feedDayEvents, feedEventLine, feedEventsByDays, parseFeed, feedFirstDay, daysBetween, mergeFeedLines } from "./icalfeed";
 import {
 	PlannerSlot,
@@ -2767,7 +2768,8 @@ export class SectionCardsView extends ItemView {
 	/**
 	 * Rename a card: rewrite its heading line's text (the #'s stay, so the level does),
 	 * body untouched. Pins, colors, canvas placements, and planner slots are keyed by
-	 * the heading line and follow it; so does the Rolodex/planner's remembered card.
+	 * the heading line and follow it; so does the Rolodex/planner's remembered card, and
+	 * so do `[[Note#Heading]]` links to it, in this note and every other.
 	 */
 	private promptRenameCard(section: Section): void {
 		if (section.unfiled) return;
@@ -2779,11 +2781,20 @@ export class SectionCardsView extends ItemView {
 				if (!file) return;
 				const hashes = /^#+/.exec(section.headingRaw)?.[0] ?? "#".repeat(this.headingLevel);
 				const newHeading = `${hashes} ${title}`;
-				const ok = await retitleSectionInFile(this.app, file, this.headingLevel, section, newHeading);
+				// Links to the heading, here and in other notes, follow it to its new name.
+				const linkEdits = headingLinkEdits(this.app, file, section.headingLine, section.title, title);
+				const own = linkEdits.get(file.path) ?? [];
+				const ok = await retitleSectionInFile(this.app, file, this.headingLevel, section, newHeading, own);
 				if (!ok) {
 					new Notice("Couldn't find that card — the file changed on disk.");
 					await this.refresh();
 					return;
+				}
+				const elsewhere = await applyLinkEditsElsewhere(this.app, linkEdits, file.path);
+				const links = own.length + elsewhere.links;
+				if (links) {
+					const where = elsewhere.notes ? ` (${elsewhere.notes + (own.length ? 1 : 0)} notes)` : "";
+					new Notice(`Updated ${links} ${links === 1 ? "link" : "links"} to this card${where}.`);
 				}
 				await this.plugin.renameCardKey(file.path, section.headingRaw, newHeading);
 				const placed = this.customPlacements[section.headingRaw];

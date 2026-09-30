@@ -21,5 +21,6 @@ await esbuild.build({
 await import(path.join(tmp, "..", "parse.cases.mjs"));
 await import(path.join(tmp, "..", "layouts.cases.mjs"));
 await import(path.join(tmp, "..", "history.cases.mjs"));
+await import(path.join(tmp, "..", "links.cases.mjs"));
 const { report } = await import(path.join(tmp, "..", "harness.mjs"));
 await report();
