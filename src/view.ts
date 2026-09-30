@@ -767,10 +767,10 @@ export class SectionCardsView extends ItemView {
 	}
 
 	/** Whether a click on a calendar card opens it big instead of editing it in place:
-	 * a month or week cell is too small to write in. The Day range's one card already
-	 * fills the pane, so it edits on click like a card anywhere else. */
+	 * a month cell is too small to write in. The 2 weeks, Week and Day ranges give
+	 * each day room enough, so their cards edit on click like a card anywhere else. */
 	private calendarZoomsToEdit(): boolean {
-		return this.layout === "calendar" && this.calendarRange !== "day";
+		return this.layout === "calendar" && this.calendarRange === "month";
 	}
 
 	/** Calendar and Heatmap both place by date headings: they borrow the note's date
@@ -7367,10 +7367,10 @@ export class SectionCardsView extends ItemView {
 				return;
 			}
 			if (this.selected.size) this.clearSelection(false);
-			// A calendar cell is too small to edit in place: any click makes the day
-			// big first; the maximized card then edits on click as usual. Another
-			// card's open editor still commits, exactly like the click-away below.
-			// (A day shown on its own already fills the pane — it edits like any card.)
+			// A month cell is too small to edit in place: any click makes the day big
+			// first; the maximized card then edits on click as usual. Another card's
+			// open editor still commits, exactly like the click-away below. (The
+			// 2 weeks, Week and Day ranges have room — they edit like any card.)
 			if (this.calendarZoomsToEdit() && !card.hasClass("is-maximized")) {
 				evt.stopPropagation();
 				const editing = this.activeEditor;
