@@ -5547,6 +5547,15 @@ export class SectionCardsView extends ItemView {
 				.setIcon("refresh-cw")
 				.onClick(() => void this.refresh()),
 		);
+		// Drop the note's remembered view; it reopens in Obsidian's editor from now on.
+		if (!this.deckMode) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Forget this note")
+					.setIcon("eraser")
+					.onClick(() => this.plugin.confirmForgetNote(this.currentPath())),
+			);
+		}
 
 		// Layouts are the note's; the Deck has none to switch.
 		if (!this.deckMode) {
