@@ -30,7 +30,7 @@ import { PlannerSlot } from "./src/planner";
 import { DocumentLevels } from "./src/periods";
 import { CardRect, SavedCanvasLayout, snapshotCanvasLayout, applyCanvasLayout } from "./src/canvas";
 import { BACKGROUND_DIM_DEFAULT } from "./src/background";
-import { TextInputModal, NoteLibraryModal } from "./src/modals";
+import { TextInputModal, NoteLibraryModal, ConfirmActionModal } from "./src/modals";
 import { SectionCardsSettingTab } from "./src/settings-tab";
 import { StructuredNoteModal, StructuredSpec, specFormat, structuredNoteContent, structuredPlacements, structuredNotePath } from "./src/structured";
 import { SectionCardsView } from "./src/view";
@@ -133,6 +133,19 @@ export default class SectionCardsPlugin extends Plugin {
 				},
 			});
 		}
+
+		// The active note — in a cards view or the editor — loses its remembered view.
+		this.addCommand({
+			id: "forget-note",
+			name: "Forget this note",
+			checkCallback: (checking) => {
+				const view = this.app.workspace.getActiveViewOfType(SectionCardsView);
+				const path = view ? (view.deckMode ? null : view.getFile()?.path) : this.app.workspace.getActiveFile()?.path;
+				if (!path || !this.getStoredView(path)) return false;
+				if (!checking) this.confirmForgetNote(path);
+				return true;
+			},
+		});
 
 		this.addCommand({
 			id: "open-section-cards-current",
@@ -1316,6 +1329,34 @@ export default class SectionCardsPlugin extends Plugin {
 			if (at >= 0) list.splice(at, 1);
 		}
 		await this.saveSettings();
+	}
+
+	/** "Forget this note": after a confirm, cards views of the note (stickies aside) turn
+	 * into its editor, then its remembered view is dropped — so opening the note later
+	 * gets Obsidian's own view, not the cards. Switching first means a closing view
+	 * can't store the view again behind the forget. */
+	confirmForgetNote(path: string): void {
+		new ConfirmActionModal(
+			this.app,
+			"Forget this note?",
+			`“${path}” keeps its file — only the plugin's remembered layout, placements, colors, and pins are dropped, and it opens in the editor from now on.`,
+			"Forget",
+			false,
+			() => {
+				void (async () => {
+					const file = this.app.vault.getFileByPath(path);
+					for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
+						const view = leaf.view;
+						if (!(view instanceof SectionCardsView) || view.deckMode || view.sticky) continue;
+						if (view.getFile()?.path !== path) continue;
+						if (file) await leaf.openFile(file, { active: true });
+						else leaf.detach();
+					}
+					await this.forgetNote(path);
+					new Notice(`Forgot “${file?.basename ?? path}”.`);
+				})();
+			},
+		).open();
 	}
 
 	/** Ask for a new name and rename the note in its folder (Manage notes, the Deck's
