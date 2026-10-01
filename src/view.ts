@@ -10485,12 +10485,13 @@ export class SectionCardsView extends ItemView {
 		}
 
 		const footer = bodyEl.createDiv({ cls: "section-card-footer" });
+		const cancelBtn = footer.createEl("button", { text: "Cancel" });
+		const saveBtn = footer.createEl("button", { cls: "mod-cta", text: "Save" });
+		// Under the buttons, full width, so a narrow card doesn't squeeze it to a letter per line.
 		footer.createSpan({
 			cls: "section-card-hint",
 			text: this.plugin.tasksApi() ? "Ctrl/⌘+Enter to save · Esc to cancel · Ctrl/⌘+T task" : "Ctrl/⌘+Enter to save · Esc to cancel",
 		});
-		const cancelBtn = footer.createEl("button", { text: "Cancel" });
-		const saveBtn = footer.createEl("button", { cls: "mod-cta", text: "Save" });
 		saveBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			void finish(true);
