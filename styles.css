@@ -4946,15 +4946,18 @@ body.sfsc-no-nested-strike .section-card-body .task-list-item.is-checked > ol {
 
 .section-card-footer {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: 8px;
+	justify-content: flex-end;
+	gap: 6px 8px;
 	margin-top: 10px;
 	padding-top: 8px;
 	border-top: 1px solid var(--sc-line);
 }
 
 .section-card-hint {
-	flex: 1 1 auto;
+	flex: 1 0 100%;
+	text-align: right;
 	color: var(--text-faint);
 	/* Deliberately smaller than --font-ui-smaller: it's a reminder, not content. */
 	font-size: calc(var(--font-ui-smaller, 11px) * 0.85);
