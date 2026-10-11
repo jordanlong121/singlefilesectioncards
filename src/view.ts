@@ -132,6 +132,7 @@ import {
 	deleteRangeInFile,
 	moveSectionsInFile,
 	insertSection,
+	insertSectionWithBlock,
 	writeSection,
 	syncFeedIntoSection,
 	syncFeedIntoSections,
@@ -3924,23 +3925,80 @@ export class SectionCardsView extends ItemView {
 				const iso = blankIso(evt);
 				if (iso) this.promptCreateDateCard(iso);
 			},
-			// A card dragged onto an empty day moves there: its heading is rewritten.
+			// A card dragged onto an empty day moves there: its heading is rewritten. A
+			// line dragged there offers to start the day's card and files the line in it.
 			dragover: (evt) => {
-				if (!this.dragging) return;
+				if (!this.dragging && !this.draggingBlock) return;
 				evt.preventDefault();
 				if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
 				this.setCalDrop(evt.currentTarget as HTMLElement);
 			},
 			drop: (evt) => {
+				const iso = blankIso(evt);
+				if (this.draggingBlock) {
+					evt.preventDefault();
+					evt.stopPropagation();
+					const from = this.draggingBlock;
+					this.draggingBlock = null;
+					this.clearBlockDropMarks();
+					this.setCalDrop(null);
+					from.el.removeClass("is-dragging-block");
+					if (iso) this.promptCreateDateCardWithBlock(iso, from);
+					return;
+				}
 				if (!this.dragging) return;
 				evt.preventDefault();
 				const moved = this.dragging.section;
-				const iso = blankIso(evt);
 				this.setCalDrop(null);
 				this.dragging = null;
 				if (iso) void this.moveCardToDate(moved, iso);
 			},
 		};
+	}
+
+	/** A line dropped on an empty Calendar day: the day's card doesn't exist yet, so ask
+	 * before starting it — then the card and the move happen in one write. */
+	private promptCreateDateCardWithBlock(
+		iso: string,
+		from: { holder: { section: Section }; blockIndex: number; blockText: string },
+	): void {
+		const formatted = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
+		new CreateDateCardModal(
+			this.app,
+			formatted,
+			() => this.createDateCardWithBlock(iso, from),
+			`This note has no “${formatted}” card. Create it and move the line there?`,
+		).open();
+	}
+
+	/** Start the day's card with the dragged line filed at the end of its front. */
+	private async createDateCardWithBlock(
+		iso: string,
+		from: { holder: { section: Section }; blockIndex: number; blockText: string },
+	): Promise<void> {
+		const file = this.getFile();
+		if (!file) {
+			new Notice(`can't find "${this.filePath}".`);
+			return;
+		}
+		this.followDateLevel();
+		const title = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
+		const headingRaw = `${"#".repeat(this.headingLevel)} ${title}`;
+		const body = await this.plugin.loadTemplateBody(file.path, title);
+		const ok = await insertSectionWithBlock(
+			this.app,
+			file,
+			headingRaw,
+			this.plugin.settings.newCardPlacement,
+			body ?? undefined,
+			from.holder.section,
+			from.blockIndex,
+			from.blockText,
+			this.flipMarker(),
+		);
+		if (!ok) new Notice("Couldn't find that line — the file changed on disk. No card created.");
+		await this.refresh();
+		if (ok) void this.jumpToDate(iso);
 	}
 
 	/** One day of the calendar: the day's card moved into place (appendChild MOVES it,
