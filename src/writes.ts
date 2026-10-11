@@ -751,6 +751,75 @@ export async function insertSection(
 }
 
 /**
+ * A line dragged onto a day with no card: start that day's card (as insertSection
+ * does, template body and all) and move the block into it — one write, one undo step.
+ * The block lands at the end of the new card's front: before a template's back-side
+ * marker when there is one, so a dropped line never lands on the back. False when the
+ * dragged block can't be found as it was — nothing is written then, not even the card.
+ */
+export async function insertSectionWithBlock(
+	app: App,
+	file: TFile,
+	headingRaw: string,
+	placement: Placement,
+	body: string | undefined,
+	from: Section,
+	blockIndex: number,
+	expectedBlockText: string,
+	flipMarker: string,
+): Promise<boolean> {
+	const level = (/^#+/.exec(headingRaw)?.[0] ?? "###").length;
+	const title = headingRaw.replace(/^#+\s*/, "").trim();
+	const bodyLines = body?.trim() ? body.replace(/^(?:[ \t]*\r?\n)+/, "").replace(/\s+$/, "").split(/\r?\n/) : [];
+	let ok = true;
+
+	await processNote(app, file, "New card", (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const source = locateCard(lines, level, from);
+		const sourceBody = source ? lines.slice(bodyStartLine(source), source.endLine) : null;
+		const block = sourceBody ? movableBlocks(sourceBody)[blockIndex] : null;
+		if (!source || !sourceBody || !block || sourceBody.slice(block.start, block.end).join("\n") !== expectedBlockText) {
+			ok = false;
+			return data;
+		}
+		const at = insertionLine(lines, level, title, placement);
+		lines.splice(at, 0, headingRaw, ...bodyLines, "");
+		// Both cards re-located after the splice: the source may have shifted down.
+		const after = parseSections(lines, level);
+		const target = after.find((s) => s.startLine === at && s.headingRaw === headingRaw);
+		const moved = locateSection(after, from);
+		if (!target || !moved) {
+			ok = false;
+			return data;
+		}
+		// End of the front: after its last movable block, or at the top when the
+		// template has nothing movable before its back-side marker.
+		const targetBody = lines.slice(bodyStartLine(target), target.endLine);
+		const marker = flipMarkerLine(targetBody, flipMarker);
+		let anchor: number | "start" | null = null;
+		let side: "before" | "after" = "before";
+		if (marker >= 0) {
+			const frontBlocks = movableBlocks(targetBody.slice(0, marker));
+			if (frontBlocks.length) {
+				anchor = frontBlocks.length - 1;
+				side = "after";
+			} else {
+				anchor = "start";
+			}
+		}
+		const result = moveBlockBetween(lines, moved, blockIndex, target, anchor, side);
+		if (!result) {
+			ok = false;
+			return data;
+		}
+		return result.join(eol);
+	});
+
+	return ok;
+}
+
+/**
  * Replace one section in the file with new text, re-locating it at write time so a
  * card edit can't clobber changes made elsewhere in the file since it was rendered.
  */

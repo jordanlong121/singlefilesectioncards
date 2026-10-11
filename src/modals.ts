@@ -825,17 +825,20 @@ export class ShortcutsModal extends Modal {
 export class CreateDateCardModal extends Modal {
 	private readonly title: string;
 	private readonly onCreate: () => void | Promise<void>;
+	/** What creating the card is for, when more than the card follows — a dropped line. */
+	private readonly question: string | null;
 
-	constructor(app: App, title: string, onCreate: () => void | Promise<void>) {
+	constructor(app: App, title: string, onCreate: () => void | Promise<void>, question: string | null = null) {
 		super(app);
 		this.title = title;
 		this.onCreate = onCreate;
+		this.question = question;
 	}
 
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.createEl("h3", { text: "No card for that date" });
-		contentEl.createEl("p", { text: `This note has no “${this.title}” card. Create it?` });
+		contentEl.createEl("p", { text: this.question ?? `This note has no “${this.title}” card. Create it?` });
 
 		new Setting(contentEl)
 			.addButton((b) => b.setButtonText("No").onClick(() => this.close()))

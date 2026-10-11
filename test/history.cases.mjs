@@ -1,6 +1,6 @@
 // Undo and redo of the cards' writes (src/history.ts): what gets recorded, merged,
 // refused, and kept across a rename — and the block key line drags compare with.
-import { NoteHistory, MERGE_WINDOW_MS, setNoteRecorder, processNote, insertSection, deleteSection, parseCards, SectionCardsView } from "./.tmp/main.js";
+import { NoteHistory, MERGE_WINDOW_MS, setNoteRecorder, processNote, insertSection, insertSectionWithBlock, deleteSection, parseCards, SectionCardsView } from "./.tmp/main.js";
 import { t, ta } from "./harness.mjs";
 import assert from "assert";
 
@@ -92,4 +92,28 @@ t("line drags: a hidden block id or comment doesn't count toward the text a line
   assert.equal(key("- [ ] 08:00–08:30 Garbage ^ical-abc123"), key("- [ ] 08:00–08:30 Garbage"));
   assert.equal(key("- [ ] 08:00–08:30 Garbage ^ical-abc123"), "08:00–08:30 garbage");
   assert.equal(key("text %%hidden note%% more"), key("text  more"));
+});
+
+ta("calendar: a line dropped on an empty day starts the day's card with the line in it — one write", async () => {
+  const state = { text: "### 2026-10-06, Tuesday\n- [ ] keep\n- [ ] move me\n\nafter\n\n### 2026-10-08, Thursday\nthu\n", writes: 0 };
+  const file = { path: "cal.md" };
+  const app = { vault: { process: async (_f, fn) => { state.writes++; state.text = fn(state.text); return state.text; } } };
+  const tue = parseCards(state.text.split("\n"), 3).find((s) => s.title.startsWith("2026-10-06"));
+  assert.ok(await insertSectionWithBlock(app, file, "### 2026-10-07, Wednesday", "logical", undefined, tue, 1, "- [ ] move me", ""));
+  assert.equal(
+    state.text,
+    "### 2026-10-06, Tuesday\n- [ ] keep\n\nafter\n\n### 2026-10-07, Wednesday\n- [ ] move me\n\n### 2026-10-08, Thursday\nthu\n",
+  );
+  assert.equal(state.writes, 1, "the card and the move are one write, so one undo step");
+
+  // With a two-faced template the line lands on the front, above the marker.
+  const wed = parseCards(state.text.split("\n"), 3).find((s) => s.title.startsWith("2026-10-07"));
+  assert.ok(await insertSectionWithBlock(app, file, "### 2026-10-09, Friday", "bottom", "front note\n\n%% flip %%\nback", wed, 0, "- [ ] move me", "%% flip %%"));
+  assert.ok(state.text.includes("### 2026-10-09, Friday\nfront note\n- [ ] move me\n\n%% flip %%\nback\n"), state.text);
+
+  // The block changed since the drag: nothing happens, not even the new card.
+  const before = state.text;
+  const thu = parseCards(state.text.split("\n"), 3).find((s) => s.title.startsWith("2026-10-08"));
+  assert.equal(await insertSectionWithBlock(app, file, "### 2026-10-10, Saturday", "bottom", undefined, thu, 0, "stale", ""), false);
+  assert.equal(state.text, before);
 });
