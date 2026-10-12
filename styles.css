@@ -1070,6 +1070,29 @@ body.is-mobile .is-layout-tight .section-card-body {
 	min-height: 0;
 }
 
+/* A slot names its day — "Mon, Oct 12" — in place of the card's heading, which spells
+   the same date out at length. The heading comes back on a day made big. The label is
+   built into every day card's header and only shows here. */
+.sc-cal-date {
+	display: none;
+}
+
+.is-layout-calendar .section-card:not(.is-maximized) .section-card-title {
+	display: none;
+}
+
+.is-layout-calendar .section-card:not(.is-maximized) .sc-cal-date {
+	display: block;
+	flex: 1 1 auto;
+	min-width: 0;
+	font-weight: 600;
+	font-size: calc(var(--font-ui-small) * var(--sfsc-font-scale, 1));
+	color: var(--text-normal);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 /* ---------- the Month and 2 weeks ranges' shrunken cards ----------
    A month fits thirty-odd days on one screen and 2 weeks lays ten weekdays side by
    side — cells narrower than a month's — so only those two pay for it: smaller type,
@@ -1081,7 +1104,9 @@ body.is-mobile .is-layout-tight .section-card-body {
 }
 
 .is-cal-month .section-card .section-card-title,
-.is-cal-2weeks .section-card .section-card-title {
+.is-cal-2weeks .section-card .section-card-title,
+.is-cal-month .section-card .sc-cal-date,
+.is-cal-2weeks .section-card .sc-cal-date {
 	font-size: calc(var(--font-ui-smaller) * 0.85);
 	line-height: 1.4;
 }
@@ -1861,7 +1886,8 @@ body.is-mobile .section-cards-hier-col {
 	border-bottom-color: var(--text-highlight-bg, var(--interactive-accent));
 }
 
-.section-card.is-today .section-card-title {
+.section-card.is-today .section-card-title,
+.section-card.is-today .sc-cal-date {
 	color: var(--text-normal);
 	font-weight: 700;
 }
@@ -1984,6 +2010,7 @@ body.theme-light .sfsc-swatch {
 }
 
 .section-card[data-sfsc-color] .section-card-title,
+.section-card[data-sfsc-color] .sc-cal-date,
 .section-card[data-sfsc-color] .section-card-header button {
 	color: var(--sfsc-fg);
 }

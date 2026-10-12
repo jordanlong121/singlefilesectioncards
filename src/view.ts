@@ -3873,8 +3873,7 @@ export class SectionCardsView extends ItemView {
 			// each row (weekdays, weekend, and their names) carries the split.
 			const second = new Set(this.calendarRange === "2weeks" ? days.slice(7) : []);
 			const place = (iso: string, weekend: boolean, split: boolean) => {
-				const label = week ? String(Number(iso.slice(8))) : "No card for this day yet — click to write one";
-				const cell = this.placeCalendarDay(grid, iso, byIso.get(iso), blank, todayIso, label);
+				const cell = this.placeCalendarDay(grid, iso, byIso.get(iso), blank, todayIso, !week);
 				cell.toggleClass("is-cal-wknd", weekend);
 				cell.toggleClass("is-cal-split", split);
 			};
@@ -3945,7 +3944,7 @@ export class SectionCardsView extends ItemView {
 			const days = new Date(year, month, 0).getDate();
 			for (let day = 1; day <= days; day++) {
 				const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-				this.placeCalendarDay(grid, iso, byIso.get(iso), blank, todayIso, String(day));
+				this.placeCalendarDay(grid, iso, byIso.get(iso), blank, todayIso);
 			}
 		}
 	}
@@ -4075,23 +4074,39 @@ export class SectionCardsView extends ItemView {
 		if (ok) void this.jumpToDate(iso);
 	}
 
+	/** What a calendar slot calls its day — "Mon, Oct 12" — in the user's locale. */
+	private static calendarDayLabel(iso: string): string {
+		return mo(iso, "YYYY-MM-DD").format("ddd, MMM D");
+	}
+
 	/** One day of the calendar: the day's card moved into place (appendChild MOVES it,
 	 * and the header and earlier days went in first, so date order builds the grid), or
 	 * an empty square offering to start that day's card — the jump-to-date dialog.
-	 * Returns whichever landed, so the caller can mark it (the weekend's wide cell). */
+	 * Either names its day in the slot's head, in place of the card's heading (CSS hides
+	 * that here); the Day range's lone empty slot spells out the offer too. Returns
+	 * whichever landed, so the caller can mark it (the weekend's wide cell). */
 	private placeCalendarDay(
 		grid: HTMLElement,
 		iso: string,
 		card: HTMLElement | undefined,
 		on: { click: (evt: MouseEvent) => void; dragover: (evt: DragEvent) => void; drop: (evt: DragEvent) => void },
 		todayIso: string,
-		label: string,
+		spellOffer = false,
 	): HTMLElement {
+		const label = SectionCardsView.calendarDayLabel(iso);
 		if (card) {
+			// The card is reused across refreshes, so its label is kept up to date, not stacked.
+			const header = card.querySelector<HTMLElement>(":scope > .section-card-header");
+			let date = header?.querySelector<HTMLElement>(":scope > .sc-cal-date") ?? null;
+			if (header && !date) {
+				date = createDiv({ cls: "sc-cal-date" });
+				header.insertBefore(date, header.firstChild);
+			}
+			date?.setText(label);
 			grid.appendChild(card);
 			return card;
 		}
-		const cell = grid.createDiv({ cls: "sc-cal-blank", text: label });
+		const cell = grid.createDiv({ cls: "sc-cal-blank", text: spellOffer ? `${label} — no card yet, click to write one` : label });
 		if (iso === todayIso) cell.addClass("is-today"); // today with no card yet: the ring still marks it
 		cell.setAttr("role", "button");
 		cell.setAttr("aria-label", `Create a card for ${iso}`);
