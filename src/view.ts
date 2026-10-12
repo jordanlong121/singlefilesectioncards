@@ -3908,8 +3908,6 @@ export class SectionCardsView extends ItemView {
 			entry.el.removeClass("is-cal-outside");
 			entry.el.removeClass("is-cal-wknd");
 		}
-		this.buildCalendarWeekdays(grid, firstDow);
-
 		const [y0, m0] = isos[0].split("-").map(Number);
 		const [y1, m1] = isos[isos.length - 1].split("-").map(Number);
 		// The toolbar's sort control orders the months (days inside stay calendar
@@ -3959,21 +3957,6 @@ export class SectionCardsView extends ItemView {
 		};
 		const weekStart = this.plugin.settings.weekStart;
 		return weekStart === "sunday" ? 0 : weekStart === "monday" ? 1 : locale.localeData().firstDayOfWeek();
-	}
-
-	/** The locale's short weekday names, Sunday first — indexed by the ISO day's own
-	 * weekday number, so either header below can name a day without counting columns. */
-	private static weekdayShortNames(): string[] {
-		return (moment as unknown as { weekdaysShort: (localeSorted: boolean) => string[] }).weekdaysShort(false);
-	}
-
-	/** The weekday name row above the Month range's day cells, pinned under the toolbar
-	 * while the months scroll past. Rotated to whichever day starts the week. */
-	private buildCalendarWeekdays(grid: HTMLElement, firstDow: number): void {
-		const names = SectionCardsView.weekdayShortNames();
-		for (const name of [...names.slice(firstDow), ...names.slice(0, firstDow)]) {
-			grid.createDiv({ cls: "sc-cal-dow", text: name });
-		}
 	}
 
 	/** Names for one run of the Week range's days — the weekdays across the top, or the
