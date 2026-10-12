@@ -6105,6 +6105,13 @@ export class SectionCardsView extends ItemView {
 				}),
 		);
 		if (current) {
+			// The template is an ordinary note: editing it means opening it in the editor.
+			menu.addItem((item) =>
+				item
+					.setTitle("Edit template note")
+					.setIcon("file-pen-line")
+					.onClick(() => void this.plugin.openTemplate(this.filePath)),
+			);
 			menu.addItem((item) =>
 				item
 					.setTitle("Remove template")

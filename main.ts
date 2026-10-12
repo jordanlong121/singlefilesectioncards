@@ -1189,19 +1189,40 @@ export default class SectionCardsPlugin extends Plugin {
 	}
 
 	/** The note's new-card template, read with {{placeholders}} filled in. Null = none set. */
+	/** The note's template note as a file: by its path, or — the path having gone stale
+	 * (the template moved) — by the link resolver. Null when the note has none, or it
+	 * can't be found. */
+	templateFile(notePath: string): TFile | null {
+		const templatePath = this.getTemplatePath(notePath);
+		if (!templatePath) return null;
+		const byPath = this.app.vault.getAbstractFileByPath(templatePath);
+		if (byPath instanceof TFile) return byPath;
+		const byLink = this.app.metadataCache.getFirstLinkpathDest(templatePath.replace(/\.md$/, ""), "");
+		return byLink instanceof TFile ? byLink : null;
+	}
+
 	async loadTemplateBody(notePath: string, title: string): Promise<string | null> {
 		const templatePath = this.getTemplatePath(notePath);
 		if (!templatePath) return null;
-		let template = this.app.vault.getAbstractFileByPath(templatePath);
-		if (!(template instanceof TFile)) {
-			template = this.app.metadataCache.getFirstLinkpathDest(templatePath.replace(/\.md$/, ""), "");
-		}
-		if (!(template instanceof TFile)) {
+		const template = this.templateFile(notePath);
+		if (!template) {
 			new Notice(`Template "${templatePath}" not found — created the card empty.`);
 			return null;
 		}
 		const raw = await this.app.vault.cachedRead(template);
 		return applyTemplatePlaceholders(raw, title, this.getNewCardFormat(notePath));
+	}
+
+	/** Open the note's template note in the editor — a tab in the main window — to
+	 * change what new cards start with. Says so when the template can't be found. */
+	async openTemplate(notePath: string): Promise<void> {
+		const template = this.templateFile(notePath);
+		if (!template) {
+			new Notice(`Template "${this.getTemplatePath(notePath) ?? ""}" not found.`);
+			return;
+		}
+		this.skipAutoOpen = { path: template.path, until: Date.now() + 2000 };
+		await this.mainWindowTab().openFile(template, { active: true, state: { mode: "source" } });
 	}
 
 	getCustomGrid(path: string): Record<string, CardRect> {
