@@ -26,6 +26,8 @@ import { mo, parseSections, applyTemplatePlaceholders } from "./src/sections";
 import { isTodayTitle, dateHeadingCounts, bestDateLevel } from "./src/dates";
 import { TasksApiV1 } from "./src/tasks";
 import { noteFolderOf, folderOfPath, insertSection } from "./src/writes";
+import { parseFeed, type ParsedFeed } from "./src/icalfeed";
+import { titleSortKey } from "./src/dates";
 import { PlannerSlot } from "./src/planner";
 import { DocumentLevels } from "./src/periods";
 import { CardRect, SavedCanvasLayout, snapshotCanvasLayout, applyCanvasLayout } from "./src/canvas";
@@ -715,13 +717,13 @@ export default class SectionCardsPlugin extends Plugin {
 				const fallbackHeading = `${"#".repeat(level)} ${fallback}`;
 				if (!existing) {
 					const body = await this.loadTemplateBody(file.path, fallback);
-					await insertSection(this.app, file, fallbackHeading, this.settings.newCardPlacement, body ?? undefined);
+					await insertSection(this.app, file, fallbackHeading, this.settings.newCardPlacement, body ?? undefined, this.titleKey(file.path));
 				}
 				await this.openCardsView(file.path, existing?.headingRaw ?? fallbackHeading);
 				return;
 			}
 			const body = await this.loadTemplateBody(file.path, title);
-			await insertSection(this.app, file, headingRaw, this.settings.newCardPlacement, body ?? undefined);
+			await insertSection(this.app, file, headingRaw, this.settings.newCardPlacement, body ?? undefined, this.titleKey(file.path));
 		}
 		await this.openCardsView(file.path, today?.headingRaw ?? headingRaw);
 	}
@@ -1042,6 +1044,20 @@ export default class SectionCardsPlugin extends Plugin {
 
 	/** Remember (or forget) that a card shows its back. Keyed to the heading line like
 	 * pins and colors; the view has already turned the card, so no refresh here. */
+	/** Flip many cards in one write — Flip all / Flip selected, which once saved per card. */
+	async setCardsFlipped(path: string, headings: string[], flipped: boolean, base: ViewSettings): Promise<void> {
+		if (!path || !headings.length) return;
+		const list = this.getFlipped(path);
+		const next = flipped ? [...new Set([...list, ...headings])] : list.filter((h) => !headings.includes(h));
+		if (next.length === list.length && next.every((h, i) => h === list[i])) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (next.length) current.flipped = next;
+		else delete current.flipped;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
 	async setCardFlipped(path: string, headingRaw: string, flipped: boolean, base: ViewSettings): Promise<void> {
 		if (!path) return;
 		const list = this.getFlipped(path);
@@ -1161,7 +1177,19 @@ export default class SectionCardsPlugin extends Plugin {
 
 	/** Recently fetched feeds, so updating several days (or the same one twice) in a
 	 * few minutes asks the calendar once. In memory only: nothing about a feed is saved. */
-	private feedCache = new Map<string, { at: number; text: string }>();
+	private feedCache = new Map<string, { at: number; text: string; parsed?: ParsedFeed }>();
+
+	/** The feed parsed, from the same cache as its text: one parse serves every card's
+	 * update and the quiet refresh, instead of one parse per card. */
+	async fetchFeedParsed(url: string, fresh = false): Promise<ParsedFeed> {
+		const text = await this.fetchFeed(url, fresh);
+		const address = url.trim().replace(/^webcal:\/\//i, "https://");
+		const cached = this.feedCache.get(address);
+		if (cached?.text === text && cached.parsed) return cached.parsed;
+		const parsed = parseFeed(text);
+		if (cached?.text === text) cached.parsed = parsed;
+		return parsed;
+	}
 
 	/** A calendar feed's text. webcal:// is fetched as https://. Throws a readable
 	 * message when the address can't be reached or doesn't answer with a calendar. */
@@ -1181,6 +1209,11 @@ export default class SectionCardsPlugin extends Plugin {
 		if (!/BEGIN:VCALENDAR/i.test(text)) throw new Error("that address didn't return a calendar (.ics)");
 		this.feedCache.set(address, { at: Date.now(), text });
 		return text;
+	}
+
+	/** How a note's titles sort for logical placement: by the day they name, when they do. */
+	titleKey(path: string): (title: string) => string {
+		return titleSortKey(this.getNewCardFormat(path), this.settings.dateDetectFormat);
 	}
 
 	/** A note's own heading-name format, or null when it uses the global default. */
@@ -1378,6 +1411,29 @@ export default class SectionCardsPlugin extends Plugin {
 	}
 
 	/** Drop everything the plugin remembers about a note — the file is untouched. */
+	/** The remembered notes whose file no longer exists — deleted outside "Forget",
+	 * or renamed while the plugin wasn't running. Their entries would otherwise be
+	 * inherited by a new note of the same name. */
+	missingNotes(): string[] {
+		return Object.keys(this.settings.perFile ?? {}).filter(
+			(path) => !path.startsWith("\u0000") && this.app.vault.getFileByPath(path) === null,
+		);
+	}
+
+	/** Drop every missing note's entry (and quick-switch slot); returns how many. */
+	async forgetMissingNotes(): Promise<number> {
+		const missing = this.missingNotes();
+		for (const path of missing) {
+			delete this.settings.perFile?.[path];
+			for (const list of [this.settings.recentFiles, this.settings.pinnedRecentFiles]) {
+				const at = list.indexOf(path);
+				if (at >= 0) list.splice(at, 1);
+			}
+		}
+		if (missing.length) await this.saveSettings();
+		return missing.length;
+	}
+
 	async forgetNote(path: string): Promise<void> {
 		delete this.settings.perFile?.[path];
 		for (const list of [this.settings.recentFiles, this.settings.pinnedRecentFiles]) {

@@ -2,7 +2,7 @@
 
 import { moment } from "obsidian";
 import { Section, moParse, ISO_DATE_RE, validIsoDate, parseAncestorHeadings } from "./sections";
-import { TASK_RE, taskLineIndexes } from "./tasks";
+import { TASK_RE, taskDone, taskLineIndexes } from "./tasks";
 import type { CalendarRange } from "./settings";
 
 /**
@@ -130,6 +130,12 @@ export const TITLE_ISO_CACHE_MAX = 8192;
 
 /** The date a heading names, as YYYY-MM-DD: a valid ISO date anywhere in the title wins,
  * then the heading format at the title's start, then the custom detection pattern. */
+/** The placement key for a note's titles: the ISO day a title names (by the note's
+ * heading format, or the detect pattern), else the title itself. */
+export function titleSortKey(format: string, detect = ""): (title: string) => string {
+	return (title) => titleToIso(title, format, detect) ?? title;
+}
+
 export function titleToIso(title: string, format: string, detect = ""): string | null {
 	const iso = ISO_DATE_RE.exec(title)?.[0];
 	if (iso && validIsoDate(iso)) return iso;
@@ -192,7 +198,7 @@ export function heatmapDays(sections: Section[], format: string, detect = ""): M
 		// `- [ ]` sitting inside a code block is text, not a task.
 		const lines = section.body.split("\n");
 		for (const i of taskLineIndexes(lines)) {
-			if (TASK_RE.exec(lines[i])?.[2] === " ") open++;
+			if (!taskDone(TASK_RE.exec(lines[i])?.[2])) open++;
 			else done++;
 		}
 		const day = days.get(iso);

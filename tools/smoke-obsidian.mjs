@@ -17,7 +17,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rect = (sel) => ev(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return null; el.scrollIntoView({ block: "nearest" }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 const mouse = (type, x, y, extra = {}) => send("Input.dispatchMouseEvent", { type, x, y, ...extra });
 const click = async (sel, mods = 0) => { const r = await rect(sel); if (!r) throw new Error("no element " + sel); await mouse("mouseMoved", r.x, r.y); await mouse("mousePressed", r.x, r.y, { button: "left", clickCount: 1, modifiers: mods }); await mouse("mouseReleased", r.x, r.y, { button: "left", clickCount: 1, modifiers: mods }); await sleep(250); };
-const dblclick = async (sel) => { const r = await ev(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); el.scrollIntoView({ block: "nearest" }); const b = el.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.bottom - 6 }; })()`); await mouse("mouseMoved", r.x, r.y); for (const c of [1, 2]) { await mouse("mousePressed", r.x, r.y, { button: "left", clickCount: c }); await mouse("mouseReleased", r.x, r.y, { button: "left", clickCount: c }); } await sleep(400); };
+const dblclick = async (sel) => { const r = await ev(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); el.scrollIntoView({ block: "nearest" }); const b = el.getBoundingClientRect(); return { x: b.right - 6, y: b.top + 18 }; })()`); await mouse("mouseMoved", r.x, r.y); for (const c of [1, 2]) { await mouse("mousePressed", r.x, r.y, { button: "left", clickCount: c }); await mouse("mouseReleased", r.x, r.y, { button: "left", clickCount: c }); } await sleep(400); };
 const hover = async (sel) => { const r = await rect(sel); await mouse("mouseMoved", r.x, r.y); await sleep(200); };
 const key = async (k, mods = 0) => { await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, modifiers: mods, text: k.length === 1 ? k : undefined }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, modifiers: mods }); await sleep(250); };
 const type = async (text) => { for (const ch of text) await send("Input.dispatchKeyEvent", { type: "char", text: ch }); await sleep(100); };
@@ -40,6 +40,11 @@ const original = await noteText();
 await ev(`(() => { window.__sfscErrors = []; window.addEventListener("error", e => window.__sfscErrors.push(String(e.message))); window.addEventListener("unhandledrejection", e => window.__sfscErrors.push("rejection: " + String(e.reason))); return 1; })()`);
 await ev(`${P}.openCardsView(${JSON.stringify(NOTE)})`); await sleep(1200);
 await closeModals();
+// The checks address cards by position and expect them all open: the fixture's pins,
+// folds, flips and colors are set aside for the run and put back at the end.
+const savedPerFile = await ev(`JSON.stringify(${P}.settings.perFile?.[${JSON.stringify(NOTE)}] ?? null)`);
+await ev(`(async () => { const pf = ${P}.settings.perFile?.[${JSON.stringify(NOTE)}]; if (pf) { delete pf.pinned; delete pf.collapsed; delete pf.flipped; delete pf.colors; } await ${P}.saveSettings(); await ${V}.refresh(); return 1; })()`);
+await sleep(600);
 
 try {
 	// ---- layouts
@@ -128,6 +133,7 @@ try {
 	await ev(`app.vault.modify(app.vault.getFileByPath(${JSON.stringify(NOTE)}), ${JSON.stringify(original)})`);
 	await ev(`(async () => { const f = app.vault.getFileByPath("Smoke Kanban.md"); if (f) await app.vault.delete(f); return 1; })()`);
 	await ev(`${P}.deleteSavedLayout(${JSON.stringify(NOTE)}, "Smoke layout")`);
+	if (savedPerFile && savedPerFile !== "null") await ev(`(async () => { ${P}.settings.perFile[${JSON.stringify(NOTE)}] = ${savedPerFile}; await ${P}.saveSettings(); return 1; })()`);
 	await closeModals();
 	await ev(`${P}.openCardsView(${JSON.stringify(NOTE)})`); await sleep(500);
 	await pickLayout("Grid").catch(() => {});

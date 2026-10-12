@@ -3618,6 +3618,19 @@ body.is-phone .section-cards-view.is-deck .section-cards-grid {
 	gap: 6px;
 }
 
+/* Manage notes: the line about remembered notes whose file is gone, under the list. */
+.sfsc-library-missing:not(:empty) {
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
 .sfsc-library-list {
 	max-height: 50vh;
 	overflow-y: auto;
@@ -4262,6 +4275,13 @@ body.theme-dark .section-card[data-sfsc-color] .section-card-actions {
 
 	.section-card.is-actions-bottom:hover .section-card-actions {
 		visibility: visible;
+	}
+
+	/* A folded card is its title bar alone: the bottom strip would lie over it and
+	   cover the pin and the chevron that unfolds it. It stays away until the card is
+	   open again; the card's right-click menu offers the same actions meanwhile. */
+	.section-card.is-collapsed:not(.is-editing):hover .section-card-actions {
+		visibility: hidden;
 	}
 }
 

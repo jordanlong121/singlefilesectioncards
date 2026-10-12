@@ -638,6 +638,10 @@ export function bodyStartLine(section: Section): number {
  * Which way the file's existing sections already run. Daily-note files are usually
  * newest-first (descending), so "logical order" has to follow the file, not assume A→Z.
  */
+/** How titles order for placement: by date when `key` reads one (so "Sep 30" sorts
+ * before "Oct 1"), else as text. */
+export type TitleKey = (title: string) => string;
+
 export function detectDirection(titles: string[]): "asc" | "desc" {
 	let asc = 0;
 	let desc = 0;
@@ -649,18 +653,29 @@ export function detectDirection(titles: string[]): "asc" | "desc" {
 	return desc > asc ? "desc" : "asc";
 }
 
-/** Line at which a new section titled `title` should be inserted. */
-export function insertionLine(lines: string[], level: number, title: string, placement: Placement): number {
-	const sections = parseSections(lines, level);
+/** Line at which a new section titled `title` should be inserted. `key` turns a title
+ * into what it sorts by — a date-aware key keeps "Oct 2, 2026" after "Sep 30, 2026". */
+export function insertionLine(lines: string[], level: number, title: string, placement: Placement, key?: TitleKey): number {
+	return insertionLineAmong(parseSections(lines, level), lines, title, placement, key);
+}
 
+/** insertionLine over sections already parsed — many cards added at once parse once. */
+export function insertionLineAmong(
+	sections: Section[],
+	lines: string[],
+	title: string,
+	placement: Placement,
+	key: TitleKey = (t) => t,
+): number {
 	if (!sections.length) return placement === "top" ? firstContentLine(lines) : lines.length;
 
 	if (placement === "top") return sections[0].startLine;
 	if (placement === "bottom") return sections[sections.length - 1].endLine;
 
-	const direction = detectDirection(sections.map((s) => s.title));
+	const direction = detectDirection(sections.map((s) => key(s.title)));
+	const mine = key(title);
 	for (const section of sections) {
-		const cmp = collator.compare(title, section.title);
+		const cmp = collator.compare(mine, key(section.title));
 		if (direction === "asc" ? cmp < 0 : cmp > 0) return section.startLine;
 	}
 	return sections[sections.length - 1].endLine;

@@ -3,7 +3,19 @@
 import { App, Notice, TFile } from "obsidian";
 import { processNote } from "./history";
 import { Placement } from "./settings";
-import { Section, HEADING_RE, parseSections, bodyStartLine, insertionLine, locateSection, locateCard } from "./sections";
+import {
+	Section,
+	HEADING_RE,
+	TitleKey,
+	parseSections,
+	bodyStartLine,
+	insertionLine,
+	insertionLineAmong,
+	detectDirection,
+	collator,
+	locateSection,
+	locateCard,
+} from "./sections";
 import {
 	TOP_ITEM_RE,
 	sectionBlocks,
@@ -712,16 +724,21 @@ export async function moveSectionsInFile(
 				ok = false;
 				return data;
 			}
+			// Null means the card already sits where it's going (a selection with one
+			// member in place), not a failure: it stays and the others still move.
 			const next = moveSection(lines, level, sections.indexOf(from), sections.indexOf(to) + (before ? 0 : 1));
-			if (!next) {
-				ok = false;
-				return data;
-			}
-			lines = next;
+			if (next) lines = next;
 		}
 		return lines.join(eol);
 	});
 	return ok;
+}
+
+/** The blank line a heading spliced in at `at` needs above it: one when the line
+ * before isn't blank (a card's last body line, say), else none — so a card added at
+ * the bottom doesn't butt against the card above. */
+function blankBefore(lines: string[], at: number): string[] {
+	return at > 0 && lines[at - 1].trim() !== "" ? [""] : [];
 }
 
 /** Insert a new section — empty, or with a template body — and return the heading level written. */
@@ -731,6 +748,7 @@ export async function insertSection(
 	headingRaw: string,
 	placement: Placement,
 	body?: string,
+	key?: TitleKey,
 ): Promise<{ level: number; duplicate: boolean }> {
 	const level = (/^#+/.exec(headingRaw)?.[0] ?? "###").length;
 	const title = headingRaw.replace(/^#+\s*/, "").trim();
@@ -742,8 +760,8 @@ export async function insertSection(
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
 		duplicate = parseSections(lines, level).some((s) => s.title === title);
-		const at = insertionLine(lines, level, title, placement);
-		lines.splice(at, 0, headingRaw, ...bodyLines, "");
+		const at = insertionLine(lines, level, title, placement, key);
+		lines.splice(at, 0, ...blankBefore(lines, at), headingRaw, ...bodyLines, "");
 		return lines.join(eol);
 	});
 
@@ -767,6 +785,7 @@ export async function insertSectionWithBlock(
 	blockIndex: number,
 	expectedBlockText: string,
 	flipMarker: string,
+	key?: TitleKey,
 ): Promise<boolean> {
 	const level = (/^#+/.exec(headingRaw)?.[0] ?? "###").length;
 	const title = headingRaw.replace(/^#+\s*/, "").trim();
@@ -783,8 +802,10 @@ export async function insertSectionWithBlock(
 			ok = false;
 			return data;
 		}
-		const at = insertionLine(lines, level, title, placement);
-		lines.splice(at, 0, headingRaw, ...bodyLines, "");
+		let at = insertionLine(lines, level, title, placement, key);
+		const pad = blankBefore(lines, at);
+		lines.splice(at, 0, ...pad, headingRaw, ...bodyLines, "");
+		at += pad.length;
 		// Both cards re-located after the splice: the source may have shifted down.
 		const after = parseSections(lines, level);
 		const target = after.find((s) => s.startLine === at && s.headingRaw === headingRaw);
@@ -845,7 +866,7 @@ export async function writeSection(
 		const replacement = newRaw.split(/\r?\n/);
 		lines.splice(target.startLine, target.endLine - target.startLine, ...replacement);
 		return lines.join(eol);
-	}, `edit:${original.headingRaw}`);
+	}, `edit:${original.startLine}:${original.headingRaw}`);
 
 	if (!ok) {
 		new Notice("Couldn't find that section — the file changed on disk. Edit not saved.");
@@ -939,21 +960,48 @@ export async function insertSections(
 	file: TFile,
 	items: { headingRaw: string; bodyLines: string[] }[],
 	placement: Placement,
+	key: TitleKey = (t) => t,
 ): Promise<number> {
 	let added = 0;
 	await processNote(app, file, "New cards", (data) => {
 		added = 0;
 		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
 		const lines = data.split(/\r?\n/);
+		// The note is parsed once per heading level, and every card's place found against
+		// that one parse; the splices then run bottom-up so no line number shifts under
+		// a later one. A year of feed days costs one parse, not a parse per day.
+		const parsed = new Map<number, { sections: Section[]; titles: Set<string>; direction: "asc" | "desc" }>();
+		const groups = new Map<number, { headingRaw: string; bodyLines: string[]; title: string }[]>();
 		for (const { headingRaw, bodyLines } of items) {
 			const level = (/^#+/.exec(headingRaw)?.[0] ?? "###").length;
 			const title = headingRaw.replace(/^#+\s*/, "").trim();
-			if (parseSections(lines, level).some((s) => s.title === title)) continue;
-			const at = insertionLine(lines, level, title, placement);
-			lines.splice(at, 0, headingRaw, ...bodyLines, "");
+			let p = parsed.get(level);
+			if (!p) {
+				const sections = parseSections(lines, level);
+				p = { sections, titles: new Set(sections.map((s) => s.title)), direction: detectDirection(sections.map((s) => key(s.title))) };
+				parsed.set(level, p);
+			}
+			if (p.titles.has(title)) continue; // already there, or given twice
+			p.titles.add(title);
+			const at = insertionLineAmong(p.sections, lines, title, placement, key);
+			const group = groups.get(at) ?? [];
+			group.push({ headingRaw, bodyLines, title });
+			groups.set(at, group);
 			added++;
 		}
-		return added ? lines.join(eol) : data;
+		if (!added) return data;
+		for (const at of [...groups.keys()].sort((a, b) => b - a)) {
+			const group = groups.get(at) ?? [];
+			// Cards sharing a spot keep the note's order among themselves (logical
+			// placement), or the order they were given (top and bottom).
+			if (placement === "logical") {
+				const dir = detectDirection(parsed.get((/^#+/.exec(group[0].headingRaw)?.[0] ?? "###").length)?.sections.map((s) => key(s.title)) ?? []);
+				group.sort((a, b) => (dir === "asc" ? 1 : -1) * collator.compare(key(a.title), key(b.title)));
+			}
+			const spliced = group.flatMap(({ headingRaw, bodyLines }) => [headingRaw, ...bodyLines, ""]);
+			lines.splice(at, 0, ...blankBefore(lines, at), ...spliced);
+		}
+		return lines.join(eol);
 	});
 	return added;
 }
