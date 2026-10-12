@@ -94,6 +94,7 @@ import {
 } from "./dates";
 import {
 	movableBlocks,
+	type BodyBlock,
 	blockStarred,
 	sectionHasStar,
 	bodyForRender,
@@ -106,6 +107,7 @@ import {
 	TasksApiV1,
 	sortTasksLayout,
 	TASK_RE,
+	taskDone,
 	dueTaskSummary,
 	firstDueTaskIndex,
 	taskLineIndexes,
@@ -141,7 +143,7 @@ import {
 } from "./writes";
 import { nestBoundaries, nestInsertLine } from "./nesting";
 import { headingLinkEdits, applyLinkEditsElsewhere } from "./headinglinks";
-import { feedDayEvents, feedEventLine, feedEventsByDays, parseFeed, feedFirstDay, daysBetween, mergeFeedLines } from "./icalfeed";
+import { feedDayEvents, feedEventLine, feedEventsByDays, feedFirstDay, daysBetween, mergeFeedLines } from "./icalfeed";
 import {
 	PlannerSlot,
 	plannerBlockKey,
@@ -459,6 +461,8 @@ export class SectionCardsView extends ItemView {
 		/** Tear the editor down without writing or refreshing: its autosave stops and
 		 * its CodeMirror is destroyed, so a render over it can't leave either behind. */
 		discard: () => void;
+		/** Escape: close an untouched editor, or ask about unsaved typing first. */
+		cancel: () => void;
 		/** Ctrl/⌘+T: a new task line via the Tasks plugin's dialog, at the cursor. */
 		insertTask: () => void;
 	} | null = null;
@@ -1196,8 +1200,16 @@ export class SectionCardsView extends ItemView {
 		// The view's own document: in a popout window the main document never hears it.
 		this.registerDomEvent(this.contentEl.doc, "keydown", (evt: KeyboardEvent) => {
 			if (evt.key !== "Escape") return;
-			// An open card editor's own Escape handling wins (textarea or live preview).
-			if (this.activeEditor) return;
+			// An open card editor's own Escape handling wins (textarea or live preview) —
+			// but a click on the card's padding or a button moves the focus out of it,
+			// and then Escape would reach nothing: it cancels the editor from here.
+			if (this.activeEditor) {
+				const target = evt.target as HTMLElement | null;
+				if (evt.defaultPrevented || target?.closest?.(".section-card-editor-embed, .section-card-editor")) return;
+				evt.preventDefault();
+				this.activeEditor.cancel();
+				return;
+			}
 			if (this.maximized) {
 				evt.preventDefault();
 				this.closeMaximized();
@@ -1971,7 +1983,7 @@ export class SectionCardsView extends ItemView {
 	 * card already shows it; without it the card toggles. Reduced-motion users get
 	 * the swap without the slide.
 	 */
-	private async flipCard(card: HTMLElement, to?: boolean): Promise<void> {
+	private async flipCard(card: HTMLElement, to?: boolean, persist = true): Promise<void> {
 		const entry = this.cardEntries.find((e) => e.el === card);
 		const file = this.getFile();
 		if (!entry?.backEl || !file || this.flipping.has(card) || card.hasClass("is-editing")) return;
@@ -1985,7 +1997,7 @@ export class SectionCardsView extends ItemView {
 			// would come up blank when the next layout reuses the card. Turn it outright.
 			if (!card.isShown()) {
 				if (toBack) await this.renderBack(backEl, holder, file, scope);
-				this.setFlipped(card, holder.section.headingRaw, toBack);
+				this.setFlipped(card, holder.section.headingRaw, toBack, persist);
 				backEl.setCssStyles({ height: "" });
 				return;
 			}
@@ -2012,7 +2024,7 @@ export class SectionCardsView extends ItemView {
 			const inFrom = toBack ? "100%" : "-100%";
 			if (animate) await slide(toBack ? bodyEl : backEl, "0", out, [1, 0.4], "ease-in").catch(() => {});
 			if (toBack) await this.renderBack(backEl, holder, file, scope);
-			this.setFlipped(card, holder.section.headingRaw, toBack);
+			this.setFlipped(card, holder.section.headingRaw, toBack, persist);
 			if (!toBack) backEl.setCssStyles({ height: "" });
 			if (animate) await slide(toBack ? backEl : bodyEl, inFrom, "0", [0.4, 1], "ease-out").catch(() => {});
 		} finally {
@@ -2023,13 +2035,13 @@ export class SectionCardsView extends ItemView {
 	/** Stamp a card's face: the class the CSS keys on, the button's label, and the
 	 * remembered state (in the plugin's data, per note, so it survives closing the note
 	 * and switching layouts). */
-	private setFlipped(card: HTMLElement, headingRaw: string, flipped: boolean): void {
+	private setFlipped(card: HTMLElement, headingRaw: string, flipped: boolean, persist = true): void {
 		card.toggleClass("is-flipped", flipped);
 		card.querySelector<HTMLElement>(".section-card-flip")?.setAttr(
 			"aria-label",
 			flipped ? "Flip back to the front" : "Flip the card over",
 		);
-		void this.plugin.setCardFlipped(this.filePath, headingRaw, flipped, this.viewSettings());
+		if (persist) void this.plugin.setCardFlipped(this.filePath, headingRaw, flipped, this.viewSettings());
 	}
 
 	/** Fold a card to its title bar (or open it), remember it per note, and re-pack. */
@@ -2257,9 +2269,10 @@ export class SectionCardsView extends ItemView {
 	}
 
 	private flipSelected(toBack: boolean): void {
-		for (const entry of this.cardEntries) {
-			if (entry.backEl && this.selected.has(entry.holder.section.headingRaw)) void this.flipCard(entry.el, toBack);
-		}
+		void this.flipMany(
+			this.cardEntries.filter((entry) => entry.backEl && this.selected.has(entry.holder.section.headingRaw)),
+			toBack,
+		);
 	}
 
 	private deleteSelected(): void {
@@ -2298,9 +2311,19 @@ export class SectionCardsView extends ItemView {
 
 	/** Turn every two-faced card to its back (true) or front (false). */
 	private flipAll(toBack: boolean): void {
-		for (const entry of this.cardEntries) {
-			if (entry.backEl) void this.flipCard(entry.el, toBack);
-		}
+		void this.flipMany(
+			this.cardEntries.filter((entry) => entry.backEl),
+			toBack,
+		);
+	}
+
+	/** Turn many cards and remember them in one write, not one per card. */
+	private async flipMany(entries: CardEntry[], toBack: boolean): Promise<void> {
+		await Promise.all(entries.map((entry) => this.flipCard(entry.el, toBack, false)));
+		const headings = entries
+			.filter((entry) => entry.el.hasClass("is-flipped") === toBack)
+			.map((entry) => entry.holder.section.headingRaw);
+		await this.plugin.setCardsFlipped(this.filePath, headings, toBack, this.viewSettings());
 	}
 
 	/** Whether any card on the wall has a back to flip to. */
@@ -2634,14 +2657,24 @@ export class SectionCardsView extends ItemView {
 	 * heading, which the Rolodex (sharing the memory) still understands.
 	 */
 	private plannerKey(entry: CardEntry): string {
-		const raw = entry.holder.section.headingRaw;
-		let n = 0;
-		for (const other of this.cardEntries) {
-			if (other === entry) break;
-			if (other.holder.section.headingRaw === raw) n++;
+		// Keys for the whole wall in one pass, kept until the wall is rebuilt (refresh
+		// makes a new entries array): a lookup per card was quadratic on a long note.
+		const cache = this.plannerKeyCache;
+		if (cache && cache.entries === this.cardEntries && cache.keys.size === this.cardEntries.length) {
+			return cache.keys.get(entry) ?? entry.holder.section.headingRaw;
 		}
-		return n ? `${raw}\u0000${n}` : raw;
+		const keys = new Map<CardEntry, string>();
+		const seen = new Map<string, number>();
+		for (const other of this.cardEntries) {
+			const raw = other.holder.section.headingRaw;
+			const n = seen.get(raw) ?? 0;
+			seen.set(raw, n + 1);
+			keys.set(other, n ? `${raw}\u0000${n}` : raw);
+		}
+		this.plannerKeyCache = { entries: this.cardEntries, keys };
+		return keys.get(entry) ?? entry.holder.section.headingRaw;
 	}
+	private plannerKeyCache: { entries: CardEntry[]; keys: Map<CardEntry, string> } | null = null;
 
 	/** Day Planner: the previous/next card as the wall is sorted — no wrap-around,
 	 * since a planner's days run in a line. */
@@ -3543,10 +3576,17 @@ export class SectionCardsView extends ItemView {
 
 	/** The rendered elements that correspond 1:1 with a section's movable blocks. */
 	private eligibleBlockEls(bodyEl: HTMLElement): HTMLElement[] {
-		return Array.from(
-			bodyEl.querySelectorAll<HTMLElement>(":scope > p, :scope > ul > li, :scope > ol > li"),
-		);
+		// Kept per body while its children are the same elements (a re-render replaces
+		// them): the query ran on every dragover event.
+		const cached = this.blockElsCache.get(bodyEl);
+		if (cached && cached.count === bodyEl.childElementCount && cached.first === bodyEl.firstElementChild && cached.last === bodyEl.lastElementChild) {
+			return cached.els;
+		}
+		const els = Array.from(bodyEl.querySelectorAll<HTMLElement>(":scope > p, :scope > ul > li, :scope > ol > li"));
+		this.blockElsCache.set(bodyEl, { count: bodyEl.childElementCount, first: bodyEl.firstElementChild, last: bodyEl.lastElementChild, els });
+		return els;
 	}
+	private blockElsCache = new WeakMap<HTMLElement, { count: number; first: Element | null; last: Element | null; els: HTMLElement[] }>();
 
 	/** The movable block under `target`, verified against the parsed body — the same
 	 * DOM↔source agreement every block action requires before touching the file. */
@@ -4022,6 +4062,7 @@ export class SectionCardsView extends ItemView {
 			from.blockIndex,
 			from.blockText,
 			this.flipMarker(),
+			this.plugin.titleKey(file.path),
 		);
 		if (!ok) new Notice("Couldn't find that line — the file changed on disk. No card created.");
 		await this.refresh();
@@ -5055,7 +5096,7 @@ export class SectionCardsView extends ItemView {
 			let open = 0;
 			let done = 0;
 			for (const i of taskLineIndexes(lines)) {
-				if (TASK_RE.exec(lines[i])?.[2] === " ") open++;
+				if (!taskDone(TASK_RE.exec(lines[i])?.[2])) open++;
 				else done++;
 			}
 			const showing = this.taskFilter === "open" ? open : this.taskFilter === "done" ? done : open + done;
@@ -5236,7 +5277,7 @@ export class SectionCardsView extends ItemView {
 		}
 		let lines: string[];
 		try {
-			const events = feedDayEvents(await this.plugin.fetchFeed(url, !quiet), iso);
+			const events = feedDayEvents(await this.plugin.fetchFeedParsed(url, !quiet), iso);
 			lines = events.map((event) => feedEventLine(event, this.plugin.settings.feedAsTasks));
 		} catch (err) {
 			new Notice(`Couldn't update from the calendar feed: ${err instanceof Error ? err.message : String(err)}.`);
@@ -5312,7 +5353,7 @@ export class SectionCardsView extends ItemView {
 		// A year from today, inclusive (the day after it is the range's end).
 		const allTo = iso(new Date(ty + 1, tm - 1, td + 1));
 		try {
-			const feed = parseFeed(await this.plugin.fetchFeed(url, true));
+			const feed = await this.plugin.fetchFeedParsed(url, true);
 			const first = feedFirstDay(feed) ?? today;
 			allFrom = [first, scopes.week[0], scopes.month[0], scopes.year[0]].sort()[0];
 			byDay = feedEventsByDays(feed, [...daysBetween(allFrom, allTo), ...dated.map((d) => d.iso)]);
@@ -5370,7 +5411,9 @@ export class SectionCardsView extends ItemView {
 						const filled = mergeFeedLines(body, this.headingLevel, heading, lineFor(iso), marker, placement) ?? body;
 						items.push({ headingRaw: `${"#".repeat(this.headingLevel)} ${title}`, bodyLines: filled });
 					}
-					const created = items.length ? await insertSections(this.app, file, items, this.plugin.settings.newCardPlacement) : 0;
+					const created = items.length
+						? await insertSections(this.app, file, items, this.plugin.settings.newCardPlacement, this.plugin.titleKey(file.path))
+						: 0;
 					if (updated.changed || created) await this.refresh();
 					const parts = [
 						updated.changed ? `updated ${plural(updated.changed, "card")}` : "",
@@ -5452,7 +5495,7 @@ export class SectionCardsView extends ItemView {
 			const lines = entry.holder.section.body.split("\n");
 			let showing = 0;
 			for (const i of taskLineIndexes(lines)) {
-				const open = TASK_RE.exec(lines[i])?.[2] === " ";
+				const open = !taskDone(TASK_RE.exec(lines[i])?.[2]);
 				if (this.taskFilter === "all" || (this.taskFilter === "open") === open) showing++;
 			}
 			if (showing === 0) this.peekNoTasks(entry.el);
@@ -5490,7 +5533,7 @@ export class SectionCardsView extends ItemView {
 		const title = mo(iso, "YYYY-MM-DD").format(this.cardFormat());
 		const headingRaw = `${"#".repeat(this.headingLevel)} ${title}`;
 		const body = await this.plugin.loadTemplateBody(file.path, title);
-		await insertSection(this.app, file, headingRaw, this.plugin.settings.newCardPlacement, body ?? undefined);
+		await insertSection(this.app, file, headingRaw, this.plugin.settings.newCardPlacement, body ?? undefined, this.plugin.titleKey(file.path));
 		await this.refresh();
 		void this.jumpToDate(iso);
 	}
@@ -10298,14 +10341,33 @@ export class SectionCardsView extends ItemView {
 		// Vertical columns run the full pane height: the blank space below a column's
 		// content reorders, like its title bar, so a column can be dropped beside another.
 		if (this.layout === "vertical" && evt.clientY > SectionCardsView.bodyEndY(bodyEl) + 24) return null;
-		const front = this.cardFaces(target.body).front.split("\n");
+		const { front, blocks } = this.dragParse(card, target);
 		const at = this.blockDropAt(evt, bodyEl);
 		if (typeof at.anchorIndex === "number") {
-			const block = movableBlocks(front)[at.anchorIndex];
+			const block = blocks[at.anchorIndex];
 			if (block) return at.anchorSide === "before" ? block.start : block.end;
 		}
 		return at.anchorIndex === "start" ? 0 : front.length;
 	}
+
+	/** A card's front parsed for drops — its lines, movable blocks and nest boundaries —
+	 * kept on the card while its body text stays the same. dragover fires at pointer
+	 * rate; parsing a long card on each event made a hover over it stutter. */
+	private dragParse(card: HTMLElement, target: Section): { front: string[]; blocks: BodyBlock[]; boundaries: number[] } {
+		const cached = this.dragParseCache.get(card);
+		if (cached && cached.body === target.body && cached.level === this.headingLevel) return cached;
+		const front = this.cardFaces(target.body).front.split("\n");
+		const parsed = {
+			body: target.body,
+			level: this.headingLevel,
+			front,
+			blocks: movableBlocks(front),
+			boundaries: nestBoundaries(front, this.headingLevel + 1),
+		};
+		this.dragParseCache.set(card, parsed);
+		return parsed;
+	}
+	private dragParseCache = new WeakMap<HTMLElement, { body: string; level: number; front: string[]; blocks: BodyBlock[]; boundaries: number[] }>();
 
 	/** Mark where a nest would land: before the sub-heading it snaps to, or the card's end. */
 	private showNestMark(card: HTMLElement, bodyEl: HTMLElement, target: Section, dropLine: number): void {
@@ -10314,8 +10376,7 @@ export class SectionCardsView extends ItemView {
 		this.nestTargetEl = card;
 		const moving = this.draggingMany && this.draggingMany.length > 1 ? `${this.draggingMany.length} cards` : `“${this.dragging?.section.title || "(untitled)"}”`;
 		const label = `↳ ${moving} as H${this.headingLevel + 1}`;
-		const front = this.cardFaces(target.body).front.split("\n");
-		const boundaries = nestBoundaries(front, this.headingLevel + 1);
+		const { front, boundaries } = this.dragParse(card, target);
 		const at = nestInsertLine(boundaries, dropLine);
 		if (at >= front.length) {
 			card.addClass("sc-blockdrop-end");
@@ -10427,15 +10488,12 @@ export class SectionCardsView extends ItemView {
 
 	/** The rendered checkboxes that stand for the task lines taskLineIndexes counts, in
 	 * the same order — so a box's ordinal names its line. Obsidian renders more boxes
-	 * than that: custom states like `[/]`, tasks quoted in a callout, and the tasks of
-	 * an embedded note; counted, they'd shift every ordinal after them onto the wrong
-	 * line. */
+	 * than that: tasks quoted in a callout and the tasks of an embedded note; counted,
+	 * they'd shift every ordinal after them onto the wrong line. */
 	static taskBoxes(bodyEl: HTMLElement): HTMLInputElement[] {
-		return Array.from(bodyEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]")).filter((box) => {
-			if (box.closest(".internal-embed, blockquote")) return false;
-			const state = box.dataset.task ?? box.closest<HTMLElement>("li")?.dataset.task ?? "";
-			return state === "" || state === " " || state.toLowerCase() === "x";
-		});
+		return Array.from(bodyEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]")).filter(
+			(box) => !box.closest(".internal-embed, blockquote"),
+		);
 	}
 
 	/** Toggle a section's nth task line in the file and reflect it on its checkbox at
@@ -10662,7 +10720,7 @@ export class SectionCardsView extends ItemView {
 			}
 			embedded?.destroy();
 		};
-		this.activeEditor = { card, finish, autosave, insertTask, discard };
+		this.activeEditor = { card, finish, autosave, insertTask, discard, cancel };
 		if (embedded) {
 			embedded.focusEnd();
 		} else {

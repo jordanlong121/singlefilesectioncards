@@ -499,12 +499,37 @@ export class NoteLibraryModal extends Modal {
 			this.renderList();
 		});
 		this.listEl = contentEl.createDiv({ cls: "sfsc-library-list" });
+		this.missingEl = contentEl.createDiv({ cls: "sfsc-library-missing" });
 		this.renderList();
 		if (!Platform.isMobile) search.focus();
 	}
 
+	private missingEl!: HTMLElement;
+
+	/** Remembered notes whose file is gone can't be listed (nothing to open), so they
+	 * get one line and a button: forget them all, before a new note of the same name
+	 * inherits their pins, colors and placements. */
+	private renderMissing(): void {
+		this.missingEl.empty();
+		const missing = this.plugin.missingNotes();
+		if (!missing.length) return;
+		const n = missing.length;
+		this.missingEl.createSpan({
+			text: `${n} remembered note${n === 1 ? "" : "s"} no longer exist${n === 1 ? "s" : ""}: `,
+		});
+		const btn = this.missingEl.createEl("button", { text: n === 1 ? "Forget it" : "Forget them" });
+		btn.setAttr("aria-label", missing.join("\n"));
+		btn.addEventListener("click", () => {
+			void this.plugin.forgetMissingNotes().then((count) => {
+				new Notice(`Forgot ${count} missing note${count === 1 ? "" : "s"}.`);
+				this.renderList();
+			});
+		});
+	}
+
 	private renderList(): void {
 		this.listEl.empty();
+		this.renderMissing();
 		const entries = this.plugin.libraryEntries(this.query);
 		if (!entries.length) {
 			this.listEl.createDiv({

@@ -304,7 +304,7 @@ export class SectionCardsSettingTab extends PluginSettingTab {
 				items: [
 					{
 						name: "Default heading name",
-						desc: 'Moment.js date format used to pre-fill "New card". Default: YYYY-MM-DD, dddd. Any note can set its own from the toolbar\'s new-card options menu.',
+						desc: 'Moment.js date format used to pre-fill "New card". Default: YYYY-MM-DD, dddd. Any note can set its own from the toolbar\'s new-card options menu. Include the year: a format without one (MMMM D) reads every heading as this year, so an older note\'s days leave the Calendar and Heatmap — and with a weekday in it (dddd, MMMM D) they stop matching at all once the weekday no longer fits.',
 						control: { type: "text", key: "newCardFormat", placeholder: "YYYY-MM-DD, dddd" },
 					},
 					{

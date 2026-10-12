@@ -4,7 +4,8 @@
 // and a calendar series whose rule can't be expanded.
 import {
   parseSections, stepFence, taskLineIndexes, dueTaskSummary, isTodayTitle, parseYamlProperties, setYamlProperty,
-  movableBlocks, moveSectionsInFile, insertSection, parseCards, feedEventsByDays,
+  movableBlocks, moveSectionsInFile, insertSection, insertSections, insertionLine, titleSortKey, parseCards, feedEventsByDays,
+  openTaskCount, toggleTaskLine, NoteHistory, setNoteRecorder, writeSection,
 } from "./.tmp/main.js";
 import { t, ta } from "./harness.mjs";
 import assert from "assert";
@@ -81,4 +82,86 @@ t("feed: a series whose rule can't be expanded is skipped, and the other events 
   ].join("\r\n");
   const days = feedEventsByDays(ics, ["2026-10-11"]);
   assert.deepEqual(days.get("2026-10-11").map((e) => e.title), ["Fine"]);
+});
+
+// ---- the review's recommendations, implemented 2026-10-11
+
+t("placement: logical order follows the date a title names, not its spelling", () => {
+  // The test stub's moment reads only ISO dates, so the key is spelled out here; in
+  // the app titleSortKey reads the note's heading format.
+  const iso = { "Sep 29, 2026": "2026-09-29", "Sep 30, 2026": "2026-09-30", "Oct 1, 2026": "2026-10-01", "Oct 2, 2026": "2026-10-02" };
+  const key = (t) => iso[t] ?? t;
+  assert.equal(titleSortKey("YYYY-MM-DD, dddd")("2026-10-02, Friday"), "2026-10-02");
+  assert.equal(titleSortKey("YYYY-MM-DD, dddd")("Inbox"), "Inbox");
+  const lines = ["## Sep 30, 2026", "a", "", "## Oct 1, 2026", "b", ""];
+  assert.equal(insertionLine(lines, 2, "Oct 2, 2026", "logical"), 3, "by text, Oct 2 lands before Oct 1");
+  assert.equal(insertionLine(lines, 2, "Oct 2, 2026", "logical", key), 5, "by date it goes last");
+  assert.equal(insertionLine(lines, 2, "Sep 29, 2026", "logical", key), 0);
+  // Newest-first notes are detected by date too.
+  const desc = ["## Oct 1, 2026", "b", "", "## Sep 30, 2026", "a", ""];
+  assert.equal(insertionLine(desc, 2, "Oct 2, 2026", "logical", key), 0);
+});
+
+ta("feed inserts: many cards in one parse land where one-at-a-time inserts put them, in order, once", async () => {
+  const make = () => ({ text: "### 2026-10-02, Friday\nb\n\n### 2026-10-05, Monday\ne\n" });
+  const app = (state) => ({ vault: { process: async (_f, fn) => { state.text = fn(state.text); return state.text; } } });
+  const items = [
+    { headingRaw: "### 2026-10-04, Sunday", bodyLines: ["d"] },
+    { headingRaw: "### 2026-10-01, Thursday", bodyLines: ["a"] },
+    { headingRaw: "### 2026-10-03, Saturday", bodyLines: ["c"] },
+    { headingRaw: "### 2026-10-05, Monday", bodyLines: ["dup"] },
+    { headingRaw: "### 2026-10-06, Tuesday", bodyLines: ["f"] },
+    { headingRaw: "### 2026-10-06, Tuesday", bodyLines: ["twice"] },
+  ];
+  const batched = make();
+  assert.equal(await insertSections(app(batched), { path: "f.md" }, items, "logical"), 4);
+  const oneByOne = make();
+  for (const it of items) await insertSection(app(oneByOne), { path: "g.md" }, it.headingRaw, "logical", it.bodyLines.join("\n"));
+  // One-at-a-time would add the duplicate titles; drop those and compare the rest.
+  assert.ok(!batched.text.includes("dup") && !batched.text.includes("twice"));
+  assert.deepEqual(
+    parseCards(batched.text.split("\n"), 3).map((s) => s.title.slice(0, 10)),
+    ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06"],
+  );
+  assert.equal(parseCards(batched.text.split("\n"), 3).find((s) => s.title.startsWith("2026-10-06")).body.trim(), "f");
+  // Bottom placement keeps the given order.
+  const bottom = make();
+  await insertSections(app(bottom), { path: "h.md" }, items.slice(0, 3), "bottom");
+  assert.ok(bottom.text.endsWith("### 2026-10-04, Sunday\nd\n\n### 2026-10-01, Thursday\na\n\n### 2026-10-03, Saturday\nc\n\n"), bottom.text);
+});
+
+t("tasks: custom states count as open tasks and check to [x]", () => {
+  assert.equal(openTaskCount("- [/] half\n- [-] dropped\n- [x] done\n- [ ] todo"), 3);
+  assert.deepEqual(taskLineIndexes(["- [/] half", "- [ ] todo", "- [x] done"]), [0, 1, 2]);
+  assert.equal(toggleTaskLine("- [/] half", "2026-10-11", false), "- [x] half");
+  assert.equal(toggleTaskLine("- [x] done ✅ 2026-10-10", "2026-10-11", true), "- [ ] done");
+  assert.deepEqual(dueTaskSummary("- [>] 📅 2020-01-01 forwarded", "2026-10-11"), { overdue: 1, dueToday: 0 });
+});
+
+t("feed: a series that ended before the span is skipped, one spanning it still lands", () => {
+  const ics = [
+    "BEGIN:VCALENDAR",
+    "BEGIN:VEVENT", "UID:old", "SUMMARY:Old daily", "DTSTART;VALUE=DATE:20200101", "DTEND;VALUE=DATE:20200102", "RRULE:FREQ=DAILY;UNTIL=20200201", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:live", "SUMMARY:Weekly", "DTSTART;VALUE=DATE:20261004", "DTEND;VALUE=DATE:20261005", "RRULE:FREQ=WEEKLY", "END:VEVENT",
+    "END:VCALENDAR", "",
+  ].join("\r\n");
+  const days = feedEventsByDays(ics, ["2026-10-11", "2026-10-12"]);
+  assert.deepEqual(days.get("2026-10-11").map((e) => e.title), ["Weekly"]);
+  assert.deepEqual(days.get("2026-10-12"), []);
+});
+
+ta("history: edits to two cards with the same heading are two undo steps", async () => {
+  const state = { text: "## Todo\na\n\n## Todo\nb\n" };
+  const file = { path: "u.md" };
+  const app = { vault: { process: async (_f, fn) => { state.text = fn(state.text); return state.text; } } };
+  const history = new NoteHistory();
+  const [first, second] = parseCards(state.text.split("\n"), 2);
+  setNoteRecorder((f, before, after, label, key) => { if (f === file) history.record(f.path, before, after, label, key); });
+  try {
+    await writeSection(app, file, 2, first, "## Todo\na1");
+    await writeSection(app, file, 2, second, "## Todo\nb1");
+  } finally {
+    setNoteRecorder(null);
+  }
+  assert.equal(history.undo("u.md", state.text).text, "## Todo\na1\n\n## Todo\nb\n", "the second edit alone comes off");
 });

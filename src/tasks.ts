@@ -46,7 +46,15 @@ export function sortTasksLayout(sections: Section[], format: string, detect: str
 }
 
 /** `- [ ] text`, `* [x] text`, `1. [ ] text` — prefix, mark, closing bracket, text. */
-export const TASK_RE = /^(\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\])(.*)$/;
+/** A task line: any single-character state, as Obsidian renders a checkbox for all of
+ * them — `[ ]` open, `[x]` done, and custom states (`[/]`, `[-]`, `[>]`…), which count
+ * as open until checked. */
+export const TASK_RE = /^(\s*(?:[-*+]|\d+[.)])\s+\[)([^\]])(\])(.*)$/;
+
+/** Whether a task line's state (TASK_RE's second group) is "done". */
+export function taskDone(mark: string | undefined): boolean {
+	return mark?.toLowerCase() === "x";
+}
 
 export const DONE_DATE_RE = /\s*✅\s*\d{4}-\d{2}-\d{2}/g;
 
@@ -67,7 +75,7 @@ export function dueTaskSummary(body: string, todayIso: string): { overdue: numbe
 	// never points at a task the reveal can't find.
 	for (const i of taskLineIndexes(lines)) {
 		const m = TASK_RE.exec(lines[i]);
-		if (!m || m[2] !== " ") continue;
+		if (!m || taskDone(m[2])) continue;
 		const due = DUE_DATE_RE.exec(m[4])?.[1];
 		if (!due) continue;
 		if (due < todayIso) overdue++;
@@ -87,7 +95,7 @@ export function firstDueTaskIndex(body: string, todayIso: string): number | null
 	const indexes = taskLineIndexes(lines);
 	for (let n = 0; n < indexes.length; n++) {
 		const m = TASK_RE.exec(lines[indexes[n]]);
-		if (!m || m[2] !== " ") continue;
+		if (!m || taskDone(m[2])) continue;
 		const due = DUE_DATE_RE.exec(m[4])?.[1];
 		if (!due) continue;
 		if (due < todayIso) return n;
@@ -123,7 +131,7 @@ export function openTaskCount(body: string): number {
 	const lines = body.split("\n");
 	let open = 0;
 	for (const i of taskLineIndexes(lines)) {
-		if (TASK_RE.exec(lines[i])?.[2] === " ") open++;
+		if (!taskDone(TASK_RE.exec(lines[i])?.[2])) open++;
 	}
 	return open;
 }

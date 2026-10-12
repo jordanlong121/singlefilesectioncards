@@ -150,6 +150,12 @@ export function feedEventsByDays(feed: ParsedFeed | string, dayIsos: string[]): 
 	for (const event of parsed.singles) consider(event, event.startDate, event.endDate, null);
 	for (const event of parsed.exceptions) consider(event, event.startDate, event.endDate, event.recurrenceId);
 	for (const event of parsed.series) {
+		// A series over before the span, or starting after it, has no occurrence to find:
+		// skipped before its rule is walked from its start (a daily series since 2000 is
+		// thousands of steps otherwise).
+		if (event.startDate.toJSDate() >= spanEnd) continue;
+		const rule = event.component.getFirstPropertyValue("rrule") as { until?: { toJSDate: () => Date } | null } | null;
+		if (rule?.until && rule.until.toJSDate() < spanStart) continue;
 		// A rule ical.js can't walk (BYMONTH=13, an unknown FREQ) is that series' problem
 		// alone: it's skipped, and every other event still reaches its day.
 		try {
