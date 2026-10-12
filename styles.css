@@ -1070,18 +1070,26 @@ body.is-mobile .is-layout-tight .section-card-body {
 	min-height: 0;
 }
 
-/* A slot names its day — "Mon, Oct 12" — in place of the card's heading, which spells
-   the same date out at length. The heading comes back on a day made big. The label is
-   built into every day card's header and only shows here. */
+/* One bar of text per day. In the Month range that's the card's own bar, naming its
+   day — "Mon, Oct 12" — in place of the heading, which spells the same date out at
+   length (the label is built into the card's header and only shows here). The 2 weeks,
+   Week and Day ranges head each slot from above — the day-name row, or the nav label —
+   so there the card's bar goes altogether. The heading comes back on a day made big. */
 .sc-cal-date {
 	display: none;
 }
 
-.is-layout-calendar .section-card:not(.is-maximized) .section-card-title {
+.is-cal-month .section-card:not(.is-maximized) .section-card-title {
 	display: none;
 }
 
-.is-layout-calendar .section-card:not(.is-maximized) .sc-cal-date {
+.is-cal-week .section-card:not(.is-maximized) > .section-card-header,
+.is-cal-2weeks .section-card:not(.is-maximized) > .section-card-header,
+.is-cal-day .section-card:not(.is-maximized) > .section-card-header {
+	display: none;
+}
+
+.is-cal-month .section-card:not(.is-maximized) .sc-cal-date {
 	display: block;
 	flex: 1 1 auto;
 	min-width: 0;
@@ -1291,11 +1299,19 @@ body.is-mobile .is-layout-tight .section-card-body {
 }
 
 /* Only the months scroll under their weekday names; one range holds still, and a
-   second sticky row would sit on top of the nav row's. */
+   second sticky row would sit on top of the nav row's. Here the row names each day
+   in full ("Wed, Oct 14") and is the slot's only heading, so it reads at full strength. */
 .is-cal-week .sc-cal-dow,
 .is-cal-2weeks .sc-cal-dow,
 .is-cal-day .sc-cal-dow {
 	position: static;
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+}
+
+.is-cal-week .sc-cal-dow.is-today,
+.is-cal-2weeks .sc-cal-dow.is-today {
+	color: var(--text-accent);
 }
 
 /* The Week and Day ranges take the card styling every other layout uses — type,
