@@ -57,7 +57,14 @@ export function headingLinkEdits(app: App, target: TFile, line: number, oldTitle
 			const found = encodings.find((enc) => ref.original.includes(enc(ref.link)));
 			if (!found) continue;
 			const wiki = /^!?\[\[/.test(ref.original);
-			const to = ref.original.replace(found(ref.link), wiki ? newLink : newLink.replace(/ /g, "%20"));
+			// Spliced by offset, not String.replace: a heading with "$&" or "$$" in it
+			// would otherwise be read as a replacement pattern. A Markdown link's text
+			// may read the same as its destination, which follows it — so there the last
+			// occurrence is the one to swap.
+			const needle = found(ref.link);
+			const at = wiki ? ref.original.indexOf(needle) : ref.original.lastIndexOf(needle);
+			const replacement = wiki ? newLink : newLink.replace(/ /g, "%20");
+			const to = ref.original.slice(0, at) + replacement + ref.original.slice(at + needle.length);
 			if (to === ref.original) continue;
 			const edits = out.get(source) ?? [];
 			edits.push({ start: ref.position.start.offset, end: ref.position.end.offset, from: ref.original, to });

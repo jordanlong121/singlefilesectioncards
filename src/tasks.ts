@@ -3,7 +3,7 @@
 import { App, TFile } from "obsidian";
 import { processNote } from "./history";
 import { SortOrder } from "./settings";
-import { Section, FENCE_RE, sortSections, bodyStartLine, locateCard } from "./sections";
+import { Section, stepFence, sortSections, bodyStartLine, locateCard } from "./sections";
 import { titleToIso } from "./dates";
 
 /** The slice of the Tasks community plugin's public API this plugin uses. */
@@ -62,8 +62,11 @@ export function dueTaskSummary(body: string, todayIso: string): { overdue: numbe
 	let overdue = 0;
 	let dueToday = 0;
 	if (!body.includes("📅") && !body.includes("due::")) return { overdue, dueToday };
-	for (const line of body.split("\n")) {
-		const m = TASK_RE.exec(line);
+	const lines = body.split("\n");
+	// The same task lines the badge's reveal counts (fenced code skipped), so a badge
+	// never points at a task the reveal can't find.
+	for (const i of taskLineIndexes(lines)) {
+		const m = TASK_RE.exec(lines[i]);
 		if (!m || m[2] !== " ") continue;
 		const due = DUE_DATE_RE.exec(m[4])?.[1];
 		if (!due) continue;
@@ -95,7 +98,7 @@ export function firstDueTaskIndex(body: string, todayIso: string): number | null
 
 export function taskLineIndexes(lines: string[]): number[] {
 	const out: number[] = [];
-	let inFence = false;
+	let fence: string | null = null;
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
 		// First-character gate: fences open with a backtick/tilde or indentation, and
@@ -103,11 +106,12 @@ export function taskLineIndexes(lines: string[]): number[] {
 		// card per render (and per hierarchy badge count), so cheap rejection matters.
 		const c0 = line.charCodeAt(0);
 		const indented = c0 === 32 || c0 === 9;
-		if ((c0 === 96 || c0 === 126 || indented) && FENCE_RE.test(line)) {
-			inFence = !inFence;
-			continue;
+		if (c0 === 96 || c0 === 126 || indented) {
+			const step = stepFence(line, fence);
+			fence = step.open;
+			if (step.marker) continue;
 		}
-		if (inFence) continue;
+		if (fence) continue;
 		const listish = indented || c0 === 45 || c0 === 42 || c0 === 43 || (c0 >= 48 && c0 <= 57);
 		if (listish && TASK_RE.test(line)) out.push(i);
 	}

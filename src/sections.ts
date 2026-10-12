@@ -48,6 +48,27 @@ export const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 
 export const FENCE_RE = /^\s*(```|~~~)/;
 
+/** A fence line's marker run and what follows it on the line. */
+const FENCE_LINE_RE = /^\s*(`{3,}|~{3,})(.*)$/;
+
+/**
+ * Fenced-code tracking, one line at a time: given the fence open before this line
+ * (its marker run, or null), the fence open after it, and whether the line is itself
+ * a fence marker. A fence closes only on its own character and at least its own
+ * length, as Markdown has it — a ``` fence isn't closed by a ~~~ line, nor a ````
+ * one by ```. A single line like ```echo``` is inline code, not an opening fence.
+ */
+export function stepFence(line: string, open: string | null): { open: string | null; marker: boolean } {
+	const m = FENCE_LINE_RE.exec(line);
+	if (!m) return { open, marker: false };
+	if (open) {
+		const closes = m[1][0] === open[0] && m[1].length >= open.length && m[2].trim() === "";
+		return closes ? { open: null, marker: true } : { open, marker: false };
+	}
+	if (m[1][0] === "`" && m[2].includes("`")) return { open: null, marker: false };
+	return { open: m[1], marker: true };
+}
+
 /** An ISO date anywhere in a title — the one spelling every date feature recognizes. */
 export const ISO_DATE_RE = /\d{4}-\d{2}-\d{2}/;
 
@@ -62,7 +83,7 @@ export function validIsoDate(iso: string): boolean {
 
 export function parseSections(lines: string[], level: number): Section[] {
 	const sections: Section[] = [];
-	let inFence = false;
+	let fence: string | null = null;
 	let inFrontmatter = false;
 	// Only blanks seen so far: a properties block still counts after stray leading
 	// blank lines, so its `---` fences never read as content (see firstContentLine).
@@ -91,11 +112,12 @@ export function parseSections(lines: string[], level: number): Section[] {
 		// headings with '#'. Most lines are neither, and skipping both regexes for them
 		// makes this parse — which runs on every refresh — mostly a charCode scan.
 		const c0 = line.charCodeAt(0);
-		if ((c0 === 96 || c0 === 126 || c0 === 32 || c0 === 9) && FENCE_RE.test(line)) {
-			inFence = !inFence;
-			continue;
+		if (c0 === 96 || c0 === 126 || c0 === 32 || c0 === 9) {
+			const step = stepFence(line, fence);
+			fence = step.open;
+			if (step.marker) continue;
 		}
-		if (inFence || c0 !== 35) continue;
+		if (fence || c0 !== 35) continue;
 
 		const match = HEADING_RE.exec(line);
 		if (!match) continue;
@@ -201,13 +223,12 @@ export function unfiledSection(lines: string[], title: string): Section | null {
 	while (start < lines.length && lines[start].trim() === "") start++;
 
 	let end = lines.length;
-	let inFence = false;
+	let fence: string | null = null;
 	for (let i = start; i < lines.length; i++) {
-		if (FENCE_RE.test(lines[i])) {
-			inFence = !inFence;
-			continue;
-		}
-		if (!inFence && HEADING_RE.test(lines[i])) {
+		const step = stepFence(lines[i], fence);
+		fence = step.open;
+		if (step.marker) continue;
+		if (!fence && HEADING_RE.test(lines[i])) {
 			end = i;
 			break;
 		}
@@ -365,7 +386,13 @@ export function parseYamlProperties(yaml: string): YamlProperty[] {
 			const folded: string[] = [];
 			let indent = "  ";
 			let end = i;
-			while (i < lines.length && (/^\s+\S/.test(lines[i]) || lines[i].trim() === "")) {
+			// Block-list items may sit at the key's own column ("- a" under "tags:"),
+			// as YAML allows and many tools write.
+			const listAtColumn0 = rawValue === "";
+			while (
+				i < lines.length &&
+				(/^\s+\S/.test(lines[i]) || lines[i].trim() === "" || (listAtColumn0 && /^-(\s|$)/.test(lines[i])))
+			) {
 				const item = /^(\s*)-\s*(.*)$/.exec(lines[i]);
 				if (item) {
 					if (!items.length) indent = item[1];
@@ -484,7 +511,7 @@ export interface AncestorHeading {
  */
 export function parseAncestorHeadings(lines: string[], cardLevel: number): AncestorHeading[] {
 	const found: AncestorHeading[] = [];
-	let inFence = false;
+	let fence: string | null = null;
 	let inFrontmatter = false;
 	let beforeContent = true; // as in parseSections: properties survive leading blanks
 	for (let i = 0; i < lines.length; i++) {
@@ -503,11 +530,12 @@ export function parseAncestorHeadings(lines: string[], cardLevel: number): Ances
 		}
 		// Same first-character gate as parseSections; this too runs per refresh.
 		const c0 = line.charCodeAt(0);
-		if ((c0 === 96 || c0 === 126 || c0 === 32 || c0 === 9) && FENCE_RE.test(line)) {
-			inFence = !inFence;
-			continue;
+		if (c0 === 96 || c0 === 126 || c0 === 32 || c0 === 9) {
+			const step = stepFence(line, fence);
+			fence = step.open;
+			if (step.marker) continue;
 		}
-		if (inFence || c0 !== 35) continue;
+		if (fence || c0 !== 35) continue;
 		const match = HEADING_RE.exec(line);
 		if (!match) continue;
 		const rank = match[1].length;
@@ -757,7 +785,7 @@ export function sectionFromEdited(original: Section, edited: string): Section {
 export function pickHeadingLevel(lines: string[], preferred: number): number {
 	// One scan tallies every level at once; parseSections per level cost up to 7 passes.
 	const counts = [0, 0, 0, 0, 0, 0, 0];
-	let inFence = false;
+	let fence: string | null = null;
 	let inFrontmatter = false;
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
@@ -769,11 +797,10 @@ export function pickHeadingLevel(lines: string[], preferred: number): number {
 			if (line.trim() === "---") inFrontmatter = false;
 			continue;
 		}
-		if (FENCE_RE.test(line)) {
-			inFence = !inFence;
-			continue;
-		}
-		if (inFence) continue;
+		const step = stepFence(line, fence);
+		fence = step.open;
+		if (step.marker) continue;
+		if (fence) continue;
 		const match = HEADING_RE.exec(line);
 		if (match) counts[match[1].length]++;
 	}
@@ -837,11 +864,12 @@ export function levelCoverage(lines: string[], level: number): LevelCoverage {
 	let hiddenLines = 0;
 	const under = new Map<number, number>();
 	let current = headings[0].level;
-	let inFence = false;
+	let fence: string | null = null;
 	for (let i = headings[0].line; i < lines.length; i++) {
 		const line = lines[i];
-		if (FENCE_RE.test(line)) inFence = !inFence;
-		const h = !inFence ? headingAt.get(i) : undefined;
+		const step = stepFence(line, fence);
+		fence = step.open;
+		const h = !fence && !step.marker ? headingAt.get(i) : undefined;
 		if (h !== undefined) {
 			current = h;
 			continue;

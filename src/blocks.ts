@@ -1,6 +1,6 @@
 // A section body as movable blocks: paragraphs, list items, fences; stars; card faces.
 
-import { Section, HEADING_RE, FENCE_RE, parseSections, bodyStartLine } from "./sections";
+import { Section, HEADING_RE, FENCE_RE, stepFence, parseSections, bodyStartLine } from "./sections";
 
 /** One draggable unit of a section body: a top-level list item (with its children) or a paragraph. */
 export interface BodyBlock {
@@ -76,10 +76,17 @@ export function sectionBlocks(body: string[]): BodyBlock[] {
 		}
 		const start = i;
 
-		if (FENCE_RE.test(line)) {
+		const fenceOpen = stepFence(line, null);
+		if (fenceOpen.marker) {
+			// To the matching close (same character, at least as long), or the body's end.
+			let fence = fenceOpen.open;
 			i++;
-			while (i < body.length && !FENCE_RE.test(body[i])) i++;
-			if (i < body.length) i++;
+			while (i < body.length) {
+				const step = stepFence(body[i], fence);
+				fence = step.open;
+				i++;
+				if (step.marker && fence === null) break;
+			}
 			blocks.push({ kind: "other", start, end: i });
 		} else if (COMMENT_LINE_RE.test(line)) {
 			blocks.push({ kind: "other", start, end: ++i });
@@ -112,10 +119,25 @@ export function sectionBlocks(body: string[]): BodyBlock[] {
 			// indent falls short of this item's content column, which Markdown renders
 			// as the next item of the same list (" - [ ] x" under "- [ ] y", say).
 			const contentCol = itemContentColumn(line);
-			while (i < body.length && !isBlank(body[i]) && /^[\t ]/.test(body[i])) {
-				const nested = INDENTED_ITEM_RE.exec(body[i]);
-				if (nested && indentWidth(nested[1]) < contentCol) break;
-				i++;
+			const children = () => {
+				while (i < body.length && !isBlank(body[i]) && /^[\t ]/.test(body[i])) {
+					const nested = INDENTED_ITEM_RE.exec(body[i]);
+					if (nested && indentWidth(nested[1]) < contentCol) break;
+					i++;
+				}
+			};
+			children();
+			// A blank line, then text indented to the item's content column (or past
+			// it), is the item's own continuation paragraph: it moves with the item.
+			// Left behind, it would sit under the heading as an indented code block.
+			for (;;) {
+				let j = i;
+				while (j < body.length && isBlank(body[j])) j++;
+				if (j === i || j >= body.length) break;
+				const lead = /^([\t ]+)\S/.exec(body[j]);
+				if (!lead || indentWidth(lead[1]) < contentCol) break;
+				i = j;
+				children();
 			}
 			blocks.push({ kind: "item", start, end: i });
 		} else if (/^[\t ]/.test(line) && !indentedParagraph(line, blocks, body)) {
