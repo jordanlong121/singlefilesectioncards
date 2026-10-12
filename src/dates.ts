@@ -13,7 +13,16 @@ import type { CalendarRange } from "./settings";
 export function isTodayTitle(title: string, todayISO: string, todayFormatted: string): boolean {
 	if (title.includes(todayISO)) return true;
 	const formatted = todayFormatted.trim().toLowerCase();
-	return formatted.length > 3 && title.toLowerCase().includes(formatted);
+	if (formatted.length <= 3) return false;
+	// Whole words only: "6 August 2026" is the end of "16 August 2026" and "26 August
+	// 2026", and "October 1" the start of "October 10" — a substring test would mark
+	// those days today too.
+	const lower = title.toLowerCase();
+	const isWordChar = (ch: string | undefined) => !!ch && /[\p{L}\p{N}]/u.test(ch);
+	for (let at = lower.indexOf(formatted); at >= 0; at = lower.indexOf(formatted, at + 1)) {
+		if (!isWordChar(lower[at - 1]) && !isWordChar(lower[at + formatted.length])) return true;
+	}
+	return false;
 }
 
 /** A parsed date plus the [start, end) span of the title's characters that spelled it,

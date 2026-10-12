@@ -180,12 +180,18 @@ export default class SectionCardsPlugin extends Plugin {
 			},
 		});
 
-		const onFileChange = debounce(
-			(file: TFile) => {
+		// Changes are gathered for 400 ms, then every changed note's views refresh —
+		// a debounce keeping only the last file would leave the others stale when a
+		// sync writes several notes at once.
+		const changedPaths = new Set<string>();
+		const flushFileChanges = debounce(
+			() => {
+				const paths = new Set(changedPaths);
+				changedPaths.clear();
 				for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
 					const view = leaf.view;
 					if (!(view instanceof SectionCardsView)) continue; // deferred placeholder
-					if (view.filePath === file.path && !view.isEditing() && !view.isMaximized()) void view.refresh();
+					if (paths.has(view.filePath) && !view.isEditing() && !view.isMaximized()) void view.refresh();
 				}
 			},
 			400,
@@ -194,7 +200,9 @@ export default class SectionCardsPlugin extends Plugin {
 
 		this.registerEvent(
 			this.app.vault.on("modify", (file) => {
-				if (file instanceof TFile) onFileChange(file);
+				if (!(file instanceof TFile)) return;
+				changedPaths.add(file.path);
+				flushFileChanges();
 			}),
 		);
 
@@ -219,7 +227,25 @@ export default class SectionCardsPlugin extends Plugin {
 			this.app.vault.on("rename", (file, oldPath) => {
 				this.history.rename(oldPath, file.path);
 				let changed = false;
+				// The default note, and each note's template and background image, are
+				// held by path too — a renamed one would otherwise be "not found".
+				if (this.settings.filePath === oldPath) {
+					this.settings.filePath = file.path;
+					changed = true;
+				}
+				if (this.settings.deckBackground?.backgroundImage === oldPath) {
+					this.settings.deckBackground.backgroundImage = file.path;
+					changed = true;
+				}
 				for (const entry of Object.values(this.settings.perFile ?? {})) {
+					if (entry.templatePath === oldPath) {
+						entry.templatePath = file.path;
+						changed = true;
+					}
+					if (entry.backgroundImage === oldPath) {
+						entry.backgroundImage = file.path;
+						changed = true;
+					}
 					const rect = entry.imagesGrid?.[oldPath];
 					if (rect && entry.imagesGrid) {
 						entry.imagesGrid[file.path] = rect;
@@ -278,10 +304,15 @@ export default class SectionCardsPlugin extends Plugin {
 					if (showing.length === 1) leaf = showing[0];
 				}
 				if (!leaf) return;
+				// A leaf the user deliberately made this note's editor (the card's open-in-
+				// editor button, "Forget this note") stays one: file-open fires again every
+				// time they switch back to its tab.
+				if (this.deliberateEditor.get(leaf) === file.path) return;
 				const target = leaf;
 				window.setTimeout(() => {
 					const v = target.view;
 					if (!(v instanceof MarkdownView) || v.file?.path !== file.path) return;
+					if (!this.getStoredView(file.path)) return; // forgotten meanwhile
 					void target.setViewState({
 						type: VIEW_TYPE_SECTION_CARDS,
 						active: true,
@@ -729,7 +760,9 @@ export default class SectionCardsPlugin extends Plugin {
 			(current.hierarchy ?? false) === (view.hierarchy ?? false) &&
 			(current.sections ?? false) === (view.sections ?? false) &&
 			(current.starredOnly ?? false) === (view.starredOnly ?? false) &&
-			(current.taskFilter ?? "all") === (view.taskFilter ?? "all")
+			(current.taskFilter ?? "all") === (view.taskFilter ?? "all") &&
+			(current.groupBy ?? "none") === (view.groupBy ?? "none") &&
+			(current.calendarRange ?? "month") === (view.calendarRange ?? "month")
 		) {
 			return;
 		}
@@ -1222,7 +1255,9 @@ export default class SectionCardsPlugin extends Plugin {
 			return;
 		}
 		this.skipAutoOpen = { path: template.path, until: Date.now() + 2000 };
-		await this.mainWindowTab().openFile(template, { active: true, state: { mode: "source" } });
+		const leaf = this.mainWindowTab();
+		this.deliberateEditor.set(leaf, template.path);
+		await leaf.openFile(template, { active: true, state: { mode: "source" } });
 	}
 
 	getCustomGrid(path: string): Record<string, CardRect> {
@@ -1370,8 +1405,13 @@ export default class SectionCardsPlugin extends Plugin {
 						const view = leaf.view;
 						if (!(view instanceof SectionCardsView) || view.deckMode || view.sticky) continue;
 						if (view.getFile()?.path !== path) continue;
-						if (file) await leaf.openFile(file, { active: true });
-						else leaf.detach();
+						if (file) {
+							// Auto-open would swap the editor straight back to cards (the
+							// note is still remembered until forgetNote below): not this trip.
+							this.skipAutoOpen = { path: file.path, until: Date.now() + 2000 };
+							this.deliberateEditor.set(leaf, file.path);
+							await leaf.openFile(file, { active: true });
+						} else leaf.detach();
 					}
 					await this.forgetNote(path);
 					new Notice(`Forgot “${file?.basename ?? path}”.`);
@@ -1512,6 +1552,9 @@ export default class SectionCardsPlugin extends Plugin {
 	/** The one note whose next markdown open must NOT be swapped back to cards (the link
 	 * button's deliberate editor trip); time-boxed so a stale flag can't linger. */
 	private skipAutoOpen: { path: string; until: number } | null = null;
+	/** Leaves the user deliberately made a note's editor, by note path: auto-open
+	 * leaves them alone when their tab is switched back to. */
+	private deliberateEditor = new WeakMap<WorkspaceLeaf, string>();
 
 	/** Open the note in an editor with the cursor parked on the given heading line. */
 	/**
@@ -1530,6 +1573,7 @@ export default class SectionCardsPlugin extends Plugin {
 	async revealSection(file: TFile, line: number): Promise<void> {
 		this.skipAutoOpen = { path: file.path, until: Date.now() + 2000 };
 		const leaf = this.mainWindowTab();
+		this.deliberateEditor.set(leaf, file.path);
 		await leaf.openFile(file, { active: true, state: { mode: "source" } });
 		const view = leaf.view;
 		if (view instanceof MarkdownView) {

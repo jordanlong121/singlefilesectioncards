@@ -36,10 +36,47 @@ export interface ParsedFeed {
 	exceptions: ICAL.Event[];
 }
 
+/**
+ * The feed as a component tree. ical.js refuses a whole document over one bad value
+ * (an RRULE with BYMONTH=13, say), so when the feed won't parse, each event is tried
+ * on its own and the ones the reader can't take are left out; the rest of the feed
+ * still parses. A feed that fails even then throws its original error.
+ */
+function parseCalendar(ics: string): ICAL.Component {
+	try {
+		// ICAL.parse is typed `any`; one VCALENDAR parses to one jCal component array.
+		return new ICAL.Component(ICAL.parse(ics) as unknown[]);
+	} catch (err) {
+		const lines = ics.split(/\r?\n/);
+		const kept: string[] = [];
+		let block: string[] | null = null;
+		let dropped = 0;
+		for (const line of lines) {
+			if (line === "BEGIN:VEVENT") block = [];
+			if (block) {
+				block.push(line);
+				if (line === "END:VEVENT") {
+					try {
+						ICAL.parse(["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//probe//EN", ...block, "END:VCALENDAR"].join("\r\n"));
+						kept.push(...block);
+					} catch (bad) {
+						dropped++;
+						console.error("Single File Section Cards: skipping a calendar event the feed reader can't parse", bad);
+					}
+					block = null;
+				}
+				continue;
+			}
+			kept.push(line);
+		}
+		if (!dropped) throw err;
+		return new ICAL.Component(ICAL.parse(kept.join("\r\n")) as unknown[]);
+	}
+}
+
 /** Read a feed's text once, for any number of days. Throws when it isn't iCalendar. */
 export function parseFeed(ics: string): ParsedFeed {
-	// ICAL.parse is typed `any`; one VCALENDAR parses to one jCal component array.
-	const root = new ICAL.Component(ICAL.parse(ics) as unknown[]);
+	const root = parseCalendar(ics);
 	// The feed's zones first, so every TZID it uses resolves (Google's carry their own).
 	for (const zone of root.getAllSubcomponents("vtimezone")) ICAL.TimezoneService.register(zone);
 	// Occurrences moved or cancelled one at a time arrive as their own VEVENTs, sharing
@@ -49,10 +86,16 @@ export function parseFeed(ics: string): ParsedFeed {
 	const singles: ICAL.Event[] = [];
 	const exceptions: ICAL.Event[] = [];
 	for (const component of root.getAllSubcomponents("vevent")) {
-		const event = new ICAL.Event(component);
-		if (event.isRecurrenceException()) exceptions.push(event);
-		else if (event.isRecurring()) series.set(event.uid, event);
-		else singles.push(event);
+		// One event ical.js can't read (a rule with BYMONTH=13, say) is left out alone;
+		// the rest of the feed still reaches its days.
+		try {
+			const event = new ICAL.Event(component);
+			if (event.isRecurrenceException()) exceptions.push(event);
+			else if (event.isRecurring()) series.set(event.uid, event);
+			else singles.push(event);
+		} catch (err) {
+			console.error("Single File Section Cards: skipping a calendar event the feed reader can't parse", err);
+		}
 	}
 	for (const exception of exceptions) series.get(exception.uid)?.relateException(exception);
 	return { singles, series: [...series.values()], exceptions };
@@ -107,16 +150,22 @@ export function feedEventsByDays(feed: ParsedFeed | string, dayIsos: string[]): 
 	for (const event of parsed.singles) consider(event, event.startDate, event.endDate, null);
 	for (const event of parsed.exceptions) consider(event, event.startDate, event.endDate, event.recurrenceId);
 	for (const event of parsed.series) {
-		const expand = event.iterator();
-		// Occurrences are walked from the series' start until one begins after the span
-		// ends; a long event that began earlier still overlaps, so the stop is on the
-		// start alone. The day after is compared as a date for all-day series.
-		for (let n = 0, next = expand.next(); next && n < MAX_OCCURRENCES; n++, next = expand.next()) {
-			if (next.isDate ? next.toString() >= spanEndIso : next.toJSDate() >= spanEnd) break;
-			const details = event.getOccurrenceDetails(next);
-			// A moved occurrence is its exception's to report, on its own dates.
-			if (details.item !== event) continue;
-			consider(event, details.startDate, details.endDate, details.recurrenceId);
+		// A rule ical.js can't walk (BYMONTH=13, an unknown FREQ) is that series' problem
+		// alone: it's skipped, and every other event still reaches its day.
+		try {
+			const expand = event.iterator();
+			// Occurrences are walked from the series' start until one begins after the span
+			// ends; a long event that began earlier still overlaps, so the stop is on the
+			// start alone. The day after is compared as a date for all-day series.
+			for (let n = 0, next = expand.next(); next && n < MAX_OCCURRENCES; n++, next = expand.next()) {
+				if (next.isDate ? next.toString() >= spanEndIso : next.toJSDate() >= spanEnd) break;
+				const details = event.getOccurrenceDetails(next);
+				// A moved occurrence is its exception's to report, on its own dates.
+				if (details.item !== event) continue;
+				consider(event, details.startDate, details.endDate, details.recurrenceId);
+			}
+		} catch (err) {
+			console.error("Single File Section Cards: skipping a calendar series its rule can't expand", err);
 		}
 	}
 

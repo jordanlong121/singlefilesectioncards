@@ -1409,7 +1409,10 @@ export class SavedLayoutChangesModal extends Modal {
 		this.onChoice = onChoice;
 	}
 
+	private chosen = false;
+
 	private choose(choice: "save" | "discard" | "cancel"): void {
+		this.chosen = true;
 		this.close();
 		this.onChoice(choice);
 	}
@@ -1428,6 +1431,12 @@ export class SavedLayoutChangesModal extends Modal {
 
 	onClose(): void {
 		this.contentEl.empty();
+		// Esc or a click outside is a cancel too: the caller resets what it was about to
+		// change (the saved-layout picker shows the layout still on the canvas).
+		if (!this.chosen) {
+			this.chosen = true;
+			this.onChoice("cancel");
+		}
 	}
 }
 

@@ -456,6 +456,9 @@ export class SectionCardsView extends ItemView {
 		card: HTMLElement;
 		finish: (save: boolean) => Promise<void>;
 		autosave: () => Promise<void>;
+		/** Tear the editor down without writing or refreshing: its autosave stops and
+		 * its CodeMirror is destroyed, so a render over it can't leave either behind. */
+		discard: () => void;
 		/** Ctrl/⌘+T: a new task line via the Tasks plugin's dialog, at the cursor. */
 		insertTask: () => void;
 	} | null = null;
@@ -644,6 +647,10 @@ export class SectionCardsView extends ItemView {
 	private levelOptionsShown = "";
 	/** The toolbar's filter box, so the Ctrl/⌘+F shortcut can focus it. */
 	private filterInput: HTMLInputElement | null = null;
+	/** onOpen's deferred first render, until setState renders first (it usually does). */
+	private firstSyncPending = false;
+	/** The note the cards on the wall were built for; another note starts from none. */
+	private renderedPath: string | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: SectionCardsPlugin) {
 		super(leaf);
@@ -688,6 +695,7 @@ export class SectionCardsView extends ItemView {
 	}
 
 	async setState(state: CardsViewState, result: ViewStateResult): Promise<void> {
+		this.firstSyncPending = false;
 		if (state?.filePath) this.filePath = state.filePath;
 		this.deckMode = !!state?.deck;
 		this.sticky = typeof state?.sticky === "string" && state.sticky ? state.sticky : null;
@@ -1185,7 +1193,8 @@ export class SectionCardsView extends ItemView {
 		this.trayToggleBtn = zoomBar.createEl("button", { cls: "section-cards-tray-fold" });
 		this.trayToggleBtn.addEventListener("click", () => void this.setTrayCollapsed(!this.plugin.getTrayCollapsed(this.filePath)));
 		this.syncTrayToggle();
-		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
+		// The view's own document: in a popout window the main document never hears it.
+		this.registerDomEvent(this.contentEl.doc, "keydown", (evt: KeyboardEvent) => {
 			if (evt.key !== "Escape") return;
 			// An open card editor's own Escape handling wins (textarea or live preview).
 			if (this.activeEditor) return;
@@ -1471,7 +1480,7 @@ export class SectionCardsView extends ItemView {
 		// a button moves focus off the textarea, and the textarea-level handler then never
 		// hears the shortcut. finish() is settled-guarded, so both firing is harmless.
 		this.registerDomEvent(
-			document,
+			this.contentEl.doc,
 			"keydown",
 			(evt: KeyboardEvent) => {
 				const open = this.activeEditor;
@@ -1548,15 +1557,17 @@ export class SectionCardsView extends ItemView {
 				this.gridEl.scrollLeft = startLeft - (e.clientX - startX);
 				this.gridEl.scrollTop = startTop - (e.clientY - startY);
 			};
+			// The view's own window: a popout's pointer never reaches the main one.
+			const win = this.contentEl.win;
 			const up = () => {
-				window.removeEventListener("pointermove", move);
-				window.removeEventListener("pointerup", up);
-				window.removeEventListener("pointercancel", up);
+				win.removeEventListener("pointermove", move);
+				win.removeEventListener("pointerup", up);
+				win.removeEventListener("pointercancel", up);
 				this.gridEl.removeClass("is-panning");
 			};
-			window.addEventListener("pointermove", move);
-			window.addEventListener("pointerup", up);
-			window.addEventListener("pointercancel", up);
+			win.addEventListener("pointermove", move);
+			win.addEventListener("pointerup", up);
+			win.addEventListener("pointercancel", up);
 		});
 
 		// Where the press started decides whether the click that follows is a click-away:
@@ -1590,8 +1601,17 @@ export class SectionCardsView extends ItemView {
 			if (open && !this.pressInOpenEditor) void open.finish(true);
 		});
 
-		this.applyStoredView();
-		await this.syncView();
+		// Obsidian hands the tab its restored state (setState) right after onOpen, and
+		// that note — not the constructor's default — is what the first render is for.
+		// A tick's grace lets setState take the first render; a view opened with no
+		// state at all still renders after it.
+		this.firstSyncPending = true;
+		this.contentEl.win.setTimeout(() => {
+			if (!this.firstSyncPending) return;
+			this.firstSyncPending = false;
+			this.applyStoredView();
+			void this.syncView();
+		}, 0);
 	}
 
 	/**
@@ -1689,11 +1709,17 @@ export class SectionCardsView extends ItemView {
 		// A view closed with an editor still open writes that editor's content out
 		// instead of dropping it — covered by either the save-on-leave default or
 		// the periodic-autosave opt-in.
-		if ((this.plugin.settings.saveOnLeave || this.plugin.settings.autosaveEnabled) && this.activeEditor) {
-			await this.activeEditor.autosave().catch(() => {});
+		const open = this.activeEditor;
+		if (open) {
+			if (this.plugin.settings.saveOnLeave || this.plugin.settings.autosaveEnabled) await open.autosave().catch(() => {});
+			open.discard();
 			this.activeEditor = null;
 			this.editingKey = null;
 		}
+		// Deferred body renders stop at a generation they don't own: nothing renders
+		// into a closed view. A pointer drag mid-close drops its ghost and listeners.
+		this.renderGeneration++;
+		this.abortPointerDrag();
 		for (const entry of this.cardEntries) this.removeChild(entry.scope);
 		this.cardEntries = [];
 		this.cardObserver?.disconnect();
@@ -1794,7 +1820,7 @@ export class SectionCardsView extends ItemView {
 		const nth = firstDueTaskIndex(this.cardFaces(section.body).front, iso);
 		const bodyEl = card.querySelector<HTMLElement>(".section-card-body");
 		if (nth === null || !bodyEl) return;
-		const box = Array.from(bodyEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]"))[nth];
+		const box = SectionCardsView.taskBoxes(bodyEl)[nth];
 		const line = box?.closest<HTMLElement>("li") ?? box;
 		if (!line) return;
 		line.scrollIntoView({ block: "center", inline: "nearest" });
@@ -3200,8 +3226,7 @@ export class SectionCardsView extends ItemView {
 			this.clearPlannerDropMarks();
 		});
 		const toggle = (box: HTMLInputElement) => {
-			const boxes = Array.from(body.querySelectorAll<HTMLInputElement>("input[type=checkbox]"));
-			const nth = boxes.indexOf(box);
+			const nth = SectionCardsView.taskBoxes(body).indexOf(box);
 			if (nth >= 0) void this.toggleNthTask(file, section, ctx.tasksBefore + nth, box, item);
 		};
 		item.addEventListener("click", (evt) => {
@@ -3337,10 +3362,11 @@ export class SectionCardsView extends ItemView {
 			if (!drag) return;
 			evt.preventDefault();
 			evt.stopPropagation();
+			// Aimed first: aim() excludes the dragged item only while it's still the drag.
+			const { anchor, before } = aim(evt);
 			this.clearPlannerDropMarks();
 			this.plannerDrag = null;
 			drag.el.removeClass("is-dragging-block");
-			const { anchor, before } = aim(evt);
 			let target = itemAt(anchor);
 			let side: "before" | "after" = before ? "before" : "after";
 			if (!target) {
@@ -3433,10 +3459,10 @@ export class SectionCardsView extends ItemView {
 	 * subcard joins that card's end; a line or the loose card lands above the
 	 * neighbour's first sub-heading (its own loose area), or at its end when it has none. */
 	private async sendPlannerCard(file: TFile, section: Section, drag: PlannerItem, target: Section): Promise<void> {
-		await this.updatePlannerSlot(target.headingRaw, drag.key, (slot) => ({ ...slot, col: drag.col }), false);
 		const { lines: front, cards: targetCards } = this.plannerLines(target);
 		const firstSub = drag.card.kind === "sub" ? undefined : targetCards.find((c) => c.kind === "sub");
 		if (drag.card.kind === "line" && !firstSub) {
+			await this.updatePlannerSlot(target.headingRaw, drag.key, (slot) => ({ ...slot, col: drag.col }), false);
 			await this.completeBlockDrag(file, { section, blockIndex: drag.card.blockIndex ?? 0, blockText: drag.text }, target, null);
 			return;
 		}
@@ -3453,7 +3479,8 @@ export class SectionCardsView extends ItemView {
 			target,
 			at,
 		);
-		if (!ok) new Notice("Couldn't move that text — the file changed on disk.");
+		if (ok) await this.updatePlannerSlot(target.headingRaw, drag.key, (slot) => ({ ...slot, col: drag.col }), false);
+		else new Notice("Couldn't move that text — the file changed on disk.");
 		await this.refresh();
 	}
 
@@ -5916,7 +5943,7 @@ export class SectionCardsView extends ItemView {
 								void this.plugin.setBackgroundImage(target, file.path, base);
 							}).open();
 						},
-						fromLocal: () => this.pickLocalBackground(base),
+						fromLocal: () => this.pickLocalBackground(target, attachTo, base),
 						fromInternet: () => {
 							new DownloadBackgroundModal(this.app, attachTo, (path) => {
 								void this.plugin.setBackgroundImage(target, path, base);
@@ -6006,7 +6033,9 @@ export class SectionCardsView extends ItemView {
 	 * lands in the vault's attachment folder so the image travels with the vault
 	 * (and keeps working if the original moves).
 	 */
-	private pickLocalBackground(base: ViewSettings): void {
+	/** The "From this computer" background: copied into the vault beside `attachTo`,
+	 * then set on `target` — the note, or the Deck while it's showing. */
+	private pickLocalBackground(target: string, attachTo: string, base: ViewSettings): void {
 		const input = createEl("input", { attr: { type: "file", accept: "image/*" } });
 		input.addEventListener("change", () => {
 			const picked = input.files?.[0];
@@ -6026,9 +6055,9 @@ export class SectionCardsView extends ItemView {
 							.replace(/^-+|-+$/g, "")
 							.slice(0, 40) || "background";
 					const buffer = await picked.arrayBuffer();
-					const dest = await this.app.fileManager.getAvailablePathForAttachment(`${stem}.${ext}`, this.filePath);
+					const dest = await this.app.fileManager.getAvailablePathForAttachment(`${stem}.${ext}`, attachTo);
 					const file = await this.app.vault.createBinary(dest, buffer);
-					await this.plugin.setBackgroundImage(this.filePath, file.path, base);
+					await this.plugin.setBackgroundImage(target, file.path, base);
 					new Notice(`Background copied into the vault: "${file.path}".`);
 				} catch {
 					new Notice("Couldn't read that file.");
@@ -6491,6 +6520,9 @@ export class SectionCardsView extends ItemView {
 
 		const file = this.getFile();
 		this.cardObserver?.disconnect();
+		// Rendering over an open editor (save-on-leave off) drops its text; the editor
+		// itself must go too, or its autosave keeps writing a detached document.
+		this.activeEditor?.discard();
 		this.editingKey = null;
 		this.activeEditor = null;
 
@@ -6519,6 +6551,13 @@ export class SectionCardsView extends ItemView {
 		}
 
 		this.filePath = file.path;
+		// Another note's cards are never reused: a section identical in both notes
+		// (a template's empty "Notes" card) would keep the first note's file in its
+		// handlers, and a checkbox or quick-add on it would write into that note.
+		if (this.renderedPath !== file.path) {
+			this.clearAllCards();
+			this.renderedPath = file.path;
+		}
 		this.applyBackground();
 		this.plugin.recordRecentFile(file.path);
 		const content = await this.app.vault.cachedRead(file);
@@ -7424,7 +7463,7 @@ export class SectionCardsView extends ItemView {
 				this.swallowNextClick = true;
 				window.setTimeout(() => (this.swallowNextClick = false), 300);
 			};
-			window.addEventListener("pointerup", arm, { once: true });
+			this.contentEl.win.addEventListener("pointerup", arm, { once: true });
 		});
 
 		// A click on a block arms this before opening the card editor, so the second
@@ -7477,7 +7516,10 @@ export class SectionCardsView extends ItemView {
 				if (pendingEdit !== null) window.clearTimeout(pendingEdit);
 				pendingEdit = window.setTimeout(() => {
 					pendingEdit = null;
-					if (!card.hasClass("is-editing")) this.startEditing(card, file, holder.section);
+					// Meanwhile another card may have opened its editor (a quick second
+					// click elsewhere), or a refresh replaced this card: then nothing.
+					if (card.hasClass("is-editing") || !card.isConnected || this.activeEditor) return;
+					this.startEditing(card, file, holder.section);
 				}, 280);
 				return;
 			}
@@ -8138,9 +8180,10 @@ export class SectionCardsView extends ItemView {
 			onUp: (e: PointerEvent) => this.pointerDragEnd(e),
 		};
 		this.pointerDrag = drag;
-		window.addEventListener("pointermove", drag.onMove);
-		window.addEventListener("pointerup", drag.onUp);
-		window.addEventListener("pointercancel", drag.onUp);
+		const win = this.contentEl.win;
+		win.addEventListener("pointermove", drag.onMove);
+		win.addEventListener("pointerup", drag.onUp);
+		win.addEventListener("pointercancel", drag.onUp);
 	}
 
 	private pointerDragMove(evt: PointerEvent): void {
@@ -8150,7 +8193,7 @@ export class SectionCardsView extends ItemView {
 			// A real drag needs intent; tiny movements stay clicks.
 			if (Math.hypot(evt.clientX - drag.startX, evt.clientY - drag.startY) < 5) return;
 			drag.active = true;
-			const ghost = document.body.createDiv({ cls: "sc-pointer-ghost" });
+			const ghost = this.contentEl.doc.body.createDiv({ cls: "sc-pointer-ghost" });
 			ghost.setText(drag.label);
 			if (drag.kind === "card") {
 				// Screen-sized to match the zoomed card it stands in for.
@@ -8191,13 +8234,27 @@ export class SectionCardsView extends ItemView {
 		}
 	}
 
+	/** Drop a pointer drag without landing it: the view is closing under it. */
+	private abortPointerDrag(): void {
+		const drag = this.pointerDrag;
+		if (!drag) return;
+		this.pointerDrag = null;
+		const win = this.contentEl.win;
+		win.removeEventListener("pointermove", drag.onMove);
+		win.removeEventListener("pointerup", drag.onUp);
+		win.removeEventListener("pointercancel", drag.onUp);
+		drag.ghost?.remove();
+		this.hideSnapPreview();
+	}
+
 	private pointerDragEnd(evt: PointerEvent): void {
 		const drag = this.pointerDrag;
 		if (!drag) return;
 		this.pointerDrag = null;
-		window.removeEventListener("pointermove", drag.onMove);
-		window.removeEventListener("pointerup", drag.onUp);
-		window.removeEventListener("pointercancel", drag.onUp);
+		const win = this.contentEl.win;
+		win.removeEventListener("pointermove", drag.onMove);
+		win.removeEventListener("pointerup", drag.onUp);
+		win.removeEventListener("pointercancel", drag.onUp);
 		drag.ghost?.remove();
 		this.gridEl.removeClass("is-drop-target");
 		this.hideSnapPreview();
@@ -8524,7 +8581,7 @@ export class SectionCardsView extends ItemView {
 			// The bottom-right corner belongs to the native resize grip; arm the same
 			// click-swallow the cards use so ending a resize can't count as a click.
 			if (evt.clientX >= rect.right - 28 && evt.clientY >= rect.bottom - 28) {
-				window.addEventListener(
+				this.contentEl.win.addEventListener(
 					"pointerup",
 					() => {
 						this.swallowNextClick = true;
@@ -8614,14 +8671,15 @@ export class SectionCardsView extends ItemView {
 				ty = baseY + dy;
 				applyTransform();
 			};
+			const win = this.contentEl.win;
 			const up = () => {
-				window.removeEventListener("pointermove", move);
-				window.removeEventListener("pointerup", up);
-				window.removeEventListener("pointercancel", up);
+				win.removeEventListener("pointermove", move);
+				win.removeEventListener("pointerup", up);
+				win.removeEventListener("pointercancel", up);
 			};
-			window.addEventListener("pointermove", move);
-			window.addEventListener("pointerup", up);
-			window.addEventListener("pointercancel", up);
+			win.addEventListener("pointermove", move);
+			win.addEventListener("pointerup", up);
+			win.addEventListener("pointercancel", up);
 		});
 		media.addEventListener("dblclick", () => {
 			scale = 1;
@@ -8638,11 +8696,11 @@ export class SectionCardsView extends ItemView {
 		};
 		const close = () => {
 			overlay.remove();
-			document.removeEventListener("keydown", onKey, true);
+			this.contentEl.doc.removeEventListener("keydown", onKey, true);
 			this.imageLightboxClose = null;
 		};
 		this.imageLightboxClose = close;
-		document.addEventListener("keydown", onKey, true);
+		this.contentEl.doc.addEventListener("keydown", onKey, true);
 		// Clicks on the media itself (video controls!) stay; the backdrop closes.
 		overlay.addEventListener("click", (evt) => {
 			if (evt.target !== media) close();
@@ -8830,7 +8888,10 @@ export class SectionCardsView extends ItemView {
 				});
 				new Notice(`Pasted image added to the ${where} of ${file.basename}.`);
 				await this.refresh();
-			})();
+			})().catch((err: unknown) => {
+				console.error("Single File Section Cards: paste image failed", err);
+				new Notice("Couldn't paste the image.");
+			});
 		}).open();
 	}
 
@@ -8871,7 +8932,10 @@ export class SectionCardsView extends ItemView {
 						(deleteFile && tfile ? ` and moved “${image.label}” to the trash.` : "."),
 				);
 				await this.refresh();
-			})();
+			})().catch((err: unknown) => {
+				console.error("Single File Section Cards: delete image failed", err);
+				new Notice("Couldn't remove the image.");
+			});
 		}).open();
 	}
 
@@ -9034,7 +9098,7 @@ export class SectionCardsView extends ItemView {
 			if ((evt.target as HTMLElement | null)?.closest("button")) return;
 			const rect = el.getBoundingClientRect();
 			if (evt.clientX >= rect.right - 28 && evt.clientY >= rect.bottom - 28) {
-				window.addEventListener(
+				this.contentEl.win.addEventListener(
 					"pointerup",
 					() => {
 						this.swallowNextClick = true;
@@ -9093,11 +9157,11 @@ export class SectionCardsView extends ItemView {
 		};
 		const close = () => {
 			overlay.remove();
-			document.removeEventListener("keydown", onKey, true);
+			this.contentEl.doc.removeEventListener("keydown", onKey, true);
 			this.imageLightboxClose = null;
 		};
 		this.imageLightboxClose = close;
-		document.addEventListener("keydown", onKey, true);
+		this.contentEl.doc.addEventListener("keydown", onKey, true);
 		overlay.addEventListener("click", (evt) => {
 			if (evt.target !== frame) close();
 		});
@@ -10356,10 +10420,22 @@ export class SectionCardsView extends ItemView {
 		bodyEl: HTMLElement,
 		box: HTMLInputElement,
 	): Promise<void> {
-		const boxes = Array.from(bodyEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]"));
-		const nth = boxes.indexOf(box);
+		const nth = SectionCardsView.taskBoxes(bodyEl).indexOf(box);
 		if (nth < 0) return;
 		await this.toggleNthTask(file, section, nth, box, card);
+	}
+
+	/** The rendered checkboxes that stand for the task lines taskLineIndexes counts, in
+	 * the same order — so a box's ordinal names its line. Obsidian renders more boxes
+	 * than that: custom states like `[/]`, tasks quoted in a callout, and the tasks of
+	 * an embedded note; counted, they'd shift every ordinal after them onto the wrong
+	 * line. */
+	static taskBoxes(bodyEl: HTMLElement): HTMLInputElement[] {
+		return Array.from(bodyEl.querySelectorAll<HTMLInputElement>("input[type=checkbox]")).filter((box) => {
+			if (box.closest(".internal-embed, blockquote")) return false;
+			const state = box.dataset.task ?? box.closest<HTMLElement>("li")?.dataset.task ?? "";
+			return state === "" || state === " " || state.toLowerCase() === "x";
+		});
 	}
 
 	/** Toggle a section's nth task line in the file and reflect it on its checkbox at
@@ -10443,7 +10519,9 @@ export class SectionCardsView extends ItemView {
 			const body = trimTrailingBlankLines(value);
 			return body ? `${section.headingRaw}\n${body}` : section.headingRaw;
 		};
-		const originalRaw = trimTrailingBlankLines(section.raw);
+		// What's on disk for this card — re-described by each autosave, so a Save or an
+		// Escape after one compares against what the autosave wrote, not the text at open.
+		const currentRaw = () => trimTrailingBlankLines(section.raw);
 
 		let embedded: EmbeddedEditor | null = null;
 		let readValue: () => string = () => initial;
@@ -10466,7 +10544,7 @@ export class SectionCardsView extends ItemView {
 			// Saving re-renders the card, so remember to blow it back up afterwards.
 			if (this.maximized?.card === card) this.pendingMaximizeHeading = section.headingRaw;
 			const edited = toRaw(value);
-			if (save && edited !== originalRaw) {
+			if (save && edited !== currentRaw()) {
 				const written = await writeSection(this.app, file, this.headingLevel, section, edited);
 				if (written) new Notice(`Saved “${section.title}” to ${file.basename}`);
 			}
@@ -10478,7 +10556,7 @@ export class SectionCardsView extends ItemView {
 		// Cancel button stays an explicit discard.
 		const cancel = () => {
 			if (settled) return;
-			if (toRaw(readValue()) === originalRaw) {
+			if (toRaw(readValue()) === currentRaw()) {
 				void finish(false);
 				return;
 			}
@@ -10575,7 +10653,16 @@ export class SectionCardsView extends ItemView {
 			void finish(false);
 		});
 
-		this.activeEditor = { card, finish, autosave, insertTask };
+		const discard = () => {
+			if (settled) return;
+			settled = true;
+			if (this.autosaveTimer !== null) {
+				window.clearInterval(this.autosaveTimer);
+				this.autosaveTimer = null;
+			}
+			embedded?.destroy();
+		};
+		this.activeEditor = { card, finish, autosave, insertTask, discard };
 		if (embedded) {
 			embedded.focusEnd();
 		} else {
