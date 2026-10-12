@@ -532,6 +532,9 @@ export class SectionCardsView extends ItemView {
 	private calendarAnchor: string | null = null;
 	/** Set while the today-card jump may still need re-aiming after deferred bodies land. */
 	private todayJumpPending = false;
+	/** Set by a layout switch on a dated note: the next render centres today's card
+	 * again, so the day you were looking at stays in the middle of the new layout. */
+	private todayJumpForLayout = false;
 	/** How many pinned cards lead the grid itself (0 when they're in the sticky band). */
 	private pinnedShown = 0;
 	/** The sticky band between toolbar and grid; empty unless "Keep pinned cards on screen" is on. */
@@ -859,6 +862,9 @@ export class SectionCardsView extends ItemView {
 			this.calendarJumpedFor = null; // the next visit lands on today again
 			this.calendarAnchor = null; // …and the week/day ranges re-pick theirs
 		}
+		// A dated note keeps today in the middle across the switch, where the new
+		// layout has a place for it (the Calendar and Heatmap land there on their own).
+		this.todayJumpForLayout = this.containsDates;
 		this.layout = next;
 		this.rememberView();
 		this.applyLayoutClass();
@@ -7014,20 +7020,28 @@ export class SectionCardsView extends ItemView {
 			void this.updateTodayFromFeed(false, true);
 		}
 
-		// A note's first render in this view brings today's card into view. A pending
-		// edit or maximize means the user just made a card — that scroll wins instead.
+		// A note's first render in this view brings today's card into view, and so does
+		// a layout switch on a dated note (today stays centred in the new layout). A
+		// pending edit or maximize means the user just made a card — that scroll wins.
 		this.todayJumpPending = false;
-		if (this.todayJumpedFor !== file.path) {
+		const layoutJump = this.todayJumpForLayout;
+		this.todayJumpForLayout = false;
+		if (this.todayJumpedFor !== file.path || layoutJump) {
 			this.todayJumpedFor = file.path;
-			if (this.plugin.settings.jumpToToday && today && !this.pendingEditHeading && !this.pendingMaximizeHeading) {
+			if ((layoutJump || this.plugin.settings.jumpToToday) && today && !this.pendingEditHeading && !this.pendingMaximizeHeading) {
+				const todayEntry = this.cardEntries.find((e) => e.el.hasClass("is-today"));
 				// The hierarchy columns may be sitting on a different branch than today's.
-				if (this.hierarchyActive()) {
-					const todayEntry = this.cardEntries.find((e) => e.el.hasClass("is-today"));
-					if (todayEntry && todayEntry.el.hasClass("is-hier-hidden")) {
-						this.hierRevealLine(todayEntry.holder.section.headingLine);
-					}
+				if (this.hierarchyActive() && todayEntry?.el.hasClass("is-hier-hidden")) {
+					this.hierRevealLine(todayEntry.holder.section.headingLine);
 				}
-				const todayCard = this.gridEl.querySelector(".section-card.is-today");
+				// The Rolodex and Day Planner show one card: after a switch, that's today's
+				// (the first open keeps the card the note was left on). On the canvas an
+				// unplaced card is in the side list, with nothing on screen to centre.
+				if (layoutJump && todayEntry && this.isSingleCardLayout() && !todayEntry.el.hasClass("is-filtered-out")) {
+					this.setSingleCardActive(todayEntry);
+				}
+				const unplaced = this.layout === "custom" && todayEntry && !this.customPlacements[todayEntry.holder.section.headingRaw];
+				const todayCard = unplaced ? null : this.gridEl.querySelector(".section-card.is-today");
 				if (todayCard) {
 					todayCard.scrollIntoView({ block: "center", inline: "center" });
 					// Deferred bodies grow the cards above and push today's card around,
