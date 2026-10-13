@@ -15,6 +15,8 @@ export const GITHUB_REPO_URL = "https://github.com/jordanlong121/singlefilesecti
 export const INITIAL_RENDER_COUNT = Platform.isPhone ? 8 : 24;
 
 export const DEFERRED_RENDER_BATCH = Platform.isPhone ? 6 : 12;
+/** The hierarchy columns pane can't be dragged narrower than this. */
+export const HIER_MIN_WIDTH = 150;
 
 /** Modifier-key name used in tooltip shortcut hints, matching the platform. */
 export const MOD_LABEL = Platform.isMacOS ? "⌘" : "Ctrl";
@@ -309,6 +311,9 @@ export interface PerFileView extends ViewSettings {
 	hiddenLayouts?: Layout[];
 	/** The canvases' tray (the list of what isn't on the canvas) folded to a slim strip. */
 	trayCollapsed?: boolean;
+	/** The hierarchy columns pane's width in px, set by dragging its edge; unset means
+	 * the columns' natural width. */
+	hierWidth?: number;
 	/** Custom Grid arrangements saved under a name (tray → save), with their backgrounds. */
 	savedLayouts?: Record<string, SavedCanvasLayout>;
 	/** The saved layout last applied or saved, shown in the tray's switcher. */

@@ -25,6 +25,7 @@ import { GROUP_BY_ICONS, DECK_SORT_ICONS, LAYOUT_ICONS, DECK_BACKGROUND_KEY,
 	VIEW_TYPE_SECTION_CARDS,
 	INITIAL_RENDER_COUNT,
 	DEFERRED_RENDER_BATCH,
+	HIER_MIN_WIDTH,
 	MOD_LABEL,
 	DECK_ICON,
 	FLIP_ICON,
@@ -4365,6 +4366,14 @@ export class SectionCardsView extends ItemView {
 			start = selected.start;
 			end = selected.end;
 		}
+		// The pane's edge drags to set its width, remembered per note; the columns share
+		// whatever it's given. (Only once there are columns: an empty pane stays hidden.)
+		if (this.hierEl.childElementCount) {
+			const width = this.plugin.getHierWidth(this.filePath);
+			if (width) this.hierEl.setCssProps({ "--sfsc-hier-w": `${width}px` });
+			else this.hierEl.style.removeProperty("--sfsc-hier-w");
+			this.addHierResizeHandle();
+		}
 		// Cards off the selected branch keep their DOM and rendered markdown; they only
 		// lose their grid cell, so clicking around the columns is instant. Cards in the
 		// sticky pinned band are exempt: pins stay visible whatever branch is selected.
@@ -4374,6 +4383,41 @@ export class SectionCardsView extends ItemView {
 			const inBand = entry.el.parentElement === this.pinnedEl;
 			entry.el.toggleClass("is-hier-hidden", constrain && !inBand && (line < start || line >= end));
 		}
+	}
+
+	/** The columns pane's right edge: drag it to set the pane's width, between a slim
+	 * floor and half the view; double-click puts the natural width back. The pointer is
+	 * captured, so the drag survives leaving the strip. */
+	private addHierResizeHandle(): void {
+		const handle = this.hierEl.createDiv({ cls: "section-cards-hier-resize" });
+		handle.setAttr("title", "Drag to resize the columns; double-click to reset");
+		let width: number | null = null;
+		handle.addEventListener("pointerdown", (evt) => {
+			if (evt.button !== 0) return;
+			evt.preventDefault();
+			handle.setPointerCapture(evt.pointerId);
+			handle.addClass("is-active");
+			width = null;
+		});
+		handle.addEventListener("pointermove", (evt) => {
+			if (!handle.hasPointerCapture(evt.pointerId)) return;
+			const left = this.hierEl.getBoundingClientRect().left;
+			const max = Math.max(HIER_MIN_WIDTH, Math.floor(this.contentEl.clientWidth / 2));
+			width = Math.round(Math.min(max, Math.max(HIER_MIN_WIDTH, evt.clientX - left)));
+			this.hierEl.setCssProps({ "--sfsc-hier-w": `${width}px` });
+		});
+		const done = (evt: PointerEvent) => {
+			if (!handle.hasPointerCapture(evt.pointerId)) return;
+			handle.releasePointerCapture(evt.pointerId);
+			handle.removeClass("is-active");
+			if (width !== null) void this.plugin.setHierWidth(this.filePath, width, this.viewSettings());
+		};
+		handle.addEventListener("pointerup", done);
+		handle.addEventListener("pointercancel", done);
+		handle.addEventListener("dblclick", () => {
+			this.hierEl.style.removeProperty("--sfsc-hier-w");
+			void this.plugin.setHierWidth(this.filePath, undefined, this.viewSettings());
+		});
 	}
 
 	private renderHierColumn(
