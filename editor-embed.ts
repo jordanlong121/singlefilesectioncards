@@ -8,12 +8,15 @@
  * textarea editor, which depends on nothing internal.
  */
 
-import { App } from "obsidian";
+import { App, MarkdownView, type TFile } from "obsidian";
 import { EditorSelection, Prec, type Extension } from "@codemirror/state";
 import { EditorView, keymap, type ViewUpdate } from "@codemirror/view";
 
 export interface EmbeddedEditorOptions {
 	value: string;
+	/** The note the text belongs to: editor commands that act on "the file under the
+	 * cursor" (the Tasks plugin's create/edit and toggle) need one to act at all. */
+	file?: TFile;
 	/** Live preview renders markdown as you type; source shows it with highlighting. */
 	mode: "live" | "source";
 	/** Mod+Enter inside the editor. */
@@ -160,11 +163,30 @@ export function createEmbeddedEditor(
 
 		// The owner mocks the MarkdownView the editor believes it lives in; getMode
 		// keeps it in editing mode and onMarkdownScroll satisfies its scroll syncing.
-		const owner: Record<string, unknown> = {
+		// `file` only when there is one: an explicit null trips editor suggesters that
+		// test for undefined (the Tasks plugin's), while a missing member passes them by.
+		const ownerTarget: Record<string, unknown> = {
 			app,
+			...(options.file ? { file: options.file } : {}),
 			onMarkdownScroll: () => {},
 			getMode: () => "source",
+			getViewType: () => "markdown",
+			// Obsidian's editor-command wrapper asks a view whether its title fields have
+			// the focus before running a command; detached stand-ins never do.
+			titleEl: createDiv(),
+			inlineTitleEl: createDiv(),
 		};
+		// Editor commands from other plugins (the Tasks plugin's create/edit and toggle)
+		// act only when the active editor's view `instanceof MarkdownView` and names a
+		// file. The proxy answers that check with MarkdownView's prototype while serving
+		// only the mock's own members — a real view's methods would reach for a leaf and
+		// modes this editor doesn't have, so none of them is inherited. The pose is
+		// dropped for the moment the owner is handed to the workspace: its activeEditor
+		// setter keeps only what is *not* a MarkdownView (real views it finds by leaf).
+		let poseAsView = true;
+		const owner = new Proxy(ownerTarget, {
+			getPrototypeOf: () => (poseAsView ? MarkdownView.prototype : Object.prototype),
+		});
 		const editor = new CardMarkdownEditor(app, container, owner);
 		// Editor commands (bold, toggle checkbox, …) find their target through
 		// workspace.activeEditor.editMode/.editor — point the mock at this instance.
@@ -178,7 +200,9 @@ export function createEmbeddedEditor(
 		// While the editor has focus, Obsidian's editor commands should act on it.
 		const workspace = app.workspace as unknown as { activeEditor: unknown };
 		const onFocusIn = () => {
+			poseAsView = false;
 			workspace.activeEditor = editor.owner;
+			poseAsView = true;
 		};
 		editor.editor.cm.contentDOM.addEventListener("focusin", onFocusIn);
 
