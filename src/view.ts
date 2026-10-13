@@ -10712,6 +10712,7 @@ export class SectionCardsView extends ItemView {
 			const remeasure = debounce(() => this.layoutMasonry(), 150, true);
 			embedded = createEmbeddedEditor(this.app, host, {
 				value: initial,
+				file,
 				mode: this.plugin.settings.editorMode === "source" ? "source" : "live",
 				onSave: () => void finish(true),
 				onCancel: cancel,
