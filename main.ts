@@ -936,6 +936,21 @@ export default class SectionCardsPlugin extends Plugin {
 		await this.saveSettings();
 	}
 
+	/** The hierarchy columns pane's dragged width, or undefined for its natural width. */
+	getHierWidth(path: string): number | undefined {
+		return this.settings.perFile?.[path]?.hierWidth;
+	}
+
+	async setHierWidth(path: string, width: number | undefined, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (width !== undefined) current.hierWidth = width;
+		else delete current.hierWidth;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
 	async setContainsDates(path: string, value: boolean, base: ViewSettings): Promise<void> {
 		if (!path) return;
 		this.settings.perFile = this.settings.perFile ?? {};

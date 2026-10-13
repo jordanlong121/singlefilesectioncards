@@ -1635,11 +1635,33 @@ body.is-mobile .is-layout-tight .section-card-body {
 	grid-row: 3;
 	grid-column: 1;
 	min-height: 0;
+	/* Dragged wider or narrower by its edge (the var is per note); else the columns' own. */
+	width: var(--sfsc-hier-w, auto);
 	max-width: 50vw;
 	overflow-x: auto;
 	overflow-y: hidden;
 	border-right: 1px solid var(--sc-line);
 	background-image: linear-gradient(var(--sc-header), var(--sc-header));
+}
+
+/* The pane's draggable edge: a slim strip over the last column's edge that lights up
+   under the pointer and while a drag is on. Sticky, so it holds the pane's edge even
+   when the columns scroll sideways inside it. */
+.section-cards-hier-resize {
+	position: sticky;
+	right: 0;
+	flex: 0 0 6px;
+	margin-left: -6px;
+	align-self: stretch;
+	cursor: col-resize;
+	z-index: 1;
+	touch-action: none;
+}
+
+.section-cards-hier-resize:hover,
+.section-cards-hier-resize.is-active {
+	background-image: linear-gradient(var(--interactive-accent), var(--interactive-accent));
+	opacity: 0.6;
 }
 
 .is-hier-on .section-cards-grid {
@@ -1665,8 +1687,11 @@ body.is-mobile .is-layout-tight .section-card-body {
 }
 
 .section-cards-hier-col {
-	flex: 0 0 auto;
+	/* 210px each by default (a width, not a flex-basis: the pane's natural size is
+	   measured from it); a dragged pane shares its width out, down to a floor. */
+	flex: 1 1 auto;
 	width: 210px;
+	min-width: 150px;
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
@@ -1682,6 +1707,7 @@ body.is-mobile .is-layout-tight .section-card-body {
 
 body.is-mobile .section-cards-hier-col {
 	width: 150px;
+	min-width: 120px;
 }
 
 .section-cards-hier-col-label {
