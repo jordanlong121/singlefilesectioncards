@@ -260,6 +260,16 @@ export interface CardEntry {
 	renderBody: (() => Promise<void>) | null;
 	/** Build the hover strip's buttons if they aren't yet (they're made on first hover). */
 	ensureActions: () => void;
+	/** The card's right-click menu, for cells that stand in for its hidden title bar. */
+	openMenu: (evt: MouseEvent) => void;
+}
+
+/** The handlers every empty calendar day shares. */
+interface CalendarBlankHandlers {
+	click: (evt: MouseEvent) => void;
+	contextmenu: (evt: MouseEvent) => void;
+	dragover: (evt: DragEvent) => void;
+	drop: (evt: DragEvent) => void;
 }
 
 /** A period a planner card names, per the level's Document setup role. */
@@ -3882,7 +3892,7 @@ export class SectionCardsView extends ItemView {
 			};
 			const run = (isos: string[]) => {
 				const firstOfSecond = isos.find((iso) => second.has(iso));
-				this.buildCalendarDayNames(grid, isos, todayIso, firstOfSecond);
+				this.buildCalendarDayNames(grid, isos, byIso, blank, todayIso, firstOfSecond);
 				for (const iso of isos) place(iso, isWeekendIso(iso), iso === firstOfSecond);
 			};
 			// A week takes the shape of a paper planner: the five weekdays across the top,
@@ -3962,26 +3972,59 @@ export class SectionCardsView extends ItemView {
 
 	/** Names for one run of the Week range's days — the weekdays across the top, or the
 	 * weekend along the bottom, whose two cells are wide and say so. */
-	private buildCalendarDayNames(grid: HTMLElement, isos: string[], todayIso: string, split?: string): void {
+	private buildCalendarDayNames(
+		grid: HTMLElement,
+		isos: string[],
+		byIso: Map<string, HTMLElement>,
+		blank: CalendarBlankHandlers,
+		todayIso: string,
+		split?: string,
+	): void {
 		for (const iso of isos) {
 			const cell = grid.createDiv({ cls: "sc-cal-dow", text: SectionCardsView.calendarDayLabel(iso) });
 			cell.toggleClass("is-wknd", isWeekendIso(iso));
 			cell.toggleClass("is-today", iso === todayIso);
 			cell.toggleClass("is-cal-split", iso === split);
+			// The slot heading stands in for the card's hidden title bar: its right-click
+			// menu is the card's, or an empty day's offer to start one.
+			cell.dataset.scIso = iso;
+			const card = byIso.get(iso);
+			cell.addEventListener("contextmenu", (evt) => {
+				const entry = card && this.cardEntries.find((e) => e.el === card);
+				if (!entry) {
+					blank.contextmenu(evt);
+					return;
+				}
+				evt.preventDefault();
+				evt.stopPropagation();
+				entry.openMenu(evt);
+			});
 		}
 	}
 
-	/** Shared by every blank day cell: three handlers total, not three per day. */
-	private calendarBlankHandlers(): {
-		click: (evt: MouseEvent) => void;
-		dragover: (evt: DragEvent) => void;
-		drop: (evt: DragEvent) => void;
-	} {
+	/** Shared by every blank day cell: four handlers total, not four per day. */
+	private calendarBlankHandlers(): CalendarBlankHandlers {
 		const blankIso = (evt: Event) => (evt.currentTarget as HTMLElement).dataset.scIso;
 		return {
 			click: (evt) => {
 				const iso = blankIso(evt);
 				if (iso) this.promptCreateDateCard(iso);
+			},
+			// An empty day's menu: start its card, then what every pane menu offers.
+			contextmenu: (evt) => {
+				const iso = blankIso(evt);
+				if (!iso) return;
+				evt.preventDefault();
+				evt.stopPropagation();
+				const menu = new Menu();
+				menu.addItem((item) =>
+					item
+						.setTitle(`New card for ${SectionCardsView.calendarDayLabel(iso)}…`)
+						.setIcon("calendar-plus")
+						.onClick(() => this.promptCreateDateCard(iso)),
+				);
+				this.addCommonMenuItems(menu);
+				menu.showAtMouseEvent(evt);
 			},
 			// A card dragged onto an empty day moves there: its heading is rewritten. A
 			// line dragged there offers to start the day's card and files the line in it.
@@ -4075,7 +4118,7 @@ export class SectionCardsView extends ItemView {
 		grid: HTMLElement,
 		iso: string,
 		card: HTMLElement | undefined,
-		on: { click: (evt: MouseEvent) => void; dragover: (evt: DragEvent) => void; drop: (evt: DragEvent) => void },
+		on: CalendarBlankHandlers,
 		todayIso: string,
 		blankText: string,
 		dateCard: boolean,
@@ -4100,6 +4143,7 @@ export class SectionCardsView extends ItemView {
 		cell.setAttr("aria-label", `Create a card for ${iso}`);
 		cell.dataset.scIso = iso;
 		cell.addEventListener("click", on.click);
+		cell.addEventListener("contextmenu", on.contextmenu);
 		cell.addEventListener("dragover", on.dragover);
 		cell.addEventListener("drop", on.drop);
 		return cell;
@@ -7225,8 +7269,7 @@ export class SectionCardsView extends ItemView {
 		// Right-click on the title bar (on touch, its ⋯ button): the card's menu — copy,
 		// rename, delete, and the rest. On touch it also carries the hover strip's
 		// actions, since the strip is hidden there (it crowded out the title).
-		const openCardMenu = (evt: MouseEvent) => {
-			const menu = new Menu();
+		const fillCardMenu = (menu: Menu, evt: MouseEvent) => {
 			if (Platform.isMobile) {
 				menu.addItem((item) =>
 					item
@@ -7299,6 +7342,10 @@ export class SectionCardsView extends ItemView {
 			}
 			this.addSelectionMenuItems(menu, holder.section);
 			this.addCommonMenuItems(menu);
+		};
+		const openCardMenu = (evt: MouseEvent) => {
+			const menu = new Menu();
+			fillCardMenu(menu, evt);
 			menu.showAtMouseEvent(evt);
 		};
 		header.addEventListener("contextmenu", (evt) => {
@@ -7692,7 +7739,14 @@ export class SectionCardsView extends ItemView {
 							await this.refresh();
 						}),
 				);
-				this.addCommonMenuItems(menu);
+				// The Calendar's week and day slots hide the card's title bar, so its menu
+				// (Update from calendar feed, rename, delete, …) is offered here instead.
+				if (this.layout === "calendar") {
+					menu.addSeparator();
+					fillCardMenu(menu, evt);
+				} else {
+					this.addCommonMenuItems(menu);
+				}
 				menu.showAtMouseEvent(evt);
 				return;
 			}
@@ -7910,7 +7964,7 @@ export class SectionCardsView extends ItemView {
 		});
 
 		if (Platform.isMobile) ensureActions();
-		return { el: card, bodyEl, backEl, scope, holder, raw: section.raw, renderBody, ensureActions };
+		return { el: card, bodyEl, backEl, scope, holder, raw: section.raw, renderBody, ensureActions, openMenu: openCardMenu };
 	}
 
 	/**
