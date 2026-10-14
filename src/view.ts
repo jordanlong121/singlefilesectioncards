@@ -685,8 +685,9 @@ export class SectionCardsView extends ItemView {
 
 	getDisplayText(): string {
 		if (this.sticky) return `Sticky: ${this.sticky.replace(/^#+\s*/, "") || "(untitled)"}`;
+		// The tab's cards icon already says what this is; the title is the note's name.
 		const base = this.filePath.split("/").pop() ?? this.filePath;
-		return `Cards: ${base.replace(/\.md$/, "")}`;
+		return base.replace(/\.md$/, "");
 	}
 
 	getIcon(): string {
