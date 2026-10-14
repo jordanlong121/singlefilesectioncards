@@ -7335,9 +7335,10 @@ export class SectionCardsView extends ItemView {
 		}
 
 		// On the canvas, dragging the title bar repositions the card (buttons excluded).
+		// An open editor comes along: the drop only moves the card, and the press is
+		// defaulted away so the editor keeps its focus and its text.
 		header.addEventListener("pointerdown", (evt) => {
-			if (this.layout !== "custom" || !card.hasClass("is-placed")) return;
-			if (card.hasClass("is-editing") || this.isMaximized()) return;
+			if (this.layout !== "custom" || !card.hasClass("is-placed") || this.isMaximized()) return;
 			if ((evt.target as HTMLElement | null)?.closest("button")) return;
 			const placement = this.customPlacements[holder.section.headingRaw];
 			if (!placement) return;
