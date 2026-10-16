@@ -80,7 +80,10 @@ export type Layout =
 	| "calendar"
 	| "heatmap"
 	| "rolodex"
-	| "planner";
+	| "planner"
+	| "table"
+	| "tree"
+	| "binder";
 
 export const SORT_LABELS: Record<SortOrder, string> = {
 	asc: "A → Z",
@@ -109,6 +112,13 @@ export const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["links", "Links", "Freeform canvas of the note's web links: drag page previews on from the tray, place and resize them"],
 	["calendar", "Calendar", "Date cards on a calendar grid — a month, two weeks, a week, or one day — needs the Dates checkbox (C)"],
 	["heatmap", "Heatmap", "A year-at-a-glance activity graph of the dated cards — needs the Dates checkbox"],
+	[
+		"table",
+		"Table",
+		"The whole note as a table: a row per heading, a heading spanning its sub-headings' rows, its text on one line — click a cell to edit",
+	],
+	["tree", "Tree", "The whole note as a tree of its headings, branching left to right — click a node to edit its text"],
+	["binder", "Binder", "One card at a time, filling the pane; every card's title is a tab down the right edge, like a binder's inserts"],
 ];
 
 /** How the Deck orders its note thumbnails. "recent" is the working-set order:
@@ -139,6 +149,9 @@ export const LAYOUT_ICONS: Record<Layout, [string, string]> = {
 	links: ["link", "link"],
 	calendar: ["calendar", "calendar"],
 	heatmap: ["activity", "bar-chart-2"],
+	table: ["table", "table-2"],
+	tree: ["git-fork", "network"],
+	binder: ["book-marked", "bookmark"],
 };
 
 /** Icons for the Deck's sort picker and the Group picker (name, older fallback). */

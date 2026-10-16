@@ -140,7 +140,10 @@ import {
 	syncFeedIntoSections,
 	insertSections,
 	nestSectionsInFile,
+	replaceLinesInFile,
+	retitleHeadingInFile,
 } from "./writes";
+import { parseTableOutline, tableRows, tableLineText, type TableNode, type TableOutline } from "./table";
 import { nestBoundaries, nestInsertLine } from "./nesting";
 import { headingLinkEdits, applyLinkEditsElsewhere } from "./headinglinks";
 import { feedDayEvents, feedEventLine, feedEventsByDays, feedFirstDay, daysBetween, mergeFeedLines } from "./icalfeed";
@@ -785,7 +788,7 @@ export class SectionCardsView extends ItemView {
 
 	/** The Rolodex and the Day Planner show one card at a time, and share which one. */
 	private isSingleCardLayout(): boolean {
-		return this.layout === "rolodex" || this.layout === "planner";
+		return this.isRoloLayout() || this.layout === "planner";
 	}
 
 	/** M, 2, W and D pick the Calendar's range while it's showing — and only then, so
@@ -801,6 +804,17 @@ export class SectionCardsView extends ItemView {
 		return this.layout === "calendar" && this.calendarRange === "month";
 	}
 
+	/** The Rolodex and the Binder are one machine — a strip of title tabs and the one
+	 * card they pick — laid out across the top or down the right side. */
+	private isRoloLayout(): boolean {
+		return this.layout === "rolodex" || this.layout === "binder";
+	}
+
+	/** Table and Tree draw the note from its headings, every level at once — no cards. */
+	private isOutlineLayout(): boolean {
+		return this.layout === "table" || this.layout === "tree";
+	}
+
 	/** Calendar and Heatmap both place by date headings: they borrow the note's date
 	 * level, need the Dates checkbox, and grey out in notes with no date headings. */
 	private isDateLayout(): boolean {
@@ -812,7 +826,7 @@ export class SectionCardsView extends ItemView {
 	 * day at a time and walks to the next with its arrows — hiding the days ahead
 	 * would leave the arrows nowhere to go. */
 	private dateHideApplies(): boolean {
-		return !this.isDateLayout() && this.layout !== "planner" && !this.sticky;
+		return !this.isDateLayout() && !this.isOutlineLayout() && this.layout !== "planner" && !this.sticky;
 	}
 
 	/** The freeform canvases — Custom Grid (section cards) and Images (previews) —
@@ -1099,7 +1113,7 @@ export class SectionCardsView extends ItemView {
 			"wheel",
 			(evt: WheelEvent) => {
 				const strip = this.roloTabsEl;
-				if (!strip || evt.ctrlKey || evt.metaKey) return;
+				if (!strip || evt.ctrlKey || evt.metaKey || this.layout === "binder") return; // the column scrolls on its own
 				const step = wheelDeltaToPixels(evt, strip.clientWidth);
 				if (!step) return;
 				evt.preventDefault();
@@ -1113,6 +1127,11 @@ export class SectionCardsView extends ItemView {
 			const strip = this.roloTabsEl;
 			if (!strip || (!this.roloDragging && !this.draggingBlock)) return;
 			const rect = strip.getBoundingClientRect();
+			if (this.layout === "binder") {
+				if (evt.clientY < rect.top + 40) strip.scrollTop -= 10;
+				else if (evt.clientY > rect.bottom - 40) strip.scrollTop += 10;
+				return;
+			}
 			if (evt.clientX < rect.left + 40) strip.scrollLeft -= 10;
 			else if (evt.clientX > rect.right - 40) strip.scrollLeft += 10;
 		});
@@ -1374,7 +1393,7 @@ export class SectionCardsView extends ItemView {
 		// Calendar's Week and Day ranges, walk back and forward through the calendar.
 		const stepGrouping = (evt: KeyboardEvent, delta: number): boolean => {
 			if (!this.plainShortcutOk(evt)) return true;
-			if (this.layout === "rolodex") {
+			if (this.isRoloLayout()) {
 				this.stepRolodex(delta);
 				return false;
 			}
@@ -1451,7 +1470,7 @@ export class SectionCardsView extends ItemView {
 					if (this.isSingleCardLayout()) {
 						if (dir === "left" || dir === "right") {
 							const delta = dir === "left" ? -1 : 1;
-							if (this.layout === "rolodex") this.stepRolodex(delta);
+							if (this.isRoloLayout()) this.stepRolodex(delta);
 							else this.stepPlanner(delta);
 							return false;
 						}
@@ -1702,6 +1721,9 @@ export class SectionCardsView extends ItemView {
 			"heatmap",
 			"rolodex",
 			"planner",
+			"binder",
+			"table",
+			"tree",
 		]) {
 			// The Deck replaces the layout wholesale; its class drops the layout chrome.
 			this.contentEl.toggleClass(`is-layout-${name}`, this.layout === name && !this.deckMode);
@@ -1940,7 +1962,7 @@ export class SectionCardsView extends ItemView {
 			const anyShown = bandCards.some((c) => !c.hasClass("is-filtered-out"));
 			this.pinnedEl.toggleClass("is-all-filtered", bandCards.length > 0 && !anyShown);
 		}
-		if (this.layout === "rolodex") this.layoutRolodex(); // a hidden active card hands over
+		if (this.isRoloLayout()) this.layoutRolodex(); // a hidden active card hands over
 		if (this.layout === "planner") this.layoutPlanner();
 		this.repack(); // masonry and row rules re-pack around the hidden cards
 	}
@@ -2400,7 +2422,9 @@ export class SectionCardsView extends ItemView {
 		// The zoom buttons override the automatic row count; either way, no more rows
 		// than there are cells to fill them.
 		const needed = Math.max(1, Math.ceil(slots / perRow));
-		const rows = Math.min(slots, Math.max(1, this.roloRows ?? Math.min(maxRows, needed)));
+		// The Binder's tabs run down the pane's edge in one column: one "row", every tab open.
+		const binder = this.layout === "binder";
+		const rows = binder ? 1 : Math.min(slots, Math.max(1, this.roloRows ?? Math.min(maxRows, needed)));
 		this.roloRowsShown = rows;
 		if (this.roloZoomBtns) {
 			this.roloZoomBtns.fewer.toggleAttribute("disabled", rows <= 1);
@@ -2458,7 +2482,7 @@ export class SectionCardsView extends ItemView {
 	/** Rolodex: a pane resize can change how many rows the tabs need. */
 	private roloRelayout = debounce(
 		() => {
-			if (this.layout !== "rolodex" || this.deckMode) return;
+			if (!this.isRoloLayout() || this.deckMode) return;
 			const width = this.roloTabsEl?.clientWidth ?? 0;
 			if (width && width !== this.roloWidth) this.layoutRolodex();
 			else this.syncRoloMore();
@@ -2520,7 +2544,7 @@ export class SectionCardsView extends ItemView {
 			evt.preventDefault();
 			if (evt.dataTransfer) evt.dataTransfer.dropEffect = "move";
 			const rect = tab.getBoundingClientRect();
-			this.setRoloDrop(cell, evt.clientX < rect.left + rect.width / 2);
+			this.setRoloDrop(cell, this.roloDropBefore(evt, rect));
 		});
 		tab.addEventListener("dragleave", () => {
 			if (this.blockDropEndEl === cell) this.clearBlockDropMarks();
@@ -2550,12 +2574,18 @@ export class SectionCardsView extends ItemView {
 			evt.preventDefault();
 			evt.stopPropagation();
 			const rect = tab.getBoundingClientRect();
-			const before = evt.clientX < rect.left + rect.width / 2;
+			const before = this.roloDropBefore(evt, rect);
 			this.setRoloDrop(null, false);
 			this.roloDragging = null;
 			const file = this.getFile();
 			if (file) void this.completeDrag(file, from.holder.section, entry.holder.section, before);
 		});
+	}
+
+	/** Which half of a tab a drop is over: the left or right in the Rolodex's strip,
+	 * the top or bottom in the Binder's column. */
+	private roloDropBefore(evt: DragEvent, rect: DOMRect): boolean {
+		return this.layout === "binder" ? evt.clientY < rect.top + rect.height / 2 : evt.clientX < rect.left + rect.width / 2;
 	}
 
 	private setRoloDrop(cell: HTMLElement | null, before: boolean): void {
@@ -2648,7 +2678,7 @@ export class SectionCardsView extends ItemView {
 
 	/** Rolodex or Day Planner: turn to a card, whichever of the two is showing. */
 	private setSingleCardActive(entry: CardEntry): void {
-		if (this.layout === "rolodex") this.setRoloActive(entry);
+		if (this.isRoloLayout()) this.setRoloActive(entry);
 		else if (this.layout === "planner") this.setPlannerActive(entry);
 	}
 
@@ -4613,7 +4643,7 @@ export class SectionCardsView extends ItemView {
 		this.cardObserver = new ResizeObserver(() => {
 			// Resize feedback must be immediate; the debounced repack settles it after.
 			if (this.isCanvasLayout()) this.previewCanvasResize();
-			if (this.layout === "rolodex") this.roloRelayout();
+			if (this.isRoloLayout()) this.roloRelayout();
 			this.repack();
 			// A narrower pane wraps the toolbar taller; the sticky band rides below it.
 			this.updateToolbarOffset();
@@ -6575,10 +6605,12 @@ export class SectionCardsView extends ItemView {
 	private syncLevelBar(lines: string[]): void {
 		const bar = this.levelBarEl;
 		if (!bar) return;
-		// Not in the Deck, a sticky, the date grids (which place every day), or a canvas
-		// (which has its tray); the Rolodex and Day Planner do get it — one card at a time
-		// hides the rest of the note even more quietly than a sparse wall.
-		const applies = !this.deckMode && !this.sticky && !this.isDateLayout() && !this.isCanvasLayout();
+		// Not in the Deck, a sticky, the date grids (which place every day), a canvas
+		// (which has its tray), or the Table and Tree (which show every heading's text);
+		// the Rolodex and Day Planner do get it — one card at a time hides the rest of
+		// the note even more quietly than a sparse wall.
+		const applies =
+			!this.deckMode && !this.sticky && !this.isDateLayout() && !this.isCanvasLayout() && !this.isOutlineLayout();
 		const coverage = applies ? levelCoverage(lines, this.headingLevel) : null;
 		const key = `${this.filePath}:${this.headingLevel}`;
 		const show = !!coverage && coverage.hiddenLines > 0 && this.levelBarDismissed !== key;
@@ -6800,6 +6832,12 @@ export class SectionCardsView extends ItemView {
 			return;
 		}
 
+		// Table and Tree draw the note's whole outline — no cards.
+		if (this.isOutlineLayout()) {
+			this.renderOutlineLayout(file, lines);
+			return;
+		}
+
 		// The Heatmap renders day cells straight from the sections — no cards.
 		if (this.layout === "heatmap") {
 			this.renderHeatmapLayout(file, sections, cardFormat, detect);
@@ -6897,7 +6935,7 @@ export class SectionCardsView extends ItemView {
 		// section rebuilds one card and every other card's rendered markdown is kept.
 		for (const stray of Array.from(
 			this.gridEl.querySelectorAll(
-				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty, .sc-cal-nav, .sc-cal-divider, .sc-cal-dow, .sc-cal-month, .sc-cal-blank, .sc-heat-wrap, .sfsc-deck-card",
+				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty, .sc-cal-nav, .sc-cal-divider, .sc-cal-dow, .sc-cal-month, .sc-cal-blank, .sc-heat-wrap, .sc-table-wrap, .sc-tree-wrap, .sfsc-deck-card",
 			),
 		)) {
 			stray.remove();
@@ -7037,7 +7075,7 @@ export class SectionCardsView extends ItemView {
 				this.todayJumpedFor = file.path; // the first-render jump would aim at the same card
 			}
 		}
-		if (this.layout === "rolodex") this.layoutRolodex();
+		if (this.isRoloLayout()) this.layoutRolodex();
 		if (this.layout === "planner") this.layoutPlanner();
 		else this.clearPlanner();
 
@@ -7317,7 +7355,7 @@ export class SectionCardsView extends ItemView {
 			menu.addItem((item) => item.setTitle("Delete card").setIcon("trash-2").onClick(confirmDeleteCard));
 			this.addStickyItems(menu, file, holder.section);
 			// The Rolodex card already fills the pane, so "big" has nothing to do there.
-			if (this.layout !== "rolodex") {
+			if (!this.isRoloLayout()) {
 				const big = card.hasClass("is-maximized");
 				menu.addItem((item) =>
 					item
@@ -7408,7 +7446,7 @@ export class SectionCardsView extends ItemView {
 			evt.stopPropagation();
 			const key = holder.section.headingRaw;
 			if (evt.ctrlKey || evt.metaKey) {
-				if (this.layout !== "rolodex") this.toggleMaximized(card);
+				if (!this.isRoloLayout()) this.toggleMaximized(card);
 				return;
 			}
 			if (evt.shiftKey) {
@@ -7633,7 +7671,7 @@ export class SectionCardsView extends ItemView {
 			if (!target.closest("button") && (evt.ctrlKey || evt.metaKey)) {
 				evt.preventDefault();
 				evt.stopPropagation();
-				if (this.layout !== "rolodex") this.toggleMaximized(card);
+				if (!this.isRoloLayout()) this.toggleMaximized(card);
 				return;
 			}
 			if (!target.closest("button") && evt.shiftKey) {
@@ -9405,6 +9443,178 @@ export class SectionCardsView extends ItemView {
 	 * day finished — with streak stats above and a shade legend below. A filled cell
 	 * opens its section in the note; an empty one offers to create the day's card.
 	 */
+	// ---------- Table and Tree: the note's outline, every heading at once ----------
+
+	private renderOutlineLayout(file: TFile, lines: string[]): void {
+		this.clearAllCards();
+		this.clearHierarchy();
+		this.jumpDateWrap?.toggleClass("is-hidden", true);
+		this.starBtn?.toggleClass("is-hidden", true);
+		this.pendingEditHeading = null;
+		this.pendingMaximizeHeading = null;
+		this.gridEl.appendChild(this.canvasExtentEl); // clearAllCards emptied the grid
+
+		const outline = parseTableOutline(lines);
+		if (!outline.roots.length && !outline.preamble) {
+			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
+			empty.createEl("p", { text: `${file.basename} has no headings yet.` });
+			empty.createEl("p", { text: "The Table and Tree layouts lay a note out by its headings, every level at once." });
+			this.rememberView();
+			return;
+		}
+		if (this.layout === "table") this.renderTable(file, lines, outline);
+		else this.renderTree(file, lines, outline);
+		this.rememberView();
+	}
+
+	/** Table: a row per heading, a parent spanning its sub-headings' rows, its own text
+	 * (when it has some above them) on a first row of its own, each text in one line. */
+	private renderTable(file: TFile, lines: string[], outline: TableOutline): void {
+		const columns = Math.max(outline.depth, 1);
+		const wrap = this.gridEl.createDiv({ cls: "sc-table-wrap" });
+		const table = wrap.createEl("table", { cls: "sc-table" });
+		table.setCssProps({ "--sc-table-cols": String(columns) });
+		// Heading columns share at most half the width (a fifth each at most); the text
+		// column takes the rest. Percentages, since a column's width can't use min().
+		const colgroup = table.createEl("colgroup");
+		const headingWidth = `${Math.min(20, 50 / columns).toFixed(2)}%`;
+		for (let i = 0; i < columns; i++) {
+			colgroup.createEl("col", { cls: "sc-table-col-heading" }).setCssStyles({ width: headingWidth });
+		}
+		colgroup.createEl("col", { cls: "sc-table-col-text" });
+		const tbody = table.createEl("tbody");
+		for (const row of tableRows(outline, lines)) {
+			const tr = tbody.createEl("tr");
+			for (const cell of row.cells) {
+				const el = tr.createEl(cell.kind === "heading" ? "th" : "td", { cls: `sc-table-${cell.kind}` });
+				if (cell.rowSpan > 1) el.rowSpan = cell.rowSpan;
+				if (cell.colSpan > 1) el.colSpan = cell.colSpan;
+				if (cell.kind === "heading" && cell.node) {
+					el.setText(cell.text || "(untitled)");
+					el.addClass(`is-h${cell.node.level}`);
+					el.setAttr("scope", "row");
+					this.wireOutlineHeading(el, file, cell.node, lines[cell.node.headingLine]);
+				} else if (cell.kind === "preamble") {
+					el.setText("Before the first heading");
+				} else if (cell.kind === "text" && cell.range) {
+					this.wireOutlineText(el, el, file, cell.node ?? null, cell.range, cell.text);
+				}
+			}
+		}
+	}
+
+	/** Tree: each heading a node, its sub-headings branching off to the right. */
+	private renderTree(file: TFile, lines: string[], outline: TableOutline): void {
+		const wrap = this.gridEl.createDiv({ cls: "sc-tree-wrap" });
+		const root = wrap.createDiv({ cls: "sc-tree" });
+		const textOf = (start: number, end: number) => lines.slice(start, end).join("\n");
+		const build = (parent: HTMLElement, node: TableNode) => {
+			const item = parent.createDiv({ cls: "sc-tree-item" });
+			const box = item.createDiv({ cls: `sc-tree-node is-h${node.level}` });
+			box.createDiv({ cls: "sc-tree-title", text: node.title || "(untitled)" });
+			const text = box.createDiv({ cls: "sc-tree-text" });
+			this.wireOutlineText(box, text, file, node, [node.textStart, node.textEnd], textOf(node.textStart, node.textEnd));
+			if (node.children.length) {
+				const kids = item.createDiv({ cls: "sc-tree-children" });
+				for (const child of node.children) build(kids, child);
+			}
+		};
+		if (outline.preamble) {
+			const { textStart, textEnd } = outline.preamble;
+			const item = root.createDiv({ cls: "sc-tree-item" });
+			const box = item.createDiv({ cls: "sc-tree-node is-preamble" });
+			box.createDiv({ cls: "sc-tree-title", text: "Before the first heading" });
+			const text = box.createDiv({ cls: "sc-tree-text" });
+			this.wireOutlineText(box, text, file, null, [textStart, textEnd], textOf(textStart, textEnd));
+		}
+		for (const node of outline.roots) build(root, node);
+	}
+
+	/** A heading cell: a click (or Enter) renames the heading, at whatever rank it is.
+	 * Links to it follow, as when a card is renamed; the plugin's per-card state (pins,
+	 * colors, placements) moves with it when the heading is a card's. */
+	private wireOutlineHeading(el: HTMLElement, file: TFile, node: TableNode, headingRaw: string): void {
+		el.setAttr("role", "button");
+		el.tabIndex = 0;
+		el.setAttr("aria-label", `Rename “${node.title || "(untitled)"}”`);
+		const open = () => {
+			new TextInputModal(this.app, "Rename heading", node.title, "Rename", (value) => {
+				const title = value.trim();
+				if (!title || title === node.title) return;
+				void (async () => {
+					const hashes = /^#+/.exec(headingRaw)?.[0] ?? "#".repeat(node.level);
+					const newHeading = `${hashes} ${title}`;
+					const linkEdits = headingLinkEdits(this.app, file, node.headingLine, node.title, title);
+					const own = linkEdits.get(file.path) ?? [];
+					const ok = await retitleHeadingInFile(this.app, file, node.headingLine, headingRaw, newHeading, own);
+					if (!ok) {
+						new Notice("Couldn't find that heading — the file changed on disk.");
+						await this.refresh();
+						return;
+					}
+					const elsewhere = await applyLinkEditsElsewhere(this.app, linkEdits, file.path);
+					const links = own.length + elsewhere.links;
+					if (links) {
+						const where = elsewhere.notes ? ` (${elsewhere.notes + (own.length ? 1 : 0)} notes)` : "";
+						new Notice(`Updated ${links} ${links === 1 ? "link" : "links"} to this heading${where}.`);
+					}
+					await this.plugin.renameCardKey(file.path, headingRaw, newHeading);
+					const placed = this.customPlacements[headingRaw];
+					if (placed) {
+						this.customPlacements[newHeading] = placed;
+						delete this.customPlacements[headingRaw];
+					}
+					if (this.roloActive.get(this.filePath) === headingRaw) this.roloActive.set(this.filePath, newHeading);
+					await this.refresh();
+				})();
+			}).open();
+		};
+		el.addEventListener("click", open);
+		el.addEventListener("keydown", (evt) => {
+			if (evt.key !== "Enter" && evt.key !== " ") return;
+			evt.preventDefault();
+			open();
+		});
+	}
+
+	/** A heading's own text on one clipped line in `textEl`; a click (or Enter) on
+	 * `clickEl` opens the whole of it in an editor that writes it back by line. */
+	private wireOutlineText(
+		clickEl: HTMLElement,
+		textEl: HTMLElement,
+		file: TFile,
+		node: TableNode | null,
+		range: [number, number],
+		text: string,
+	): void {
+		const line = tableLineText(text);
+		textEl.setText(line);
+		textEl.toggleClass("is-empty", line === "");
+		clickEl.setAttr("role", "button");
+		clickEl.tabIndex = 0;
+		const owner = node ? `“${node.title || "(untitled)"}”` : "the text before the first heading";
+		clickEl.setAttr("aria-label", `Edit the text of ${owner}`);
+		const open = () => {
+			const title = node ? `Edit the text under “${node.title || "(untitled)"}”` : "Edit the text before the first heading";
+			new EditBlockModal(
+				this.plugin,
+				text,
+				async (edited) => {
+					const ok = await replaceLinesInFile(this.app, file, range[0], range[1], text, edited);
+					if (!ok) new Notice("Couldn't find that text — the file changed on disk.");
+					await this.refresh();
+				},
+				{ title, allowEmpty: true },
+			).open();
+		};
+		clickEl.addEventListener("click", open);
+		clickEl.addEventListener("keydown", (evt) => {
+			if (evt.key !== "Enter" && evt.key !== " ") return;
+			evt.preventDefault();
+			open();
+		});
+	}
+
 	private renderHeatmapLayout(file: TFile, sections: Section[], format: string, detect: string): void {
 		this.clearAllCards();
 		this.clearHierarchy();

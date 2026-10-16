@@ -1082,3 +1082,58 @@ export async function nestSectionsInFile(
 	});
 	return result;
 }
+
+/**
+ * Replace a line range of the note — the Table and Tree layouts' cells, which address
+ * a heading's own text by line — after checking the text there is still what the view
+ * showed. An empty replacement removes the lines; an empty range inserts at `start`.
+ */
+export async function replaceLinesInFile(
+	app: App,
+	file: TFile,
+	start: number,
+	end: number,
+	expectedText: string,
+	newText: string,
+): Promise<boolean> {
+	let ok = true;
+	await processNote(app, file, "Edit text", (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		if (end > lines.length || lines.slice(start, end).join("\n") !== expectedText) {
+			ok = false;
+			return data;
+		}
+		const text = newText.replace(/\s+$/, "");
+		lines.splice(start, end - start, ...(text ? text.split(/\r?\n/) : []));
+		return lines.join(eol);
+	});
+	return ok;
+}
+
+/**
+ * Rename a heading of any rank by its line — the Table's heading cells — after checking
+ * the line still reads as the view showed it. Links to the heading in this note are
+ * rewritten in the same pass (see headingLinkEdits); other notes' links are the caller's.
+ */
+export async function retitleHeadingInFile(
+	app: App,
+	file: TFile,
+	line: number,
+	expectedHeading: string,
+	newHeading: string,
+	linkEdits: LinkEdit[] = [],
+): Promise<boolean> {
+	let ok = true;
+	await processNote(app, file, "Rename heading", (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		if (data.split(/\r?\n/)[line] !== expectedHeading) {
+			ok = false;
+			return data;
+		}
+		const out = applyLinkEdits(data, linkEdits).text.split(/\r?\n/);
+		out[line] = newHeading;
+		return out.join(eol);
+	});
+	return ok;
+}

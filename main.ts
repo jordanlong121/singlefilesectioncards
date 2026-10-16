@@ -48,6 +48,7 @@ export * from "./src/writes";
 export * from "./src/headinglinks";
 export * from "./src/planner";
 export * from "./src/periods";
+export * from "./src/table";
 export * from "./src/canvas";
 export * from "./src/icalfeed";
 export * from "./src/nesting";
