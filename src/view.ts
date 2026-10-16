@@ -9537,6 +9537,20 @@ export class SectionCardsView extends ItemView {
 	 * folded away sits beside it. */
 	private renderTree(file: TFile, lines: string[], outline: TableOutline): void {
 		const wrap = this.gridEl.createDiv({ cls: "sc-tree-wrap" });
+		// Expand all / Collapse all, above the tree; each branch's chevron re-syncs.
+		const bar = wrap.createDiv({ cls: "sc-tree-bar" });
+		const syncs: (() => void)[] = [];
+		const parentKeys: string[] = [];
+		const barButton = (label: string, icon: string, fallback: string, act: () => void) => {
+			const btn = bar.createEl("button", { cls: "sc-tree-bar-btn" });
+			SectionCardsView.setIconOr(btn.createSpan({ cls: "sc-tree-bar-icon" }), icon, fallback);
+			btn.createSpan({ text: label });
+			btn.setAttr("aria-label", label);
+			btn.addEventListener("click", () => {
+				act();
+				for (const sync of syncs) sync();
+			});
+		};
 		const root = wrap.createDiv({ cls: "sc-tree" });
 		const textOf = (start: number, end: number) => lines.slice(start, end).join("\n");
 		let folded = this.treeCollapsed.get(file.path);
@@ -9556,6 +9570,7 @@ export class SectionCardsView extends ItemView {
 			this.wireOutlineText(box, text, file, node, [node.textStart, node.textEnd], textOf(node.textStart, node.textEnd));
 			if (!node.children.length) return;
 			const key = lines[node.headingLine];
+			parentKeys.push(key);
 			const kids = item.createDiv({ cls: "sc-tree-children" });
 			for (const child of node.children) build(kids, child);
 			const toggle = head.createEl("button", { cls: "sc-tree-toggle" });
@@ -9575,6 +9590,7 @@ export class SectionCardsView extends ItemView {
 						: `Collapse the headings under “${node.title || "(untitled)"}”`,
 				);
 			};
+			syncs.push(sync);
 			const flip = () => {
 				if (closed.has(key)) closed.delete(key);
 				else closed.add(key);
@@ -9602,6 +9618,11 @@ export class SectionCardsView extends ItemView {
 			this.wireOutlineText(box, text, file, null, [textStart, textEnd], textOf(textStart, textEnd));
 		}
 		for (const node of outline.roots) build(root, node);
+		barButton("Expand all", "unfold-vertical", "chevrons-down-up", () => closed.clear());
+		barButton("Collapse all", "fold-vertical", "chevrons-up-down", () => {
+			for (const key of parentKeys) closed.add(key);
+		});
+		bar.toggleClass("is-hidden", parentKeys.length === 0); // a flat note has nothing to fold
 	}
 
 	/** A heading cell: a click (or Enter) renames the heading, at whatever rank it is.

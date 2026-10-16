@@ -2733,6 +2733,44 @@ body.is-mobile .is-layout-binder .section-card-body{
 	font-size: calc(var(--font-ui-small) * var(--sfsc-font-scale, 1));
 }
 
+/* Expand all / Collapse all, a small row above the tree. */
+.sc-tree-bar {
+	display: flex;
+	gap: 6px;
+	margin-bottom: 8px;
+}
+
+.sc-tree-bar.is-hidden {
+	display: none;
+}
+
+.sc-tree-bar-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: auto;
+	min-height: 0;
+	margin: 0;
+	padding: 3px 9px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	background: var(--sc-surface);
+	border: 1px solid var(--sc-line);
+	border-radius: var(--radius-s, 4px);
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.sc-tree-bar-btn:hover {
+	color: var(--text-normal);
+	background: var(--sc-surface-hover);
+}
+
+.sc-tree-bar-icon svg {
+	width: 13px;
+	height: 13px;
+}
+
 .sc-tree-item {
 	position: relative;
 	display: flex;
