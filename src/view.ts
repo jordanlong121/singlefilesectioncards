@@ -9503,21 +9503,68 @@ export class SectionCardsView extends ItemView {
 		}
 	}
 
-	/** Tree: each heading a node, its sub-headings branching off to the right. */
+	/** Tree: the branches folded shut, per note, by the heading line that heads each
+	 * (so a fold survives the refreshes that follow edits, and a rename opens it). */
+	private treeCollapsed = new Map<string, Set<string>>();
+
+	/** Tree: each heading a node, its sub-headings branching off to the right. A node
+	 * with sub-headings carries a chevron that folds its branch; the count of headings
+	 * folded away sits beside it. */
 	private renderTree(file: TFile, lines: string[], outline: TableOutline): void {
 		const wrap = this.gridEl.createDiv({ cls: "sc-tree-wrap" });
 		const root = wrap.createDiv({ cls: "sc-tree" });
 		const textOf = (start: number, end: number) => lines.slice(start, end).join("\n");
+		let folded = this.treeCollapsed.get(file.path);
+		if (!folded) {
+			folded = new Set();
+			this.treeCollapsed.set(file.path, folded);
+		}
+		const closed = folded;
+		const countBelow = (node: TableNode): number =>
+			node.children.reduce((sum, child) => sum + 1 + countBelow(child), 0);
 		const build = (parent: HTMLElement, node: TableNode) => {
 			const item = parent.createDiv({ cls: "sc-tree-item" });
 			const box = item.createDiv({ cls: `sc-tree-node is-h${node.level}` });
-			box.createDiv({ cls: "sc-tree-title", text: node.title || "(untitled)" });
+			const head = box.createDiv({ cls: "sc-tree-head" });
+			head.createDiv({ cls: "sc-tree-title", text: node.title || "(untitled)" });
 			const text = box.createDiv({ cls: "sc-tree-text" });
 			this.wireOutlineText(box, text, file, node, [node.textStart, node.textEnd], textOf(node.textStart, node.textEnd));
-			if (node.children.length) {
-				const kids = item.createDiv({ cls: "sc-tree-children" });
-				for (const child of node.children) build(kids, child);
-			}
+			if (!node.children.length) return;
+			const key = lines[node.headingLine];
+			const kids = item.createDiv({ cls: "sc-tree-children" });
+			for (const child of node.children) build(kids, child);
+			const toggle = head.createEl("button", { cls: "sc-tree-toggle" });
+			const below = countBelow(node);
+			const sync = () => {
+				const isClosed = closed.has(key);
+				item.toggleClass("is-collapsed", isClosed);
+				toggle.empty();
+				fastIcon(toggle, isClosed ? "chevron-right" : "chevron-down");
+				if (isClosed) toggle.createSpan({ cls: "sc-tree-toggle-count", text: String(below) });
+				toggle.setAttr(
+					"aria-label",
+					isClosed
+						? `Expand: ${below} ${below === 1 ? "heading" : "headings"} under “${node.title || "(untitled)"}”`
+						: `Collapse the headings under “${node.title || "(untitled)"}”`,
+				);
+			};
+			const flip = () => {
+				if (closed.has(key)) closed.delete(key);
+				else closed.add(key);
+				sync();
+			};
+			toggle.addEventListener("click", (evt) => {
+				evt.stopPropagation(); // the node's own click opens its editor
+				flip();
+			});
+			// On the focused node, ← folds the branch and → opens it, as in a file tree.
+			box.addEventListener("keydown", (evt) => {
+				if (evt.key === "ArrowLeft" && !closed.has(key)) flip();
+				else if (evt.key === "ArrowRight" && closed.has(key)) flip();
+				else return;
+				evt.preventDefault();
+			});
+			sync();
 		};
 		if (outline.preamble) {
 			const { textStart, textEnd } = outline.preamble;

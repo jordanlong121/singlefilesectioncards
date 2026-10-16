@@ -4,6 +4,8 @@
 # are close-ups and compose the heroes. WSL + Windows Chrome (see tools/make_heroes.py
 # for the fonts); needs harness-out/app.css (tools/asar-extract.mjs) once.
 #   bash tools/rebuild-screenshots.sh            → writes screenshots/*.png
+# The Table, Tree and Binder shots aren't harness pages: tools/live-screenshots.mjs takes
+# them from a running Obsidian (sample vault, --remote-debugging-port=9222).
 set -euo pipefail
 REPO=/home/jlong/obsidian-plugins/single-file-section-cards
 WROOT=/mnt/c/Users/Jordan.Long/AppData/Local/Temp/rebuild
