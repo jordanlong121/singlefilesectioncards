@@ -2652,7 +2652,8 @@ body.is-mobile .is-layout-binder .section-card-body{
 	font-weight: 600;
 	color: var(--text-normal);
 	background: var(--sc-header);
-	overflow-wrap: anywhere;
+	overflow-wrap: break-word;
+	hyphens: auto;
 	cursor: pointer;
 }
 
@@ -2752,12 +2753,59 @@ body.is-mobile .is-layout-binder .section-card-body{
 	font-weight: 500;
 }
 
+.sc-tree-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
 .sc-tree-title {
+	flex: 1 1 auto;
+	min-width: 0;
 	font-weight: 600;
 	color: var(--text-normal);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+/* The fold chevron: a bare glyph at the title's right; folded, it shows how many
+   headings it hides. */
+.sc-tree-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	flex: 0 0 auto;
+	height: auto;
+	min-height: 0;
+	margin: 0;
+	padding: 1px 3px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-s, 4px);
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.sc-tree-toggle:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.sc-tree-toggle svg {
+	width: 14px;
+	height: 14px;
+}
+
+.sc-tree-toggle-count {
+	font-weight: 600;
+	line-height: 1;
+}
+
+.sc-tree-item.is-collapsed > .sc-tree-children {
+	display: none;
 }
 
 .sc-tree-text {

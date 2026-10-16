@@ -247,17 +247,24 @@ editor — Ctrl/⌘+Enter saves it back into the note, and clearing it removes t
 Click a heading cell to rename that heading, at any level; links to it follow, as when a
 card is renamed. Text above the first heading has a row of its own at the top.
 
+![Table](screenshots/table.png)
+
 ### Tree
 
 The note as a tree: each heading a node, its sub-headings branching off to the right, with
 the heading's own text under its title, cut off where the node ends. Click a node to edit
-its text, as in the Table.
+its text, as in the Table. A node with sub-headings has a chevron that folds its branch
+(showing how many headings are tucked away); ← and → on a focused node do the same.
+
+![Tree](screenshots/tree.png)
 
 ### Binder
 
 The Rolodex turned on its side: one card fills the pane and every card's title is a tab
 down the right edge, like a binder's tabbed inserts. Click a tab to turn to its card, drag
 one onto another to reorder, or use `,` and `.` (and ← / →) to flip through.
+
+![Binder](screenshots/binder.png)
 
 ### Links
 
