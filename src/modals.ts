@@ -1357,20 +1357,28 @@ export class EditBlockModal extends Modal {
 	private readonly plugin: SectionCardsPlugin;
 	private readonly initial: string;
 	private readonly onSubmit: (text: string) => void | Promise<void>;
+	private readonly options: { title: string; allowEmpty: boolean };
 	private editor: EmbeddedEditor | null = null;
 	private box: HTMLTextAreaElement | null = null;
 
-	constructor(plugin: SectionCardsPlugin, initial: string, onSubmit: (text: string) => void | Promise<void>) {
+	constructor(
+		plugin: SectionCardsPlugin,
+		initial: string,
+		onSubmit: (text: string) => void | Promise<void>,
+		/** The Table and Tree layouts edit a heading's whole text, which may be cleared. */
+		options: { title?: string; allowEmpty?: boolean } = {},
+	) {
 		super(plugin.app);
 		this.plugin = plugin;
 		this.initial = initial;
 		this.onSubmit = onSubmit;
+		this.options = { title: options.title ?? "Edit line", allowEmpty: options.allowEmpty ?? false };
 	}
 
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.addClass("section-cards-quickadd-modal");
-		contentEl.createEl("h3", { text: "Edit line" });
+		contentEl.createEl("h3", { text: this.options.title });
 
 		const mode = this.plugin.settings.editorMode;
 		if (mode !== "plain") {
@@ -1407,7 +1415,7 @@ export class EditBlockModal extends Modal {
 
 	private submit(): void {
 		const text = (this.editor ? this.editor.value : (this.box?.value ?? "")).replace(/\s+$/, "");
-		if (!text.trim()) {
+		if (!text.trim() && !this.options.allowEmpty) {
 			new Notice("The line can't be empty — cancel and delete it instead.");
 			return;
 		}

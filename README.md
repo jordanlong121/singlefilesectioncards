@@ -236,6 +236,29 @@ above. Click a day to open (or create) its card. Needs date headings.
 
 ![Heatmap](screenshots/heatmap.png)
 
+### Table
+
+The whole note as a table, every heading level at once (the card level doesn't apply).
+Each heading is a row; a heading with sub-headings becomes a cell spanning their rows, so
+the first columns read as the note's outline and the last column holds each heading's own
+text on one line, clipped with an ellipsis. A heading that has text of its own above its
+sub-headings gets a first row for it. Click a text cell to open the whole of it in an
+editor — Ctrl/⌘+Enter saves it back into the note, and clearing it removes those lines.
+Click a heading cell to rename that heading, at any level; links to it follow, as when a
+card is renamed. Text above the first heading has a row of its own at the top.
+
+### Tree
+
+The note as a tree: each heading a node, its sub-headings branching off to the right, with
+the heading's own text under its title, cut off where the node ends. Click a node to edit
+its text, as in the Table.
+
+### Binder
+
+The Rolodex turned on its side: one card fills the pane and every card's title is a tab
+down the right edge, like a binder's tabbed inserts. Click a tab to turn to its card, drag
+one onto another to reorder, or use `,` and `.` (and ← / →) to flip through.
+
 ### Links
 
 The canvas for the note's web links: placed tiles show a live page preview. The

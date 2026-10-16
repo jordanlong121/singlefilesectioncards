@@ -48,10 +48,10 @@ await sleep(600);
 
 try {
 	// ---- layouts
-	for (const label of ["Grid Aligned", "Tight", "Horizontal", "Tasks Only", "Vertical", "Rolodex", "Day Planner", "Custom Grid", "Images", "Links", "Calendar", "Heatmap", "Grid"]) {
+	for (const label of ["Grid Aligned", "Tight", "Horizontal", "Tasks Only", "Vertical", "Rolodex", "Day Planner", "Custom Grid", "Images", "Links", "Calendar", "Heatmap", "Table", "Tree", "Binder", "Grid"]) {
 		await check(`layout: ${label}`, async () => {
 			await pickLayout(label);
-			return ev(`(() => { const v = ${V}; const c = v.contentEl; const shown = { grid: c.querySelectorAll(".section-card").length, planner: c.querySelectorAll(".sfsc-planner-item").length, rolo: c.querySelectorAll(".sfsc-rolo-tab").length, cal: c.querySelectorAll(".sc-cal-month").length, heat: c.querySelectorAll(".sc-heat-wrap, .sc-heat-cell, .sc-heat-day").length, tray: c.querySelectorAll(".section-cards-tray-tile").length }; return v.layout + " · " + JSON.stringify(shown); })()`);
+			return ev(`(() => { const v = ${V}; const c = v.contentEl; const shown = { grid: c.querySelectorAll(".section-card").length, planner: c.querySelectorAll(".sfsc-planner-item").length, rolo: c.querySelectorAll(".sfsc-rolo-tab").length, cal: c.querySelectorAll(".sc-cal-month").length, heat: c.querySelectorAll(".sc-heat-wrap, .sc-heat-cell, .sc-heat-day").length, table: c.querySelectorAll(".sc-table tr").length, tree: c.querySelectorAll(".sc-tree-node").length, tray: c.querySelectorAll(".section-cards-tray-tile").length }; return v.layout + " · " + JSON.stringify(shown); })()`);
 		});
 	}
 	// ---- view modes

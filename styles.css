@@ -2130,7 +2130,8 @@ body.theme-light .sfsc-swatch {
 .section-card.is-maximized.is-editing .section-card-body,
 .is-layout-custom .section-card.is-placed.is-editing .section-card-body,
 .is-layout-vertical .section-card.is-editing .section-card-body,
-.is-layout-rolodex .section-card.is-editing .section-card-body {
+.is-layout-rolodex .section-card.is-editing .section-card-body,
+.is-layout-binder .section-card.is-editing .section-card-body{
 	display: flex;
 	flex-direction: column;
 }
@@ -2139,10 +2140,12 @@ body.theme-light .sfsc-swatch {
 .is-layout-custom .section-card.is-placed .section-card-editor,
 .is-layout-vertical .section-card .section-card-editor,
 .is-layout-rolodex .section-card .section-card-editor,
+.is-layout-binder .section-card .section-card-editor,
 .section-card.is-maximized .section-card-editor-embed,
 .is-layout-custom .section-card.is-placed .section-card-editor-embed,
 .is-layout-vertical .section-card .section-card-editor-embed,
-.is-layout-rolodex .section-card .section-card-editor-embed {
+.is-layout-rolodex .section-card .section-card-editor-embed,
+.is-layout-binder .section-card .section-card-editor-embed{
 	flex: 1 1 auto;
 	height: auto;
 	min-height: 0;
@@ -2153,27 +2156,32 @@ body.theme-light .sfsc-swatch {
 .section-card.is-maximized .section-card-footer,
 .is-layout-custom .section-card.is-placed .section-card-footer,
 .is-layout-vertical .section-card .section-card-footer,
-.is-layout-rolodex .section-card .section-card-footer {
+.is-layout-rolodex .section-card .section-card-footer,
+.is-layout-binder .section-card .section-card-footer{
 	flex: 0 0 auto;
 }
 
 /* ---------- Rolodex: one card fills the pane, title tabs across the top ---------- */
 
 /* Toolbar, tab strip, card — stacked; only the card's body scrolls. */
-.workspace-leaf-content .view-content.section-cards-view.is-layout-rolodex {
+.workspace-leaf-content .view-content.section-cards-view.is-layout-rolodex,
+.workspace-leaf-content .view-content.section-cards-view.is-layout-binder{
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
 }
 
-.is-layout-rolodex .section-cards-toolbar {
+.is-layout-rolodex .section-cards-toolbar,
+.is-layout-binder .section-cards-toolbar{
 	position: static;
 	flex: 0 0 auto;
 }
 
 /* No pinned band or hierarchy pane here: the strip does the picking. */
 .is-layout-rolodex .section-cards-pinned,
-.is-layout-rolodex .section-cards-hier {
+.is-layout-binder .section-cards-pinned,
+.is-layout-rolodex .section-cards-hier,
+.is-layout-binder .section-cards-hier{
 	display: none;
 }
 
@@ -2183,7 +2191,8 @@ body.theme-light .sfsc-swatch {
 
 /* The wrapper: zoom buttons at the left, then the scrolling strip with its edge
    indicators. */
-.is-layout-rolodex .sfsc-rolo-wrap {
+.is-layout-rolodex .sfsc-rolo-wrap,
+.is-layout-binder .sfsc-rolo-wrap{
 	display: flex;
 	align-items: stretch;
 	gap: 6px;
@@ -2249,7 +2258,8 @@ body.theme-light .sfsc-swatch {
    each at least 120px, sharing the width when they fit — one title spans the strip,
    two take half each. Past four rows the grid outgrows the strip and scrolls sideways;
    the scrollbar stays hidden because the indicators say what's cut off. */
-.is-layout-rolodex .sfsc-rolo-tabs {
+.is-layout-rolodex .sfsc-rolo-tabs,
+.is-layout-binder .sfsc-rolo-tabs{
 	display: grid;
 	grid-template-columns: repeat(var(--rolo-cols, 1), minmax(120px, 1fr));
 	grid-auto-rows: auto;
@@ -2260,7 +2270,8 @@ body.theme-light .sfsc-swatch {
 	scrollbar-width: none;
 }
 
-.is-layout-rolodex .sfsc-rolo-tabs::-webkit-scrollbar {
+.is-layout-rolodex .sfsc-rolo-tabs::-webkit-scrollbar,
+.is-layout-binder .sfsc-rolo-tabs::-webkit-scrollbar{
 	display: none;
 }
 
@@ -2413,7 +2424,8 @@ body.theme-light .sfsc-swatch {
 }
 
 /* The card: the one marked active fills what's left; the rest are simply not shown. */
-.is-layout-rolodex .section-cards-grid {
+.is-layout-rolodex .section-cards-grid,
+.is-layout-binder .section-cards-grid{
 	display: flex;
 	flex-direction: column;
 	align-items: stretch; /* the base grid's align-items: start would shrink-wrap the card */
@@ -2422,11 +2434,13 @@ body.theme-light .sfsc-swatch {
 	padding: 0 var(--sc-pad) var(--sc-pad);
 }
 
-.is-layout-rolodex .section-card {
+.is-layout-rolodex .section-card,
+.is-layout-binder .section-card{
 	display: none;
 }
 
-.is-layout-rolodex .section-card.is-rolo-active {
+.is-layout-rolodex .section-card.is-rolo-active,
+.is-layout-binder .section-card.is-rolo-active{
 	display: flex;
 	flex: 1 1 auto;
 	min-height: 0;
@@ -2436,13 +2450,15 @@ body.theme-light .sfsc-swatch {
 
 /* The card already fills the pane, so "make it big" has nothing to do; the strip's
    other buttons close up the gap. */
-.is-layout-rolodex .section-card-big {
+.is-layout-rolodex .section-card-big,
+.is-layout-binder .section-card-big{
 	display: none;
 }
 
 /* Hover must not recolor or lift the card: its open tab shares the border and sits flush. */
 @media (hover: hover) {
-	.is-layout-rolodex .section-card.is-rolo-active:hover {
+	.is-layout-rolodex .section-card.is-rolo-active:hover,
+	.is-layout-binder .section-card.is-rolo-active:hover{
 		border-color: var(--sc-line);
 		box-shadow: var(--sc-shadow);
 		transform: none;
@@ -2451,19 +2467,354 @@ body.theme-light .sfsc-swatch {
 
 /* One big card gets roomier margins than a wall of small ones; the top keeps its
    extra allowance for the hover action strip. */
-.is-layout-rolodex .section-card-body {
+.is-layout-rolodex .section-card-body,
+.is-layout-binder .section-card-body{
 	flex: 1 1 auto;
 	min-height: 0;
 	max-height: none;
 	padding: 30px 28px 28px;
 }
 
-body.is-mobile .is-layout-rolodex .section-card-body {
+body.is-mobile .is-layout-rolodex .section-card-body,
+body.is-mobile .is-layout-binder .section-card-body{
 	padding: 16px 18px 18px;
 }
 
-.is-layout-rolodex .section-cards-empty {
+.is-layout-rolodex .section-cards-empty,
+.is-layout-binder .section-cards-empty{
 	grid-row-end: auto;
+}
+
+/* ---------- Binder: the Rolodex's one card, its tabs down the right edge ---------- */
+
+/* Toolbar across the top; below it the card on the left and the tab column on the
+   right, like a binder's tabbed inserts. */
+.workspace-leaf-content .view-content.section-cards-view.is-layout-binder {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-rows: auto minmax(0, 1fr);
+	overflow: hidden;
+}
+
+.is-layout-binder > :not(.section-cards-grid):not(.sfsc-rolo-wrap) {
+	grid-column: 1 / -1;
+}
+
+.is-layout-binder .section-cards-grid {
+	grid-column: 1;
+	grid-row: 2;
+	padding: var(--sc-pad) 0 var(--sc-pad) var(--sc-pad);
+}
+
+/* The column: no zoom buttons or edge fades; it scrolls up and down on its own. */
+.is-layout-binder .sfsc-rolo-wrap {
+	grid-column: 2;
+	grid-row: 2;
+	flex-direction: column;
+	width: 164px;
+	min-height: 0;
+	padding: calc(var(--sc-pad) + 10px) var(--sc-pad) var(--sc-pad) 0;
+	margin: 0 0 0 -1px;
+}
+
+.is-layout-binder .sfsc-rolo-zoom,
+.is-layout-binder .sfsc-rolo-more {
+	display: none;
+}
+
+.is-layout-binder .sfsc-rolo-scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+}
+
+.is-layout-binder .sfsc-rolo-tabs {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	flex: 1 1 auto;
+	min-height: 0;
+	padding: 0 0 0 1px; /* room for the active tab's one-pixel reach onto the card */
+	overflow-x: hidden;
+	overflow-y: auto;
+	scrollbar-width: thin;
+}
+
+.is-layout-binder .sfsc-rolo-tabs::-webkit-scrollbar {
+	display: block;
+	width: 6px;
+}
+
+.is-layout-binder .sfsc-rolo-cell {
+	flex: 0 0 auto;
+}
+
+/* Tabs open to the left, onto the card: square on that side, rounded on the outer one. */
+.is-layout-binder .sfsc-rolo-tab {
+	border: 1px solid var(--sc-line);
+	border-left: none;
+	border-radius: 0 var(--radius-m, 8px) var(--radius-m, 8px) 0;
+	padding: 8px 10px;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+}
+
+.is-layout-binder .sfsc-rolo-cell.is-active {
+	margin: 0 0 0 -1px;
+}
+
+.is-layout-binder .sfsc-rolo-tab.is-active {
+	box-shadow: inset 3px 0 0 var(--interactive-accent);
+}
+
+.is-layout-binder .sfsc-rolo-tab[data-sfsc-color] {
+	box-shadow: inset 3px 0 0 rgb(var(--sfsc-c));
+}
+
+/* A tab dragged over another: the slot shows above or below it. */
+.is-layout-binder .sfsc-rolo-cell.sc-drop-before::after,
+.is-layout-binder .sfsc-rolo-cell.sc-drop-after::after {
+	left: 0;
+	right: 0;
+	width: auto;
+	height: 3px;
+}
+
+.is-layout-binder .sfsc-rolo-cell.sc-drop-before::after {
+	top: -3px;
+	bottom: auto;
+}
+
+.is-layout-binder .sfsc-rolo-cell.sc-drop-after::after {
+	top: auto;
+	bottom: -3px;
+}
+
+/* The card keeps its top corners; the right side is where the tabs join it. */
+.is-layout-binder .section-card.is-rolo-active {
+	border-top-left-radius: var(--radius-m, 8px);
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+/* ---------- Table: the whole note, a row per heading ---------- */
+
+.is-layout-table .section-cards-grid,
+.is-layout-tree .section-cards-grid {
+	display: block;
+	overflow: auto;
+	padding: var(--sc-pad);
+}
+
+/* Cards' controls don't apply: nothing to sort, group, filter, or pick a level for. */
+.is-layout-table .section-cards-filter,
+.is-layout-table .section-cards-sort-control,
+.is-layout-table .section-cards-group-control,
+.is-layout-table .section-cards-level-control,
+.is-layout-table .section-cards-mode-control,
+.is-layout-table .section-cards-pinned,
+.is-layout-tree .section-cards-filter,
+.is-layout-tree .section-cards-sort-control,
+.is-layout-tree .section-cards-group-control,
+.is-layout-tree .section-cards-level-control,
+.is-layout-tree .section-cards-mode-control,
+.is-layout-tree .section-cards-pinned {
+	display: none;
+}
+
+/* The heading columns (widths set per column in code: together at most half the
+   table, a fifth each at most) leave the rest to the text; a deep outline in a
+   narrow pane scrolls sideways. */
+.sc-table {
+	width: 100%;
+	min-width: calc(var(--sc-table-cols, 1) * 104px + 240px);
+	border-collapse: collapse;
+	table-layout: fixed;
+	font-size: calc(var(--font-ui-small) * var(--sfsc-font-scale, 1));
+	background: var(--sc-surface);
+	box-shadow: var(--sc-shadow);
+}
+
+.sc-table th,
+.sc-table td {
+	border: 1px solid var(--sc-line);
+	padding: 5px 10px;
+	text-align: left;
+	vertical-align: top;
+	line-height: 1.4;
+}
+
+.sc-table th.sc-table-heading {
+	font-weight: 600;
+	color: var(--text-normal);
+	background: var(--sc-header);
+	overflow-wrap: anywhere;
+	cursor: pointer;
+}
+
+/* A click on a heading renames it. */
+.sc-table th.sc-table-heading:hover,
+.sc-table th.sc-table-heading:focus-visible {
+	background: var(--sc-surface-hover);
+	outline: none;
+	box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+
+.sc-table th.sc-table-heading.is-h1 {
+	font-size: 1.1em;
+}
+
+.sc-table th.sc-table-heading.is-h2 {
+	font-size: 1.04em;
+}
+
+/* The blank heading columns beside a parent's own text row. */
+.sc-table td.sc-table-pad {
+	background: var(--sc-header);
+	opacity: 0.55;
+}
+
+.sc-table td.sc-table-preamble {
+	color: var(--text-faint);
+	font-style: italic;
+	background: var(--sc-header);
+}
+
+/* One line, clipped with an ellipsis; a click opens it whole. */
+.sc-table td.sc-table-text {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	cursor: pointer;
+}
+
+.sc-table td.sc-table-text:hover,
+.sc-table td.sc-table-text:focus-visible {
+	background: var(--sc-surface-hover);
+	outline: none;
+	box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+
+.sc-table td.sc-table-text.is-empty::before {
+	content: "Add text…";
+	color: var(--text-faint);
+	font-style: italic;
+}
+
+/* ---------- Tree: the headings as nodes, branching to the right ---------- */
+
+.sc-tree {
+	display: flex;
+	flex-direction: column;
+	width: max-content;
+	min-width: 100%;
+	font-size: calc(var(--font-ui-small) * var(--sfsc-font-scale, 1));
+}
+
+.sc-tree-item {
+	position: relative;
+	display: flex;
+	align-items: center;
+	padding: 4px 0;
+}
+
+.sc-tree-node {
+	position: relative;
+	flex: 0 0 auto;
+	width: 210px;
+	padding: 6px 10px;
+	border: 1px solid var(--sc-line);
+	border-radius: var(--radius-m, 8px);
+	background: var(--sc-surface);
+	box-shadow: var(--sc-shadow);
+	cursor: pointer;
+	overflow: hidden;
+}
+
+.sc-tree-node:hover,
+.sc-tree-node:focus-visible {
+	border-color: var(--interactive-accent);
+	background: var(--sc-surface-hover);
+	outline: none;
+}
+
+.sc-tree-node.is-h1 {
+	border-left: 3px solid var(--interactive-accent);
+}
+
+.sc-tree-node.is-preamble .sc-tree-title {
+	color: var(--text-faint);
+	font-style: italic;
+	font-weight: 500;
+}
+
+.sc-tree-title {
+	font-weight: 600;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.sc-tree-text {
+	margin-top: 2px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.sc-tree-text.is-empty {
+	display: none;
+}
+
+/* Connectors: a stub out of the parent to a trunk, and a stub from the trunk into
+   each child; the trunk runs from the first child's middle to the last's. */
+.sc-tree-children {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	margin-left: 28px;
+}
+
+.sc-tree-children::before {
+	content: "";
+	position: absolute;
+	left: -28px;
+	top: 50%;
+	width: 14px;
+	border-top: 1px solid var(--sc-line);
+}
+
+.sc-tree-children > .sc-tree-item::before {
+	content: "";
+	position: absolute;
+	left: -14px;
+	top: 50%;
+	width: 14px;
+	border-top: 1px solid var(--sc-line);
+}
+
+.sc-tree-children > .sc-tree-item::after {
+	content: "";
+	position: absolute;
+	left: -14px;
+	top: 0;
+	bottom: 0;
+	border-left: 1px solid var(--sc-line);
+}
+
+.sc-tree-children > .sc-tree-item:first-child::after {
+	top: 50%;
+}
+
+.sc-tree-children > .sc-tree-item:last-child::after {
+	bottom: 50%;
 }
 
 /* A layout hidden from this note stays in the Layouts menu, dimmed; a click restores it. */
@@ -4332,7 +4683,7 @@ body.theme-dark .section-card[data-sfsc-color] .section-card-actions {
 	padding-bottom: 36px;
 }
 
-.section-cards-view:not(.is-layout-rolodex) .section-card.is-actions-bottom > .section-card-body {
+.section-cards-view:not(.is-layout-rolodex):not(.is-layout-binder) .section-card.is-actions-bottom > .section-card-body {
 	padding-top: 12px;
 }
 
@@ -4574,6 +4925,7 @@ body.is-mobile .section-card-actions {
 
 /* The Rolodex and canvases lay the pane out themselves; the bar floats over the pane's bottom. */
 .is-layout-rolodex .sfsc-selection-bar,
+.is-layout-binder .sfsc-selection-bar,
 .is-layout-vertical .sfsc-selection-bar {
 	position: absolute;
 	left: 50%;
