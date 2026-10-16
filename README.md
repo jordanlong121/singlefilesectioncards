@@ -256,7 +256,8 @@ on them.
 The note as a tree: each heading a node, its sub-headings branching off to the right, with
 the heading's own text under its title, cut off where the node ends. Click a node to edit
 its text, as in the Table. A node with sub-headings has a chevron that folds its branch
-(showing how many headings are tucked away); ← and → on a focused node do the same.
+(showing how many headings are tucked away); ← and → on a focused node do the same, and
+**Expand all** / **Collapse all** above the tree fold every branch at once.
 
 ![Tree](screenshots/tree.png)
 
