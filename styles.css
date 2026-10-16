@@ -2685,6 +2685,23 @@ body.is-mobile .is-layout-binder .section-card-body{
 	background: var(--sc-header);
 }
 
+/* Today's heading and every row under it: a tint across the row, the heading in the
+   accent, and the outer edge ringed as today's card is on the walls. */
+.sc-table tr.is-today > th,
+.sc-table tr.is-today > td {
+	background: color-mix(in srgb, var(--text-highlight-bg, var(--interactive-accent)) 18%, var(--sc-surface));
+}
+
+.sc-table tr.is-today > th.sc-table-heading {
+	color: var(--text-accent);
+	box-shadow: inset 3px 0 0 var(--text-highlight-bg, var(--interactive-accent));
+}
+
+.sc-table tr.is-today > td.sc-table-text:hover,
+.sc-table tr.is-today > th.sc-table-heading:hover {
+	background: color-mix(in srgb, var(--text-highlight-bg, var(--interactive-accent)) 28%, var(--sc-surface));
+}
+
 /* One line, clipped with an ellipsis; a click opens it whole. */
 .sc-table td.sc-table-text {
 	white-space: nowrap;
