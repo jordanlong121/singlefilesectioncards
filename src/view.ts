@@ -9476,6 +9476,18 @@ export class SectionCardsView extends ItemView {
 		table.setCssProps({ "--sc-table-cols": String(columns) });
 		// Heading columns share at most half the width (a fifth each at most); the text
 		// column takes the rest. Percentages, since a column's width can't use min().
+		// Today's heading (with the Dates checkbox on) and every row under it are marked:
+		// its own text row and its sub-headings' rows alike.
+		const today = this.todayKeys();
+		const todayNodes = new Set<TableNode>();
+		if (today) {
+			const mark = (node: TableNode, under: boolean) => {
+				const hit = under || isTodayTitle(node.title, today.iso, today.formatted);
+				if (hit) todayNodes.add(node);
+				for (const child of node.children) mark(child, hit);
+			};
+			for (const root of outline.roots) mark(root, false);
+		}
 		const colgroup = table.createEl("colgroup");
 		const headingWidth = `${Math.min(20, 50 / columns).toFixed(2)}%`;
 		for (let i = 0; i < columns; i++) {
@@ -9483,8 +9495,13 @@ export class SectionCardsView extends ItemView {
 		}
 		colgroup.createEl("col", { cls: "sc-table-col-text" });
 		const tbody = table.createEl("tbody");
+		let todayRow: HTMLElement | null = null;
 		for (const row of tableRows(outline, lines)) {
 			const tr = tbody.createEl("tr");
+			if (row.cells.some((cell) => cell.node && todayNodes.has(cell.node))) {
+				tr.addClass("is-today");
+				todayRow ??= tr;
+			}
 			for (const cell of row.cells) {
 				const el = tr.createEl(cell.kind === "heading" ? "th" : "td", { cls: `sc-table-${cell.kind}` });
 				if (cell.rowSpan > 1) el.rowSpan = cell.rowSpan;
@@ -9501,6 +9518,14 @@ export class SectionCardsView extends ItemView {
 				}
 			}
 		}
+		// Today's rows come into view on the note's first render and on a layout switch,
+		// as today's card does on the walls (the flags refresh would otherwise consume).
+		const layoutJump = this.todayJumpForLayout;
+		this.todayJumpForLayout = false;
+		if (todayRow && (layoutJump || (this.todayJumpedFor !== file.path && this.plugin.settings.jumpToToday))) {
+			todayRow.scrollIntoView({ block: "center" });
+		}
+		this.todayJumpedFor = file.path;
 	}
 
 	/** Tree: the branches folded shut, per note, by the heading line that heads each
@@ -9539,7 +9564,9 @@ export class SectionCardsView extends ItemView {
 				const isClosed = closed.has(key);
 				item.toggleClass("is-collapsed", isClosed);
 				toggle.empty();
-				fastIcon(toggle, isClosed ? "chevron-right" : "chevron-down");
+				// The chevron points the way the click goes: down to open the branch out,
+				// left to close it back into the node.
+				fastIcon(toggle, isClosed ? "chevron-down" : "chevron-left");
 				if (isClosed) toggle.createSpan({ cls: "sc-tree-toggle-count", text: String(below) });
 				toggle.setAttr(
 					"aria-label",
