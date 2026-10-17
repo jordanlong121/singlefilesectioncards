@@ -9602,6 +9602,16 @@ export class SectionCardsView extends ItemView {
 			};
 			for (const root of outline.roots) mark(root, false);
 		}
+		// A heading's card color colors its cell, and washes the rows under it (its own
+		// and its sub-headings') unless a sub-heading has a color of its own.
+		const colors = this.plugin.getCardColors(file.path);
+		const rowColor = new Map<TableNode, string | undefined>();
+		const inherit = (node: TableNode, above: string | undefined) => {
+			const own = colors[lines[node.headingLine]] ?? above;
+			rowColor.set(node, own);
+			for (const child of node.children) inherit(child, own);
+		};
+		for (const root of outline.roots) inherit(root, undefined);
 		const colgroup = table.createEl("colgroup");
 		const headingWidth = `${Math.min(20, 50 / columns).toFixed(2)}%`;
 		for (let i = 0; i < columns; i++) {
@@ -9625,10 +9635,14 @@ export class SectionCardsView extends ItemView {
 					el.setText(cell.text || "(untitled)");
 					el.addClass(`is-h${cell.node.level}`);
 					el.setAttr("scope", "row");
-					this.wireOutlineHeading(el, file, cell.node, lines[cell.node.headingLine]);
+					const headingRaw = lines[cell.node.headingLine];
+					this.applyCardColor(el, colors[headingRaw]);
+					this.wireOutlineHeading(el, file, cell.node, headingRaw);
+					this.wireOutlineMenu(el, file, cell.node, headingRaw, "Row color…");
 				} else if (cell.kind === "preamble") {
 					el.setText("Before the first heading");
 				} else if (cell.kind === "text" && cell.range) {
+					if (cell.node) this.applyCardColor(tr, rowColor.get(cell.node));
 					this.wireOutlineText(el, el, file, cell.node ?? null, cell.range, cell.text, wrapText);
 					// The row's last cell: open the note at this row's heading (or, for the
 					// text above the first heading, at that text), as a card's ↗ button does.
@@ -9730,31 +9744,7 @@ export class SectionCardsView extends ItemView {
 			const box = item.createDiv({ cls: `sc-tree-node is-h${node.level}` });
 			const headingRaw = lines[node.headingLine];
 			this.applyCardColor(box, colors[headingRaw]);
-			box.addEventListener("contextmenu", (evt) => {
-				evt.preventDefault();
-				evt.stopPropagation();
-				const menu = new Menu();
-				menu.addItem((item) =>
-					item
-						.setTitle("Node color…")
-						.setIcon("palette")
-						.onClick(() => this.openColorMenu(evt, file, headingRaw)),
-				);
-				menu.addItem((item) =>
-					item
-						.setTitle("Rename heading…")
-						.setIcon("pencil")
-						.onClick(() => this.promptRenameHeading(file, node, headingRaw)),
-				);
-				menu.addItem((item) =>
-					item
-						.setTitle("Open in the note")
-						.setIcon("external-link")
-						.onClick(() => void this.plugin.revealSection(file, node.headingLine)),
-				);
-				this.addCommonMenuItems(menu);
-				menu.showAtMouseEvent(evt);
-			});
+			this.wireOutlineMenu(box, file, node, headingRaw, "Node color…");
 			const head = box.createDiv({ cls: "sc-tree-head" });
 			head.createDiv({ cls: "sc-tree-title", text: node.title || "(untitled)" });
 			const text = box.createDiv({ cls: "sc-tree-text" });
@@ -9832,6 +9822,36 @@ export class SectionCardsView extends ItemView {
 			if (evt.key !== "Enter" && evt.key !== " ") return;
 			evt.preventDefault();
 			open();
+		});
+	}
+
+	/** The Table's heading cells and the Tree's nodes share a right-click menu: the
+	 * heading's color (the card's), a rename, and the note. */
+	private wireOutlineMenu(el: HTMLElement, file: TFile, node: TableNode, headingRaw: string, colorTitle: string): void {
+		el.addEventListener("contextmenu", (evt) => {
+			evt.preventDefault();
+			evt.stopPropagation();
+			const menu = new Menu();
+			menu.addItem((item) =>
+				item
+					.setTitle(colorTitle)
+					.setIcon("palette")
+					.onClick(() => this.openColorMenu(evt, file, headingRaw)),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Rename heading…")
+					.setIcon("pencil")
+					.onClick(() => this.promptRenameHeading(file, node, headingRaw)),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Open in the note")
+					.setIcon("external-link")
+					.onClick(() => void this.plugin.revealSection(file, node.headingLine)),
+			);
+			this.addCommonMenuItems(menu);
+			menu.showAtMouseEvent(evt);
 		});
 	}
 
