@@ -1,5 +1,7 @@
 # Single File Section Cards
 
+[![View notes however you want — sixteen layouts for one note](screenshots/hero-views.webp)](#layouts)
+
 [![One note as a wall of editable cards](screenshots/hero-cards.png)](#layouts)
 
 [![A freeform canvas for sticky notes and brainstorming](screenshots/hero-canvas.png)](#custom-grid)
@@ -34,18 +36,20 @@ If this plugin is useful to you, you can support its development:
 
 <a href="https://buymeacoffee.com/zippydo"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="42"></a>
 
-## New in 2.0
+## New in 2.4.0
 
-- **New note wizard.** ☰ → Note → **New note…** makes a blank note, or one shaped as a Kanban
-  board, a SWOT analysis, an Eisenhower matrix, or a GTD system — or on the headings of any note
-  in the vault, its text left behind. Section names are editable, an Introduction and Additional notes are a toggle each,
-  and a one-line hint can sit under every heading. Any note with `cards-preset: true` in its
-  properties joins the list as a preset of your own (see [Templates](#templates)).
-- **Saved layouts.** Name a Custom Grid arrangement — placements, zoom, and the note's
-  background — and switch between the note's saved layouts from the tray, the toolbar's Layout
-  picker, or the New note wizard. A changed layout wears an asterisk and asks before it's lost
-  (see [Custom Grid](#custom-grid)).
-- **Many user interface improvements.**
+- **New layouts!** **Table** lays the whole note out as a table, every heading level at once,
+  with each heading's text on one line (or wrapped) — click a cell to edit it, a heading to
+  rename it. **Tree** draws the same outline as nodes branching to the right, with folding and
+  zoom. **Binder** is the Rolodex with its tabs down the right edge, colored like their cards.
+  See [Table](#table), [Tree](#tree), and [Binder](#binder).
+- **Layouts by key.** Ctrl/⌘+L opens the layout picker with its tiles numbered; type a number
+  to pick one. Ctrl/⌘-click a tile to hide that layout from the note. Layouts are listed
+  alphabetically everywhere.
+- **Calendar.** Hover a day for an ↗ that opens the note there; the week and day slots'
+  headings carry the card's right-click menu, Update from calendar feed included.
+- **Hierarchy view's columns pane is resizable**, and the Tasks plugin's hotkeys (create or
+  edit, toggle done) work inside a card's editor.
 
 ## What it does
 

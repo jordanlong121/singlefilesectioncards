@@ -5,7 +5,8 @@
 # for the fonts); needs harness-out/app.css (tools/asar-extract.mjs) once.
 #   bash tools/rebuild-screenshots.sh            → writes screenshots/*.png
 # The Table, Tree and Binder shots aren't harness pages: tools/live-screenshots.mjs takes
-# them from a running Obsidian (sample vault, --remote-debugging-port=9222).
+# them from a running Obsidian (sample vault, --remote-debugging-port=9222). The top hero
+# (every layout as a thumbnail, hero-views.webp) is tools/make_views_hero.py, run after all the shots exist.
 set -euo pipefail
 REPO=/home/jlong/obsidian-plugins/single-file-section-cards
 WROOT=/mnt/c/Users/Jordan.Long/AppData/Local/Temp/rebuild
