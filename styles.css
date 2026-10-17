@@ -2727,6 +2727,46 @@ body.is-mobile .is-layout-binder .section-card-body{
 	background: color-mix(in srgb, var(--text-highlight-bg, var(--interactive-accent)) 28%, var(--sc-surface));
 }
 
+/* The row's ↗: open the note at its heading. A bare glyph, muted until hovered. */
+.sc-table-col-go {
+	width: 34px;
+}
+
+.sc-table td.sc-table-go {
+	padding: 2px 4px;
+	text-align: center;
+	vertical-align: middle;
+}
+
+.sc-table-go-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	color: var(--text-faint);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-s, 4px);
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.sc-table-go-btn:hover,
+.sc-table-go-btn:focus-visible {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+	outline: none;
+}
+
+.sc-table-go-btn svg {
+	width: 14px;
+	height: 14px;
+}
+
 /* One line, clipped with an ellipsis; a click opens it whole. */
 .sc-table td.sc-table-text {
 	white-space: nowrap;
