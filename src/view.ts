@@ -3893,11 +3893,13 @@ export class SectionCardsView extends ItemView {
 		// One card per day; a second section naming the same date has no square and hides.
 		// (refresh parsed every title once into isoByHeading — nothing re-parses here.)
 		const byIso = new Map<string, HTMLElement>();
+		const file = this.getFile();
 		for (const entry of this.cardEntries) {
 			const iso = isoByHeading.get(entry.holder.section.headingRaw);
 			const primary = iso !== undefined && !byIso.has(iso);
 			if (primary) byIso.set(iso, entry.el);
 			entry.el.toggleClass("is-cal-extra", !primary);
+			if (primary && file) this.ensureCalendarOpenButton(entry, file);
 		}
 		if (!byIso.size) return;
 
@@ -4006,6 +4008,20 @@ export class SectionCardsView extends ItemView {
 		};
 		const weekStart = this.plugin.settings.weekStart;
 		return weekStart === "sunday" ? 0 : weekStart === "monday" ? 1 : locale.localeData().firstDayOfWeek();
+	}
+
+	/** A day's ↗ in its top corner, shown on hover: open the note at the day's heading.
+	 * The week and day ranges hide the card's title bar (and with it the hover strip's
+	 * own ↗); the month's strip stands aside for this one. Built once per card. */
+	private ensureCalendarOpenButton(entry: CardEntry, file: TFile): void {
+		if (entry.el.querySelector(":scope > .sc-cal-open")) return;
+		const btn = entry.el.createEl("button", { cls: "sc-cal-open" });
+		fastIcon(btn, "external-link");
+		btn.setAttr("aria-label", "Open this day in the note");
+		btn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			void this.plugin.revealSection(file, entry.holder.section.headingLine);
+		});
 	}
 
 	/** Names for one run of the Week range's days — the weekdays across the top, or the

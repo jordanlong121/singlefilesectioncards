@@ -1090,6 +1090,59 @@ body.is-mobile .is-layout-tight .section-card-body {
 	display: none;
 }
 
+/* A day's ↗ in the card's top corner, only while the pointer is over the card
+   (keyboard focus shows it too). Touch has the ⋯ menu's Open in the note instead. */
+.sc-cal-open {
+	display: none;
+}
+
+.is-layout-calendar .section-card:not(.is-maximized) > .sc-cal-open {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	z-index: 3;
+	width: 22px;
+	height: 22px;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	color: var(--text-muted);
+	background: var(--sc-surface);
+	border: 1px solid var(--sc-line);
+	border-radius: var(--radius-s, 4px);
+	box-shadow: none;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 120ms ease;
+}
+
+.is-layout-calendar .section-card:not(.is-maximized):hover > .sc-cal-open,
+.is-layout-calendar .section-card:not(.is-maximized) > .sc-cal-open:focus-visible {
+	opacity: 1;
+}
+
+.sc-cal-open:hover {
+	color: var(--text-normal);
+	background: var(--sc-surface-hover);
+}
+
+.sc-cal-open svg {
+	width: 13px;
+	height: 13px;
+}
+
+body.is-mobile .is-layout-calendar .section-card > .sc-cal-open {
+	display: none;
+}
+
+/* The Month range's hover strip keeps its other buttons; its own ↗ is the corner one now. */
+.is-layout-calendar .section-card:not(.is-maximized) > .section-card-header .section-card-actions .section-card-open {
+	display: none;
+}
+
 .is-cal-month .section-card:not(.is-maximized) .section-card-title {
 	display: none;
 }
