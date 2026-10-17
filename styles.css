@@ -2910,39 +2910,37 @@ body.is-mobile .is-layout-binder .section-card-body{
 }
 
 /* The cell's rendered markdown. One line per cell: its blocks and list items run on
-   inline, a dot between them, and the cell clips with an ellipsis. */
-.sc-table-md {
+   inline, a dot between them, and the cell clips with an ellipsis. (Selectors carry
+   the cell, so a theme's own paragraph and list rules don't outrank them.) */
+.sc-table td.sc-table-text .sc-table-md {
 	display: inline;
 }
 
-.sc-table-md > * {
+.sc-table td.sc-table-text .sc-table-md > *,
+.sc-table td.sc-table-text .sc-table-md p,
+.sc-table td.sc-table-text .sc-table-md li {
 	display: inline;
 	margin: 0;
 	padding: 0;
+	white-space: nowrap;
 }
 
-.sc-table-md :is(ul, ol) {
+.sc-table td.sc-table-text .sc-table-md :is(ul, ol) {
 	display: inline;
 	padding: 0;
 	margin: 0;
 	list-style: none;
 }
 
-.sc-table-md li {
-	display: inline;
-	margin: 0;
-	padding: 0;
-}
-
-.sc-table-md > * + *::before,
-.sc-table-md li + li::before,
-.sc-table-md li > :is(ul, ol)::before {
+.sc-table td.sc-table-text .sc-table-md > * + *::before,
+.sc-table td.sc-table-text .sc-table-md li + li::before,
+.sc-table td.sc-table-text .sc-table-md li > :is(ul, ol)::before {
 	content: " · ";
 	color: var(--text-faint);
 }
 
-.sc-table-md .list-bullet,
-.sc-table-md .list-collapse-indicator {
+.sc-table td.sc-table-text .sc-table-md .list-bullet,
+.sc-table td.sc-table-text .sc-table-md .list-collapse-indicator {
 	display: none;
 }
 
@@ -2963,56 +2961,61 @@ body.is-mobile .is-layout-binder .section-card-body{
 	text-indent: 0;
 }
 
-/* An image in a cell never widens the column: it shrinks to the cell's width, and on
-   a one-line cell to the line's height. */
+/* An image in a cell sits on a line of its own, as wide as the column at most and
+   never wider than it is — in the one-line mode too, where the row grows to show it. */
 .sc-table td.sc-table-text .sc-table-md img,
-.sc-table td.sc-table-text .sc-table-md .internal-embed.image-embed,
 .sc-table td.sc-table-text .sc-table-md video,
 .sc-table td.sc-table-text .sc-table-md canvas {
+	display: block;
 	max-width: 100%;
+	width: auto;
 	height: auto;
-	vertical-align: middle;
+	margin: 2px 0;
 }
 
-.sc-table td.sc-table-text .sc-table-md .internal-embed.image-embed {
-	display: inline;
-}
-
-.section-cards-view:not(.is-table-wrap) .sc-table td.sc-table-text .sc-table-md img,
-.section-cards-view:not(.is-table-wrap) .sc-table td.sc-table-text .sc-table-md video {
-	max-height: 1.4em;
+.sc-table td.sc-table-text .sc-table-md .internal-embed.image-embed,
+.sc-table td.sc-table-text .sc-table-md .internal-embed.media-embed {
+	display: block;
+	max-width: 100%;
 	width: auto;
 }
 
-/* Wrapped cells (the toolbar's wrap toggle): the markdown as blocks, compact. */
+.sc-table td.sc-table-text .sc-table-md .internal-embed.image-embed::before {
+	content: none;
+}
+
+/* Wrapped cells (the toolbar's wrap toggle): the markdown as blocks, compact. The
+   selectors match the one-line rules' weight so they take over cleanly. */
 .is-table-wrap .sc-table td.sc-table-text {
 	white-space: normal;
 	overflow-wrap: anywhere;
 }
 
-.is-table-wrap .sc-table-md,
-.is-table-wrap .sc-table-md > *,
-.is-table-wrap .sc-table-md li {
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md,
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md > *,
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md p,
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md li {
 	display: block;
+	white-space: normal;
 }
 
-.is-table-wrap .sc-table-md :is(ul, ol) {
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md :is(ul, ol) {
 	display: block;
 	padding-left: 1.2em;
 	list-style: revert;
 }
 
-.is-table-wrap .sc-table-md > * + *::before,
-.is-table-wrap .sc-table-md li + li::before,
-.is-table-wrap .sc-table-md li > :is(ul, ol)::before {
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md > * + *::before,
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md li + li::before,
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md li > :is(ul, ol)::before {
 	content: none;
 }
 
-.is-table-wrap .sc-table-md > * + * {
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md > * + * {
 	margin-top: 4px;
 }
 
-.is-table-wrap .sc-table-md .list-bullet {
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md .list-bullet {
 	display: revert;
 }
 
