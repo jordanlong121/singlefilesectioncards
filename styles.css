@@ -2648,13 +2648,35 @@ body.is-mobile .is-layout-binder .section-card-body{
 	line-height: 1.4;
 }
 
+/* Heading cells read in the interface font at the table's size: themes dress table
+   headers (and first letters) up, and this is an outline, not a document table. */
 .sc-table th.sc-table-heading {
+	font-family: var(--font-interface);
+	font-size: inherit;
 	font-weight: 600;
+	font-style: normal;
+	font-variant: normal;
+	letter-spacing: normal;
+	text-transform: none;
+	line-height: 1.4;
 	color: var(--text-normal);
 	background: var(--sc-header);
 	overflow-wrap: break-word;
 	hyphens: auto;
 	cursor: pointer;
+}
+
+.sc-table th.sc-table-heading::first-letter,
+.sc-table td.sc-table-text::first-letter {
+	float: none;
+	font-family: inherit;
+	font-size: inherit;
+	font-weight: inherit;
+	font-style: inherit;
+	line-height: inherit;
+	margin: 0;
+	padding: 0;
+	color: inherit;
 }
 
 /* A click on a heading renames it. */
@@ -2663,14 +2685,6 @@ body.is-mobile .is-layout-binder .section-card-body{
 	background: var(--sc-surface-hover);
 	outline: none;
 	box-shadow: inset 0 0 0 1px var(--interactive-accent);
-}
-
-.sc-table th.sc-table-heading.is-h1 {
-	font-size: 1.1em;
-}
-
-.sc-table th.sc-table-heading.is-h2 {
-	font-size: 1.04em;
 }
 
 /* The blank heading columns beside a parent's own text row. */
