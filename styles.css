@@ -2963,6 +2963,27 @@ body.is-mobile .is-layout-binder .section-card-body{
 	text-indent: 0;
 }
 
+/* An image in a cell never widens the column: it shrinks to the cell's width, and on
+   a one-line cell to the line's height. */
+.sc-table td.sc-table-text .sc-table-md img,
+.sc-table td.sc-table-text .sc-table-md .internal-embed.image-embed,
+.sc-table td.sc-table-text .sc-table-md video,
+.sc-table td.sc-table-text .sc-table-md canvas {
+	max-width: 100%;
+	height: auto;
+	vertical-align: middle;
+}
+
+.sc-table td.sc-table-text .sc-table-md .internal-embed.image-embed {
+	display: inline;
+}
+
+.section-cards-view:not(.is-table-wrap) .sc-table td.sc-table-text .sc-table-md img,
+.section-cards-view:not(.is-table-wrap) .sc-table td.sc-table-text .sc-table-md video {
+	max-height: 1.4em;
+	width: auto;
+}
+
 /* Wrapped cells (the toolbar's wrap toggle): the markdown as blocks, compact. */
 .is-table-wrap .sc-table td.sc-table-text {
 	white-space: normal;
