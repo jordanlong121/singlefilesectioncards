@@ -1,6 +1,6 @@
 # Single File Section Cards
 
-[![View notes however you want — sixteen layouts for one note](screenshots/hero-views.webp)](#layouts)
+[![Your notes, your layout — sixteen layouts for one note](screenshots/hero-views.webp)](#layouts)
 
 [![One note as a wall of editable cards](screenshots/hero-cards.png)](#layouts)
 

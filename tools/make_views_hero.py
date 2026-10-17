@@ -75,7 +75,7 @@ panel = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 draw = ImageDraw.Draw(panel)
 draw.rounded_rectangle([0, 0, W - 1, H - 1], 36, fill=PANEL_BG)
 
-draw.text((PAD, 54), "View notes however you want!", font=HEAD, fill=WHITE)
+draw.text((PAD, 54), "Your Notes, Your Layout", font=HEAD, fill=WHITE)
 draw.text((PAD + 4, 150), f"{len(VIEWS)} layouts for one note — pick the one that fits the job, and switch any time.", font=SUB, fill=GRAY)
 
 for i, (label, shot) in enumerate(VIEWS):
