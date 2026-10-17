@@ -93,32 +93,33 @@ export const SORT_LABELS: Record<SortOrder, string> = {
 	"count-desc": "Task count descending",
 };
 
-/** [value, toolbar label, tooltip] */
+/** [value, toolbar label, tooltip], in the order the picker, the ☰ menu, and the L cycle
+ * show them: alphabetical by label. */
 export const LAYOUT_OPTIONS: [Layout, string, string][] = [
-	["grid", "Grid", "Masonry columns"],
-	["aligned", "Grid Aligned", "Uniform grid: every row starts at the same height"],
-	["tight", "Tight", "Denser, narrower masonry columns"],
-	["horizontal", "Horizontal", "One card per row, full width"],
-	["tasks", "Tasks Only", "Just the tasks: each card shows only its task lines, ordered by date and tag"],
-	["vertical", "Vertical", "Full-height cards side by side, scrolling sideways"],
-	["rolodex", "Rolodex", "One card at a time, filling the pane; every card's title is a tab across the top"],
+	["binder", "Binder", "One card at a time, filling the pane; every card's title is a tab down the right edge, like a binder's inserts"],
+	["calendar", "Calendar", "Date cards on a calendar grid — a month, two weeks, a week, or one day — needs the Dates checkbox (C)"],
+	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
 	[
 		"planner",
 		"Day Planner",
 		"One card at a time: its title up top, arrows to its neighbours, and its lines as cards in two columns to arrange and resize",
 	],
-	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
+	["grid", "Grid", "Masonry columns"],
+	["aligned", "Grid Aligned", "Uniform grid: every row starts at the same height"],
+	["heatmap", "Heatmap", "A year-at-a-glance activity graph of the dated cards — needs the Dates checkbox"],
+	["horizontal", "Horizontal", "One card per row, full width"],
 	["images", "Images", "Freeform canvas of the note's images: drag previews on from the tray, place and resize them"],
 	["links", "Links", "Freeform canvas of the note's web links: drag page previews on from the tray, place and resize them"],
-	["calendar", "Calendar", "Date cards on a calendar grid — a month, two weeks, a week, or one day — needs the Dates checkbox (C)"],
-	["heatmap", "Heatmap", "A year-at-a-glance activity graph of the dated cards — needs the Dates checkbox"],
+	["rolodex", "Rolodex", "One card at a time, filling the pane; every card's title is a tab across the top"],
 	[
 		"table",
 		"Table",
 		"The whole note as a table: a row per heading, a heading spanning its sub-headings' rows, its text on one line — click a cell to edit",
 	],
+	["tasks", "Tasks Only", "Just the tasks: each card shows only its task lines, ordered by date and tag"],
+	["tight", "Tight", "Denser, narrower masonry columns"],
 	["tree", "Tree", "The whole note as a tree of its headings, branching left to right — click a node to edit its text"],
-	["binder", "Binder", "One card at a time, filling the pane; every card's title is a tab down the right edge, like a binder's inserts"],
+	["vertical", "Vertical", "Full-height cards side by side, scrolling sideways"],
 ];
 
 /** How the Deck orders its note thumbnails. "recent" is the working-set order:
