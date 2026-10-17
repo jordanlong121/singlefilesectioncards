@@ -2009,6 +2009,7 @@ body.is-mobile .section-cards-hier-col {
 .section-card[data-sfsc-color="red"],
 .section-cards-tray-tile[data-sfsc-color="red"],
 .sfsc-planner-head[data-sfsc-color="red"],
+.sfsc-rolo-tab[data-sfsc-color="red"],
 .sfsc-swatch-red {
 	--sfsc-c: var(--sfsc-color-red, 224, 82, 82);
 	--sfsc-fg-dark: var(--sfsc-color-red-fg, #fff);
@@ -2018,6 +2019,7 @@ body.is-mobile .section-cards-hier-col {
 .section-card[data-sfsc-color="orange"],
 .section-cards-tray-tile[data-sfsc-color="orange"],
 .sfsc-planner-head[data-sfsc-color="orange"],
+.sfsc-rolo-tab[data-sfsc-color="orange"],
 .sfsc-swatch-orange {
 	--sfsc-c: var(--sfsc-color-orange, 235, 140, 52);
 	--sfsc-fg-dark: var(--sfsc-color-orange-fg, #fff);
@@ -2027,6 +2029,7 @@ body.is-mobile .section-cards-hier-col {
 .section-card[data-sfsc-color="yellow"],
 .section-cards-tray-tile[data-sfsc-color="yellow"],
 .sfsc-planner-head[data-sfsc-color="yellow"],
+.sfsc-rolo-tab[data-sfsc-color="yellow"],
 .sfsc-swatch-yellow {
 	--sfsc-c: var(--sfsc-color-yellow, 212, 170, 20);
 	--sfsc-fg-dark: var(--sfsc-color-yellow-fg, #fff);
@@ -2036,6 +2039,7 @@ body.is-mobile .section-cards-hier-col {
 .section-card[data-sfsc-color="green"],
 .section-cards-tray-tile[data-sfsc-color="green"],
 .sfsc-planner-head[data-sfsc-color="green"],
+.sfsc-rolo-tab[data-sfsc-color="green"],
 .sfsc-swatch-green {
 	--sfsc-c: var(--sfsc-color-green, 76, 168, 90);
 	--sfsc-fg-dark: var(--sfsc-color-green-fg, #fff);
@@ -2045,6 +2049,7 @@ body.is-mobile .section-cards-hier-col {
 .section-card[data-sfsc-color="cyan"],
 .section-cards-tray-tile[data-sfsc-color="cyan"],
 .sfsc-planner-head[data-sfsc-color="cyan"],
+.sfsc-rolo-tab[data-sfsc-color="cyan"],
 .sfsc-swatch-cyan {
 	--sfsc-c: var(--sfsc-color-cyan, 44, 160, 198);
 	--sfsc-fg-dark: var(--sfsc-color-cyan-fg, #fff);
@@ -2054,6 +2059,7 @@ body.is-mobile .section-cards-hier-col {
 .section-card[data-sfsc-color="blue"],
 .section-cards-tray-tile[data-sfsc-color="blue"],
 .sfsc-planner-head[data-sfsc-color="blue"],
+.sfsc-rolo-tab[data-sfsc-color="blue"],
 .sfsc-swatch-blue {
 	--sfsc-c: var(--sfsc-color-blue, 76, 130, 235);
 	--sfsc-fg-dark: var(--sfsc-color-blue-fg, #fff);
@@ -2063,6 +2069,7 @@ body.is-mobile .section-cards-hier-col {
 .section-card[data-sfsc-color="purple"],
 .section-cards-tray-tile[data-sfsc-color="purple"],
 .sfsc-planner-head[data-sfsc-color="purple"],
+.sfsc-rolo-tab[data-sfsc-color="purple"],
 .sfsc-swatch-purple {
 	--sfsc-c: var(--sfsc-color-purple, 155, 110, 230);
 	--sfsc-fg-dark: var(--sfsc-color-purple-fg, #fff);
@@ -2072,6 +2079,7 @@ body.is-mobile .section-cards-hier-col {
 .section-card[data-sfsc-color="pink"],
 .section-cards-tray-tile[data-sfsc-color="pink"],
 .sfsc-planner-head[data-sfsc-color="pink"],
+.sfsc-rolo-tab[data-sfsc-color="pink"],
 .sfsc-swatch-pink {
 	--sfsc-c: var(--sfsc-color-pink, 226, 110, 170);
 	--sfsc-fg-dark: var(--sfsc-color-pink-fg, #fff);
@@ -2081,6 +2089,7 @@ body.is-mobile .section-cards-hier-col {
 .section-card[data-sfsc-color="gray"],
 .section-cards-tray-tile[data-sfsc-color="gray"],
 .sfsc-planner-head[data-sfsc-color="gray"],
+.sfsc-rolo-tab[data-sfsc-color="gray"],
 .sfsc-swatch-gray {
 	--sfsc-c: var(--sfsc-color-gray, 132, 140, 148);
 	--sfsc-fg-dark: var(--sfsc-color-gray-fg, #fff);
@@ -2093,6 +2102,7 @@ body.is-mobile .section-cards-hier-col {
 .section-card[data-sfsc-color],
 .section-cards-tray-tile[data-sfsc-color],
 .sfsc-planner-head[data-sfsc-color],
+.sfsc-rolo-tab[data-sfsc-color],
 .sfsc-swatch {
 	--sfsc-fg: var(--sfsc-fg-dark);
 }
@@ -2100,6 +2110,7 @@ body.is-mobile .section-cards-hier-col {
 body.theme-light .section-card[data-sfsc-color],
 body.theme-light .section-cards-tray-tile[data-sfsc-color],
 body.theme-light .sfsc-planner-head[data-sfsc-color],
+body.theme-light .sfsc-rolo-tab[data-sfsc-color],
 body.theme-light .sfsc-swatch {
 	--sfsc-fg: var(--sfsc-fg-light);
 }
@@ -2635,8 +2646,30 @@ body.is-mobile .is-layout-binder .section-card-body{
 	box-shadow: inset 3px 0 0 var(--interactive-accent);
 }
 
+/* A colored card's tab is a colored insert: the card's color across the tab, its
+   title in the contrast color, the open one at full strength with its mark in the
+   contrast color too, the others a shade quieter. */
 .is-layout-binder .sfsc-rolo-tab[data-sfsc-color] {
-	box-shadow: inset 3px 0 0 rgb(var(--sfsc-c));
+	color: var(--sfsc-fg);
+	background: rgba(var(--sfsc-c), 0.78);
+	border-color: rgba(var(--sfsc-c), 0.55);
+	box-shadow: none;
+}
+
+.is-layout-binder .sfsc-rolo-tab[data-sfsc-color]:hover {
+	color: var(--sfsc-fg);
+	background: rgb(var(--sfsc-c));
+}
+
+.is-layout-binder .sfsc-rolo-tab[data-sfsc-color].is-active {
+	color: var(--sfsc-fg);
+	background: rgb(var(--sfsc-c));
+	border-color: rgb(var(--sfsc-c));
+	box-shadow: inset 3px 0 0 var(--sfsc-fg);
+}
+
+.is-layout-binder .sfsc-rolo-tab[data-sfsc-color].is-today {
+	color: var(--sfsc-fg);
 }
 
 /* A tab dragged over another: the slot shows above or below it. */
