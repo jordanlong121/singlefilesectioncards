@@ -2,7 +2,7 @@
 
 [![Your notes, your layout — sixteen layouts for one note](screenshots/hero-views.webp)](#layouts)
 
-## Things You Can Do
+## Why This Addon?
 
 [![One note as a wall of editable cards](screenshots/hero-cards.png)](#layouts)
 
