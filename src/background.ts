@@ -173,7 +173,7 @@ export class DownloadBackgroundModal extends Modal {
 
 		let url = "";
 		new Setting(contentEl).setName("Image URL").addText((text) => {
-			text.setPlaceholder("https://…");
+			text.setPlaceholder("https://example.com/image.jpg");
 			text.onChange((value) => (url = value));
 		});
 
