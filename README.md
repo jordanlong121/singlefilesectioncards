@@ -301,12 +301,8 @@ bucket; click a bar to collapse its bucket. The choice is remembered per note, l
 Drag a card onto another card's **body** and it becomes a section of that card: its heading
 moves one level down (H3 → H4), with any headings inside it. It lands at the first sub-heading,
 or the card's end, after where you drop it — never between two lines of text, which would pull
-them under its heading. While you drag, the target card is outlined and a bar marks the spot,
-labelled with the new heading level. The drop asks before it nests (settings → *Ask before
-nesting a dragged card* turns the prompt off), and the notice afterwards has an **Undo** button.
-Drop on a **title bar** instead to reorder. Nesting works in any sort order and with a selection
-of cards; a card with a back side (Card Flip), or one already holding an H6 heading, can't be
-nested.
+them under its heading. Nesting works in any sort order and with a selection of cards; a card
+with a back side (Card Flip), or one already holding an H6 heading, can't be nested.
 
 ## Undo
 
