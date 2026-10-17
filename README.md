@@ -260,8 +260,7 @@ The Rolodex with its tabs down the right edge, like a binder's inserts.
 
 ### Links
 
-The canvas for the note's web links: placed tiles show a live page preview. The
-magnifier opens the page big and interactive; ↗ opens it in your browser.
+The canvas for the note's web links: placed tiles show a live page preview.
 
 ![Links](screenshots/links.png)
 
