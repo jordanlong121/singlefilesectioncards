@@ -2577,7 +2577,7 @@ body.is-mobile .is-layout-binder .section-card-body{
 	flex-direction: column;
 	width: 164px;
 	min-height: 0;
-	padding: calc(var(--sc-pad) + 10px) var(--sc-pad) var(--sc-pad) 0;
+	padding: var(--sc-pad) var(--sc-pad) var(--sc-pad) 0; /* the first tab tops out with the card */
 	margin: 0 0 0 -1px;
 }
 
