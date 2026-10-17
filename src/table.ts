@@ -197,3 +197,30 @@ export function tableWrapText(text: string): string {
 		.filter((line) => line !== "")
 		.join("\n");
 }
+
+/** The markdown for a one-line cell: a paragraph's or list item's continuation lines
+ * joined onto it with a space, so the renderer emits no line breaks inside a block.
+ * Blank lines, list markers, headings, quotes, tables, and fenced code keep their lines. */
+export function tableOneLineMarkdown(text: string): string {
+	const out: string[] = [];
+	let fence: string | null = null;
+	const starts = /^(\s*)([-*+]|\d+[.)])\s|^\s*#{1,6}\s|^\s*>|^\s*\||^\s*(```|~~~)/;
+	for (const line of text.split("\n")) {
+		const step = stepFence(line, fence);
+		const marker = step.marker;
+		const inFence = fence !== null || marker;
+		fence = step.open;
+		const prev = out.length ? out[out.length - 1] : null;
+		const joins =
+			!inFence &&
+			prev !== null &&
+			prev.trim() !== "" &&
+			line.trim() !== "" &&
+			!starts.test(line) &&
+			!/^\s*(```|~~~)/.test(prev) &&
+			!/^\s*#{1,6}\s|^\s*\|/.test(prev);
+		if (joins) out[out.length - 1] = `${prev.replace(/\s+$/, "")} ${line.trim()}`;
+		else out.push(line);
+	}
+	return out.join("\n");
+}

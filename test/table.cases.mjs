@@ -1,5 +1,5 @@
 // The Table and Tree layouts' model: the note's outline and its rows.
-import { parseTableOutline, tableRows, tableLineText, tableWrapText } from "./.tmp/main.js";
+import { parseTableOutline, tableRows, tableLineText, tableWrapText, tableOneLineMarkdown } from "./.tmp/main.js";
 import assert from "assert";
 import { t } from "./harness.mjs";
 
@@ -129,4 +129,10 @@ t("tableLineText: blank lines dropped, the rest on one line", () => {
 t("tableWrapText: blank lines dropped, the rest kept as lines", () => {
   assert.equal(tableWrapText("- [ ] a   task\n\n  second\t line \n"), "- [ ] a task\nsecond line");
   assert.equal(tableWrapText(""), "");
+});
+
+t("tableOneLineMarkdown: continuation lines join their block; lists, blanks, fences and headings keep theirs", () => {
+  assert.equal(tableOneLineMarkdown("Slow start, which\napparently counts.\n- [ ] task one\n  continued\n- [x] task two"), "Slow start, which apparently counts.\n- [ ] task one continued\n- [x] task two");
+  assert.equal(tableOneLineMarkdown("para\n\nnext para\n#### Head\n> quote\nmore quote"), "para\n\nnext para\n#### Head\n> quote more quote");
+  assert.equal(tableOneLineMarkdown("```\ncode\nmore\n```\nafter"), "```\ncode\nmore\n```\nafter");
 });

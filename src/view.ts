@@ -114,6 +114,7 @@ import {
 	openTaskCount,
 	toggleTaskInFile,
 	toggleTaskWithTasksApi,
+	toggleTaskInLines,
 } from "./tasks";
 import {
 	deleteBlockInFile,
@@ -143,7 +144,15 @@ import {
 	replaceLinesInFile,
 	retitleHeadingInFile,
 } from "./writes";
-import { parseTableOutline, tableRows, tableLineText, tableWrapText, type TableNode, type TableOutline } from "./table";
+import {
+	parseTableOutline,
+	tableRows,
+	tableLineText,
+	tableWrapText,
+	tableOneLineMarkdown,
+	type TableNode,
+	type TableOutline,
+} from "./table";
 import { nestBoundaries, nestInsertLine } from "./nesting";
 import { headingLinkEdits, applyLinkEditsElsewhere } from "./headinglinks";
 import { feedDayEvents, feedEventLine, feedEventsByDays, feedFirstDay, daysBetween, mergeFeedLines } from "./icalfeed";
@@ -9621,6 +9630,7 @@ export class SectionCardsView extends ItemView {
 		colgroup.createEl("col", { cls: "sc-table-col-go" });
 		const tbody = table.createEl("tbody");
 		let todayRow: HTMLElement | null = null;
+		const pendingRenders: { el: HTMLElement; text: string; markdown: string; range: [number, number] }[] = [];
 		for (const row of tableRows(outline, lines)) {
 			const tr = tbody.createEl("tr");
 			if (row.cells.some((cell) => cell.node && todayNodes.has(cell.node))) {
@@ -9644,6 +9654,14 @@ export class SectionCardsView extends ItemView {
 				} else if (cell.kind === "text" && cell.range) {
 					if (cell.node) this.applyCardColor(tr, rowColor.get(cell.node));
 					this.wireOutlineText(el, el, file, cell.node ?? null, cell.range, cell.text, wrapText);
+					if (cell.text.trim()) {
+						pendingRenders.push({
+							el,
+							text: cell.text,
+							markdown: wrapText ? cell.text : tableOneLineMarkdown(cell.text),
+							range: cell.range,
+						});
+					}
 					// The row's last cell: open the note at this row's heading (or, for the
 					// text above the first heading, at that text), as a card's ↗ button does.
 					const line = cell.node ? cell.node.headingLine : cell.range[0];
@@ -9659,6 +9677,7 @@ export class SectionCardsView extends ItemView {
 				}
 			}
 		}
+		void this.renderTableCells(file, pendingRenders);
 		// Today's rows come into view on the note's first render and on a layout switch,
 		// as today's card does on the walls (the flags refresh would otherwise consume).
 		const layoutJump = this.todayJumpForLayout;
@@ -9674,6 +9693,53 @@ export class SectionCardsView extends ItemView {
 	private treeCollapsed = new Map<string, Set<string>>();
 	/** Tree: the zoom per note, 1 = 100%; the bar's − / + and Ctrl/⌘+wheel set it. */
 	private treeZoom = new Map<string, number>();
+
+	/** The Table's text cells render their markdown — tasks as checkboxes, links, bold —
+	 * as the cards' bodies do, in batches so a long note's table appears at once and
+	 * fills in; a refresh that supersedes this one stops it. A checkbox toggles its
+	 * task in the note (through the Tasks plugin when it's on); links open as usual. */
+	private async renderTableCells(
+		file: TFile,
+		cells: { el: HTMLElement; text: string; markdown: string; range: [number, number] }[],
+	): Promise<void> {
+		const gen = this.renderGeneration;
+		const batch = 40;
+		for (let i = 0; i < cells.length; i += batch) {
+			if (gen !== this.renderGeneration) return;
+			await Promise.all(
+				cells.slice(i, i + batch).map(async ({ el, text, markdown, range }) => {
+					const host = createDiv({ cls: "sc-table-md" });
+					await MarkdownRenderer.render(this.app, bodyForRender(markdown), host, file.path, this);
+					if (gen !== this.renderGeneration) return;
+					el.empty();
+					el.appendChild(host);
+					this.wireLinkClicks(host, file);
+					host.addEventListener("click", (evt) => {
+						const box = (evt.target as HTMLElement).closest<HTMLInputElement>("input[type=checkbox]");
+						if (!box) return;
+						evt.stopPropagation();
+						evt.preventDefault();
+						const nth = SectionCardsView.taskBoxes(host).indexOf(box);
+						if (nth < 0) return;
+						void toggleTaskInLines(
+							this.app,
+							file,
+							range[0],
+							range[1],
+							text,
+							nth,
+							mo().format("YYYY-MM-DD"),
+							this.plugin.settings.taskDoneDate,
+							this.plugin.settings.tasksToggle ? this.plugin.tasksApi() : null,
+						).then((checked) => {
+							if (checked !== null) box.checked = checked;
+						});
+					});
+				}),
+			);
+			if (i + batch < cells.length) await new Promise((r) => window.setTimeout(r, 0));
+		}
+	}
 
 	/** Tree: each heading a node, its sub-headings branching off to the right. A node
 	 * with sub-headings carries a chevron that folds its branch; the count of headings
@@ -9910,7 +9976,9 @@ export class SectionCardsView extends ItemView {
 		clickEl.tabIndex = 0;
 		const owner = node ? `“${node.title || "(untitled)"}”` : "the text before the first heading";
 		clickEl.setAttr("aria-label", `Edit the text of ${owner}`);
-		const open = () => {
+		const open = (evt?: Event) => {
+			const target = evt?.target as HTMLElement | null;
+			if (target?.closest("a, input[type=checkbox]")) return; // a link or a task's box acts on its own
 			const title = node ? `Edit the text under “${node.title || "(untitled)"}”` : "Edit the text before the first heading";
 			new EditBlockModal(
 				this.plugin,
@@ -9923,7 +9991,7 @@ export class SectionCardsView extends ItemView {
 				{ title, allowEmpty: true },
 			).open();
 		};
-		clickEl.addEventListener("click", open);
+		clickEl.addEventListener("click", (evt) => open(evt));
 		clickEl.addEventListener("keydown", (evt) => {
 			if (evt.key !== "Enter" && evt.key !== " ") return;
 			evt.preventDefault();

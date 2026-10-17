@@ -2909,10 +2909,90 @@ body.is-mobile .is-layout-binder .section-card-body{
 	height: 14px;
 }
 
-/* Wrapped cells (the toolbar's wrap toggle): every line shown, long ones folding. */
+/* The cell's rendered markdown. One line per cell: its blocks and list items run on
+   inline, a dot between them, and the cell clips with an ellipsis. */
+.sc-table-md {
+	display: inline;
+}
+
+.sc-table-md > * {
+	display: inline;
+	margin: 0;
+	padding: 0;
+}
+
+.sc-table-md :is(ul, ol) {
+	display: inline;
+	padding: 0;
+	margin: 0;
+	list-style: none;
+}
+
+.sc-table-md li {
+	display: inline;
+	margin: 0;
+	padding: 0;
+}
+
+.sc-table-md > * + *::before,
+.sc-table-md li + li::before,
+.sc-table-md li > :is(ul, ol)::before {
+	content: " · ";
+	color: var(--text-faint);
+}
+
+.sc-table-md .list-bullet,
+.sc-table-md .list-collapse-indicator {
+	display: none;
+}
+
+/* The theme hangs a task's checkbox in the list's indent; inline, it sits before its text. */
+.sc-table td.sc-table-text .sc-table-md .task-list-item-checkbox,
+.sc-table td.sc-table-text .sc-table-md input[type="checkbox"] {
+	position: relative; /* the tick is a positioned pseudo-element of the box */
+	top: auto;
+	vertical-align: middle;
+	margin: 0 4px 0 0;
+	margin-inline-start: 0;
+	margin-inline-end: 4px;
+	transform: none;
+}
+
+.sc-table td.sc-table-text .sc-table-md .task-list-item {
+	padding-inline-start: 0;
+	text-indent: 0;
+}
+
+/* Wrapped cells (the toolbar's wrap toggle): the markdown as blocks, compact. */
 .is-table-wrap .sc-table td.sc-table-text {
-	white-space: pre-line;
+	white-space: normal;
 	overflow-wrap: anywhere;
+}
+
+.is-table-wrap .sc-table-md,
+.is-table-wrap .sc-table-md > *,
+.is-table-wrap .sc-table-md li {
+	display: block;
+}
+
+.is-table-wrap .sc-table-md :is(ul, ol) {
+	display: block;
+	padding-left: 1.2em;
+	list-style: revert;
+}
+
+.is-table-wrap .sc-table-md > * + *::before,
+.is-table-wrap .sc-table-md li + li::before,
+.is-table-wrap .sc-table-md li > :is(ul, ol)::before {
+	content: none;
+}
+
+.is-table-wrap .sc-table-md > * + * {
+	margin-top: 4px;
+}
+
+.is-table-wrap .sc-table-md .list-bullet {
+	display: revert;
 }
 
 .section-cards-wrap-btn.is-active {

@@ -230,3 +230,50 @@ export async function toggleTaskWithTasksApi(
 
 	return result;
 }
+
+/**
+ * Toggle the nth task within a line range of the note — the Table's text cells, which
+ * address a heading's own lines directly — through the Tasks plugin when its API is
+ * given (recurrence, done dates), else with this plugin's own toggle. The range's text
+ * must still read as the view showed it. Returns the new checked state, or null.
+ */
+export async function toggleTaskInLines(
+	app: App,
+	file: TFile,
+	start: number,
+	end: number,
+	expectedText: string,
+	nth: number,
+	todayISO: string,
+	addDoneDate: boolean,
+	api: TasksApiV1 | null,
+): Promise<boolean | null> {
+	let result: boolean | null = null;
+	await processNote(app, file, "Toggle task", (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		if (end > lines.length || lines.slice(start, end).join("\n") !== expectedText) return data;
+		const tasks = taskLineIndexes(lines.slice(start, end));
+		if (nth >= tasks.length) return data;
+		const at = start + tasks[nth];
+		const before = lines[at];
+		if (api) {
+			let replacement: string;
+			try {
+				replacement = api.executeToggleTaskDoneCommand(before, file.path);
+			} catch {
+				return data;
+			}
+			if (typeof replacement !== "string" || !replacement.trim() || replacement === before) return data;
+			lines.splice(at, 1, ...replacement.split(/\r?\n/));
+			result = TASK_RE.exec(before)?.[2].toLowerCase() !== "x";
+			return lines.join(eol);
+		}
+		const updated = toggleTaskLine(before, todayISO, addDoneDate);
+		if (updated === before) return data;
+		lines[at] = updated;
+		result = /^\s*(?:[-*+]|\d+[.)])\s+\[[xX]\]/.test(updated);
+		return lines.join(eol);
+	});
+	return result;
+}
