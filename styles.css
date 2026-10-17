@@ -3058,18 +3058,21 @@ body.is-mobile .is-layout-binder .section-card-body{
 /* The tree's box is the scroller both ways (the pane would otherwise scroll it
    vertically, out from under the sticky bar): toolbar fixed above, the box fills
    the rest, as the Rolodex lays its pane out. */
-.workspace-leaf-content .view-content.section-cards-view.is-layout-tree {
+.workspace-leaf-content .view-content.section-cards-view.is-layout-tree,
+.workspace-leaf-content .view-content.section-cards-view.is-layout-table {
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
 }
 
-.is-layout-tree .section-cards-toolbar {
+.is-layout-tree .section-cards-toolbar,
+.is-layout-table .section-cards-toolbar {
 	position: static;
 	flex: 0 0 auto;
 }
 
-.is-layout-tree .section-cards-grid {
+.is-layout-tree .section-cards-grid,
+.is-layout-table .section-cards-grid {
 	flex: 1 1 auto;
 	min-height: 0;
 }
