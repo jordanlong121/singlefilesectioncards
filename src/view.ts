@@ -9512,6 +9512,7 @@ export class SectionCardsView extends ItemView {
 			colgroup.createEl("col", { cls: "sc-table-col-heading" }).setCssStyles({ width: headingWidth });
 		}
 		colgroup.createEl("col", { cls: "sc-table-col-text" });
+		colgroup.createEl("col", { cls: "sc-table-col-go" });
 		const tbody = table.createEl("tbody");
 		let todayRow: HTMLElement | null = null;
 		for (const row of tableRows(outline, lines)) {
@@ -9533,6 +9534,18 @@ export class SectionCardsView extends ItemView {
 					el.setText("Before the first heading");
 				} else if (cell.kind === "text" && cell.range) {
 					this.wireOutlineText(el, el, file, cell.node ?? null, cell.range, cell.text);
+					// The row's last cell: open the note at this row's heading (or, for the
+					// text above the first heading, at that text), as a card's ↗ button does.
+					const line = cell.node ? cell.node.headingLine : cell.range[0];
+					const go = tr.createEl("td", { cls: "sc-table-go" });
+					const btn = go.createEl("button", { cls: "sc-table-go-btn" });
+					fastIcon(btn, "external-link");
+					const owner = cell.node ? `“${cell.node.title || "(untitled)"}”` : "the text before the first heading";
+					btn.setAttr("aria-label", `Open ${owner} in the note`);
+					btn.addEventListener("click", (evt) => {
+						evt.stopPropagation();
+						void this.plugin.revealSection(file, line);
+					});
 				}
 			}
 		}

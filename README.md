@@ -246,7 +246,8 @@ text on one line, clipped with an ellipsis. A heading that has text of its own a
 sub-headings gets a first row for it. Click a text cell to open the whole of it in an
 editor — Ctrl/⌘+Enter saves it back into the note, and clearing it removes those lines.
 Click a heading cell to rename that heading, at any level; links to it follow, as when a
-card is renamed. Text above the first heading has a row of its own at the top. With the
+card is renamed. The ↗ at the end of a row opens the note at that heading, as a card's
+does. Text above the first heading has a row of its own at the top. With the
 Dates checkbox on, today's heading and every row under it are tinted, and the view opens
 on them.
 
