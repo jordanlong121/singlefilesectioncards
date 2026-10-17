@@ -325,6 +325,11 @@ interface PickerSpec {
 	/** The choices, or a getter read each time the picker opens (levels change with the note). */
 	options: PickerOption[] | (() => PickerOption[]);
 	onPick: (value: string) => void;
+	/** A Ctrl/⌘-click on a tile, when it means something other than picking (the
+	 * layout picker hides the layout from the note). */
+	onModPick?: (value: string) => void;
+	/** A line of small print under the tiles, saying what the modifier click does. */
+	footer?: string;
 }
 
 export interface CardsViewState {
@@ -964,11 +969,13 @@ export class SectionCardsView extends ItemView {
 			if (!spec.compact) SectionCardsView.setIconOr(tile.createSpan({ cls: "sfsc-picker-tile-icon" }), option.icon, option.fallback ?? option.icon);
 			tile.createSpan({ cls: "sfsc-picker-tile-label", text: option.label });
 			if (option.disabled) tile.toggleAttribute("disabled", true);
-			tile.addEventListener("click", () => {
+			tile.addEventListener("click", (evt) => {
 				this.closePicker();
-				if (option.value !== value) spec.onPick(option.value);
+				if ((evt.ctrlKey || evt.metaKey) && spec.onModPick) spec.onModPick(option.value);
+				else if (option.value !== value) spec.onPick(option.value);
 			});
 		}
+		if (spec.footer) pop.createDiv({ cls: "sfsc-picker-foot", text: spec.footer });
 		// Under the button, within the pane (pulled left if it would run past the edge).
 		const host = this.contentEl.getBoundingClientRect();
 		const at = anchor.getBoundingClientRect();
@@ -4786,6 +4793,17 @@ export class SectionCardsView extends ItemView {
 						apply();
 					}
 				},
+				// Ctrl/⌘-click hides a layout from this note, as in the ☰ menu's Layouts row
+				// (where a hidden one comes back). The layout showing stays: switch away first.
+				onModPick: (picked) => {
+					if (picked.startsWith("saved:")) return;
+					if (picked === this.layout) {
+						new Notice("Switch to another layout first — the one showing can't be hidden.");
+						return;
+					}
+					void this.toggleLayoutEnabled(picked as Layout);
+				},
+				footer: "Ctrl/⌘-click a layout to hide it from this note; the ☰ menu's Layouts row brings it back.",
 			});
 			// The Calendar's range sits right after the layout it belongs to: the scrolling
 			// wall of months, two weeks, one week, or one day.

@@ -364,6 +364,17 @@ body.sfsc-flat-cards .section-cards-view {
 	height: 20px;
 }
 
+/* The small print under a picker's tiles (what a Ctrl/⌘-click does). */
+.sfsc-picker-foot {
+	grid-column: 1 / -1;
+	margin-top: 2px;
+	padding-top: 6px;
+	border-top: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.35;
+	color: var(--text-faint);
+}
+
 .sfsc-picker-tile-label {
 	overflow: hidden;
 	text-overflow: ellipsis;
