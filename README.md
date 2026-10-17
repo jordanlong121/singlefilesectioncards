@@ -311,9 +311,7 @@ creating, or deleting cards; editing a card (one step per edit, however often it
 starring, or deleting lines; ticking tasks; calendar feed updates. Press `Ctrl/⌘+Z` in the cards
 view (or ☰ → *Undo …*, or the *Undo the last card change* command) to step back, and
 `Ctrl/⌘+Shift+Z` to redo. The delete and nest notices carry an Undo button too. Each note keeps
-its own history, about 30 steps, for the session. If the note was changed some other way since
-(in the editor, by sync, by another plugin), undo refuses rather than overwrite that change. View
-settings such as pins, colors, and canvas positions aren't part of it.
+its own history, about 30 steps, for the session.
 
 ## Selecting many cards
 
