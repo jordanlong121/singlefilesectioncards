@@ -27,7 +27,7 @@ const context = await esbuild.context({
 		...builtinModules.map((m) => `node:${m}`),
 	],
 	format: "cjs",
-	target: "es2018",
+	target: "es2020", // Obsidian 1.13+ runs on engines well past this; 2018 cost 13 KB of downleveling
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,

@@ -6255,7 +6255,7 @@ export class SectionCardsView extends ItemView {
 					const dot = picked.name.lastIndexOf(".");
 					const ext = dot > 0 ? picked.name.slice(dot + 1).toLowerCase() : "";
 					if (!BACKGROUND_EXTENSIONS.has(ext)) {
-						new Notice("Pick an image file (PNG, JPG, GIF, WebP, AVIF, or BMP).");
+						new Notice("Pick an image file — PNG, JPG, GIF, or another web image format.");
 						return;
 					}
 					const stem =
@@ -6959,7 +6959,7 @@ export class SectionCardsView extends ItemView {
 			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
 			if (calendar) {
 				empty.createEl("p", { text: `No date headings found in ${file.basename}.` });
-				empty.createEl("p", { text: "The Calendar places headings that name a day, like 2026-08-26." });
+				empty.createEl("p", { text: "This layout places headings that name a day, like 2026-08-26." });
 			} else {
 				empty.createEl("p", { text: `No level-${this.headingLevel} headings in ${file.basename}.` });
 				empty.createEl("p", { text: "Try a different heading level in the toolbar." });
@@ -7788,7 +7788,7 @@ export class SectionCardsView extends ItemView {
 				if (api) {
 					menu.addItem((item) =>
 						item
-							.setTitle("New task (Tasks)…")
+							.setTitle("New task…")
 							.setIcon("list-plus")
 							.onClick(() => void this.newTaskWithTasks(api, file, holder.section, null, null)),
 					);
@@ -8735,7 +8735,7 @@ export class SectionCardsView extends ItemView {
 		if (!images.length) {
 			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
 			empty.createEl("p", { text: `No images found in ${file.basename}.` });
-			empty.createEl("p", { text: "Embed images in the note — ![[shot.png]] or ![](url) — and they appear here." });
+			empty.createEl("p", { text: "Embed images in the note — ![[shot.png]] or ![](URL) — and they appear here." });
 		}
 
 		this.applyImagesLayout();
@@ -9498,7 +9498,7 @@ export class SectionCardsView extends ItemView {
 		if (!outline.roots.length && !outline.preamble) {
 			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
 			empty.createEl("p", { text: `${file.basename} has no headings yet.` });
-			empty.createEl("p", { text: "The Table and Tree layouts lay a note out by its headings, every level at once." });
+			empty.createEl("p", { text: "These layouts lay a note out by its headings, every level at once." });
 			this.rememberView();
 			return;
 		}
@@ -10541,14 +10541,14 @@ export class SectionCardsView extends ItemView {
 			if (isTask) {
 				menu.addItem((item) =>
 					item
-						.setTitle("Edit task (Tasks)…")
+						.setTitle("Edit task…")
 						.setIcon("pencil")
 						.onClick(() => void this.editTaskWithTasks(file, section, blockIndex, blockText)),
 				);
 			}
 			menu.addItem((item) =>
 				item
-					.setTitle("New task below (Tasks)…")
+					.setTitle("New task below…")
 					.setIcon("list-plus")
 					.onClick(() => void this.newTaskWithTasks(tasksApi, file, section, blockIndex, blockText)),
 			);
@@ -10684,7 +10684,7 @@ export class SectionCardsView extends ItemView {
 		try {
 			line = (await api.createTaskLineModal())?.trim() ?? "";
 		} catch {
-			new Notice("The Tasks plugin couldn't open its create dialog.");
+			new Notice("Couldn't open the create-task dialog.");
 			return;
 		}
 		if (!line) return; // cancelled
@@ -11058,7 +11058,7 @@ export class SectionCardsView extends ItemView {
 		try {
 			line = (await api.createTaskLineModal())?.trim() ?? "";
 		} catch {
-			new Notice("The Tasks plugin couldn't open its create dialog.");
+			new Notice("Couldn't open the create-task dialog.");
 			return;
 		}
 		if (line) insert(line);
