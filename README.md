@@ -161,15 +161,11 @@ note, or drag a paragraph or task from the card onto a tab to send it to that ca
 
 ### Day Planner
 
-One day on one page: the card's title sits across the top with arrows to yesterday and
-tomorrow, and each sub-heading directly beneath it is a card of its own in one of two columns,
-its tasks and any deeper headings inside (a month shows its weeks, each week its days); loose
-lines above the first sub-heading form one card, named after the unfiled card. Drag a card to
-the other column or into a new order, resize it, tick its tasks, or send it to the next day by
-dropping it on an arrow — the note changes underneath, and the arrangement is remembered per
-note. Right-click a card for its column, height, edit, and copy options, or **Delete card** to
-remove that sub-heading and everything beneath it. Stepping onto a day with no card offers to create it or to skip to the nearest day that
-has one.
+One day on one page: the card's title across the top with arrows to yesterday and tomorrow,
+and each sub-heading as a card of its own in two columns, tasks and deeper headings inside.
+Drag cards between columns or into a new order, resize them, tick tasks, or drop a card on an
+arrow to send it to the next day — the note changes underneath, and the arrangement is
+remembered per note. Right-click a card for its options.
 
 ![Day Planner](screenshots/planner.png)
 
