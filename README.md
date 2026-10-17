@@ -245,8 +245,9 @@ cell to rename it, or the row's ↗ to open the note there. Today's rows are tin
 ### Tree
 
 The same outline as nodes branching to the right, each showing its heading and a line of
-its text. Click a node to edit its text; chevrons fold branches, and the bar above has
-Expand all, Collapse all, and zoom.
+its text. Click a node to edit its text, or right-click it for its color (shared with the
+card), a rename, and the note; chevrons fold branches, and the bar above has Expand all,
+Collapse all, and zoom.
 
 ![Tree](screenshots/tree.png)
 
