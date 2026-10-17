@@ -4746,7 +4746,6 @@ export class SectionCardsView extends ItemView {
 		// of every layout (L still cycles). The Deck has no layout to pick.
 		this.closePicker();
 		if (!this.deckMode) {
-			const dated = this.calendarSelectable();
 			// The note's saved Custom Grid layouts follow the layouts as tiles of their own:
 			// picking one switches to the Custom Grid and applies it.
 			const savedNames = Object.keys(this.plugin.getSavedLayouts(this.currentPath())).sort((a, b) =>
@@ -4759,27 +4758,34 @@ export class SectionCardsView extends ItemView {
 				ariaLabel: "Card layout (L cycles)",
 				value,
 				columns: 4,
-				options: [
-					...LAYOUT_OPTIONS.filter(([value]) => this.layoutEnabled(value)).map((entry): PickerOption => {
-						const [value, label, hint] = entry;
-						const needsDates = (value === "calendar" || value === "heatmap") && !dated && value !== this.layout;
-						return {
-							value,
-							label,
-							hint: needsDates ? `${hint} — needs date headings` : hint,
-							icon: LAYOUT_ICONS[value][0],
-							fallback: LAYOUT_ICONS[value][1],
-							disabled: needsDates,
-						};
-					}),
-					...savedNames.map((name): PickerOption => ({
-						value: `saved:${name}`,
-						label: name,
-						hint: "A saved Custom Grid layout: its arrangement, zoom, and background",
-						icon: "bookmark",
-						fallback: "star",
-					})),
-				],
+				// Read when the picker opens, not when the toolbar was built: a note's dates
+				// are tallied by the refresh that follows the build, and in a layout that
+				// never rebuilds the toolbar afterwards (the Table) a frozen list would keep
+				// the Calendar greyed out.
+				options: () => {
+					const dated = this.calendarSelectable();
+					return [
+						...LAYOUT_OPTIONS.filter(([value]) => this.layoutEnabled(value)).map((entry): PickerOption => {
+							const [value, label, hint] = entry;
+							const needsDates = (value === "calendar" || value === "heatmap") && !dated && value !== this.layout;
+							return {
+								value,
+								label,
+								hint: needsDates ? `${hint} — needs date headings` : hint,
+								icon: LAYOUT_ICONS[value][0],
+								fallback: LAYOUT_ICONS[value][1],
+								disabled: needsDates,
+							};
+						}),
+						...savedNames.map((name): PickerOption => ({
+							value: `saved:${name}`,
+							label: name,
+							hint: "A saved Custom Grid layout: its arrangement, zoom, and background",
+							icon: "bookmark",
+							fallback: "star",
+						})),
+					];
+				},
 				onPick: (picked) => {
 					if (!picked.startsWith("saved:")) {
 						this.setLayout(picked as Layout);
