@@ -9722,9 +9722,39 @@ export class SectionCardsView extends ItemView {
 		const closed = folded;
 		const countBelow = (node: TableNode): number =>
 			node.children.reduce((sum, child) => sum + 1 + countBelow(child), 0);
+		// A node's color is its heading's card color: the same store the cards use, so a
+		// colored node is a colored card at that level, and the other way round.
+		const colors = this.plugin.getCardColors(file.path);
 		const build = (parent: HTMLElement, node: TableNode) => {
 			const item = parent.createDiv({ cls: "sc-tree-item" });
 			const box = item.createDiv({ cls: `sc-tree-node is-h${node.level}` });
+			const headingRaw = lines[node.headingLine];
+			this.applyCardColor(box, colors[headingRaw]);
+			box.addEventListener("contextmenu", (evt) => {
+				evt.preventDefault();
+				evt.stopPropagation();
+				const menu = new Menu();
+				menu.addItem((item) =>
+					item
+						.setTitle("Node color…")
+						.setIcon("palette")
+						.onClick(() => this.openColorMenu(evt, file, headingRaw)),
+				);
+				menu.addItem((item) =>
+					item
+						.setTitle("Rename heading…")
+						.setIcon("pencil")
+						.onClick(() => this.promptRenameHeading(file, node, headingRaw)),
+				);
+				menu.addItem((item) =>
+					item
+						.setTitle("Open in the note")
+						.setIcon("external-link")
+						.onClick(() => void this.plugin.revealSection(file, node.headingLine)),
+				);
+				this.addCommonMenuItems(menu);
+				menu.showAtMouseEvent(evt);
+			});
 			const head = box.createDiv({ cls: "sc-tree-head" });
 			head.createDiv({ cls: "sc-tree-title", text: node.title || "(untitled)" });
 			const text = box.createDiv({ cls: "sc-tree-text" });
@@ -9796,7 +9826,19 @@ export class SectionCardsView extends ItemView {
 		el.setAttr("role", "button");
 		el.tabIndex = 0;
 		el.setAttr("aria-label", `Rename “${node.title || "(untitled)"}”`);
-		const open = () => {
+		const open = () => this.promptRenameHeading(file, node, headingRaw);
+		el.addEventListener("click", open);
+		el.addEventListener("keydown", (evt) => {
+			if (evt.key !== "Enter" && evt.key !== " ") return;
+			evt.preventDefault();
+			open();
+		});
+	}
+
+	/** Rename a heading of any rank: links follow, and the plugin's per-card state
+	 * (pins, colors, placements) moves with it when the heading is a card's. */
+	private promptRenameHeading(file: TFile, node: TableNode, headingRaw: string): void {
+		{
 			new TextInputModal(this.app, "Rename heading", node.title, "Rename", (value) => {
 				const title = value.trim();
 				if (!title || title === node.title) return;
@@ -9827,13 +9869,7 @@ export class SectionCardsView extends ItemView {
 					await this.refresh();
 				})();
 			}).open();
-		};
-		el.addEventListener("click", open);
-		el.addEventListener("keydown", (evt) => {
-			if (evt.key !== "Enter" && evt.key !== " ") return;
-			evt.preventDefault();
-			open();
-		});
+		}
 	}
 
 	/** A heading's own text on one clipped line in `textEl`; a click (or Enter) on
