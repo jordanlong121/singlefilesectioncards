@@ -46,7 +46,22 @@ const SHOTS = [
 		name: "binder",
 		note: "Daily Notes 2026.md",
 		layout: "binder",
-		prep: `(() => { const entry = v.cardEntries.find((e) => e.holder.section.title.startsWith("2026-08-06")); if (entry) v.setRoloActive(entry); })()`,
+		// Two cards colored for the shot (their tabs wear it); cleared again after.
+		prep: `(async () => {
+			const p = app.plugins.plugins["single-file-section-cards"];
+			const key = (prefix) => v.cardEntries.find((e) => e.holder.section.title.startsWith(prefix))?.holder.section.headingRaw;
+			if (key("2026-08-05")) await p.setCardColor(v.filePath, key("2026-08-05"), "blue", v.viewSettings());
+			if (key("2026-07-31")) await p.setCardColor(v.filePath, key("2026-07-31"), "green", v.viewSettings());
+			await v.refresh();
+			await new Promise((r) => setTimeout(r, 600));
+			const entry = v.cardEntries.find((e) => e.holder.section.title.startsWith("2026-08-06"));
+			if (entry) v.setRoloActive(entry);
+		})()`,
+		after: `(async () => {
+			const p = app.plugins.plugins["single-file-section-cards"];
+			const key = (prefix) => v.cardEntries.find((e) => e.holder.section.title.startsWith(prefix))?.holder.section.headingRaw;
+			for (const k of [key("2026-08-05"), key("2026-07-31")]) if (k) await p.setCardColor(v.filePath, k, null, v.viewSettings());
+		})()`,
 	},
 ];
 
@@ -80,12 +95,17 @@ try {
 			v.deckMode = false;
 			v.switchLayout(${JSON.stringify(s.layout)});
 			await new Promise((r) => setTimeout(r, 1200));
-			${s.prep ?? ""};
+			await (${s.prep ?? "null"});
 			await new Promise((r) => setTimeout(r, 500));
 			return v.layout;
 		})()`);
 		await shot(s.name);
-		await ev(`(() => { for (const l of app.workspace.getLeavesOfType("section-cards-view")) l.detach(); return 1; })()`);
+		await ev(`(async () => {
+			const v = ${V};
+			await (${s.after ?? "null"});
+			for (const l of app.workspace.getLeavesOfType("section-cards-view")) l.detach();
+			return 1;
+		})()`);
 	}
 } finally {
 	await ev(`(() => {
