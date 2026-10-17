@@ -230,6 +230,8 @@ time — as do the `,` and `.` keys — and **Today** comes back once you've wan
 walk past the note's dated days too: that's how a day the note has never mentioned gets its
 card.
 
+Hover a day and an ↗ appears in its top corner: it opens the note at that day's heading.
+
 ### Heatmap
 
 A year-at-a-glance graph of the dated cards, shaded by tasks done, with streak stats
