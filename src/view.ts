@@ -9567,34 +9567,65 @@ export class SectionCardsView extends ItemView {
 	// ---------- Table and Tree: the note's outline, every heading at once ----------
 
 	private renderOutlineLayout(file: TFile, lines: string[]): void {
+		const gen = this.renderGeneration;
+		const grid = this.gridEl;
+		// The refresh after an edit (a ticked box, a saved cell) rebuilds the whole
+		// layout. The one showing stays put — scroll and all — until the new one is
+		// built, and for the Table rendered, then takes its place in one swap: no blank
+		// pane, no jump to the top.
+		const scroll = { left: grid.scrollLeft, top: grid.scrollTop };
+		const showing = grid.querySelector<HTMLElement>(":scope > .sc-table-wrap, :scope > .sc-tree-wrap");
 		this.clearAllCards();
 		this.clearHierarchy();
 		this.jumpDateWrap?.toggleClass("is-hidden", true);
 		this.starBtn?.toggleClass("is-hidden", true);
 		this.pendingEditHeading = null;
 		this.pendingMaximizeHeading = null;
-		this.gridEl.appendChild(this.canvasExtentEl); // clearAllCards emptied the grid
+		grid.appendChild(this.canvasExtentEl); // clearAllCards emptied the grid
+		if (showing) {
+			grid.appendChild(showing);
+			grid.scrollLeft = scroll.left;
+			grid.scrollTop = scroll.top;
+		}
 
 		const outline = parseTableOutline(lines);
 		if (!outline.roots.length && !outline.preamble) {
-			const empty = this.gridEl.createDiv({ cls: "section-cards-empty" });
+			showing?.remove();
+			const empty = grid.createDiv({ cls: "section-cards-empty" });
 			empty.createEl("p", { text: `${file.basename} has no headings yet.` });
 			empty.createEl("p", { text: "These layouts lay a note out by its headings, every level at once." });
 			this.rememberView();
 			return;
 		}
 		this.contentEl.toggleClass("is-table-wrap", this.layout === "table" && this.plugin.getTableWrap(file.path));
-		if (this.layout === "table") this.renderTable(file, lines, outline);
-		else this.renderTree(file, lines, outline);
+		const built = this.layout === "table" ? this.renderTable(file, lines, outline) : this.renderTree(file, lines, outline);
+		// Today's rows come into view on the note's first render and on a layout switch,
+		// as today's card does on the walls (the flags refresh would otherwise consume).
+		const layoutJump = this.todayJumpForLayout;
+		this.todayJumpForLayout = false;
+		const jumpToToday = layoutJump || (this.todayJumpedFor !== file.path && this.plugin.settings.jumpToToday);
+		this.todayJumpedFor = file.path;
+		void built.ready.then(() => {
+			if (gen !== this.renderGeneration) return;
+			if (showing?.isConnected) showing.replaceWith(built.wrap);
+			else grid.appendChild(built.wrap);
+			grid.scrollLeft = scroll.left;
+			grid.scrollTop = scroll.top;
+			if (jumpToToday && built.todayRow) built.todayRow.scrollIntoView({ block: "center" });
+		});
 		this.rememberView();
 	}
 
 	/** Table: a row per heading, a parent spanning its sub-headings' rows, its own text
 	 * (when it has some above them) on a first row of its own, each text in one line. */
-	private renderTable(file: TFile, lines: string[], outline: TableOutline): void {
+	private renderTable(
+		file: TFile,
+		lines: string[],
+		outline: TableOutline,
+	): { wrap: HTMLElement; ready: Promise<void>; todayRow: HTMLElement | null } {
 		const columns = Math.max(outline.depth, 1);
 		const wrapText = this.plugin.getTableWrap(file.path);
-		const wrap = this.gridEl.createDiv({ cls: "sc-table-wrap" });
+		const wrap = createDiv({ cls: "sc-table-wrap" }); // detached until its cells are rendered
 		const table = wrap.createEl("table", { cls: "sc-table" });
 		table.setCssProps({ "--sc-table-cols": String(columns) });
 		// Heading columns share at most half the width (a fifth each at most); the text
@@ -9677,15 +9708,7 @@ export class SectionCardsView extends ItemView {
 				}
 			}
 		}
-		void this.renderTableCells(file, pendingRenders);
-		// Today's rows come into view on the note's first render and on a layout switch,
-		// as today's card does on the walls (the flags refresh would otherwise consume).
-		const layoutJump = this.todayJumpForLayout;
-		this.todayJumpForLayout = false;
-		if (todayRow && (layoutJump || (this.todayJumpedFor !== file.path && this.plugin.settings.jumpToToday))) {
-			todayRow.scrollIntoView({ block: "center" });
-		}
-		this.todayJumpedFor = file.path;
+		return { wrap, ready: this.renderTableCells(file, pendingRenders), todayRow };
 	}
 
 	/** Tree: the branches folded shut, per note, by the heading line that heads each
@@ -9744,8 +9767,12 @@ export class SectionCardsView extends ItemView {
 	/** Tree: each heading a node, its sub-headings branching off to the right. A node
 	 * with sub-headings carries a chevron that folds its branch; the count of headings
 	 * folded away sits beside it. */
-	private renderTree(file: TFile, lines: string[], outline: TableOutline): void {
-		const wrap = this.gridEl.createDiv({ cls: "sc-tree-wrap" });
+	private renderTree(
+		file: TFile,
+		lines: string[],
+		outline: TableOutline,
+	): { wrap: HTMLElement; ready: Promise<void>; todayRow: HTMLElement | null } {
+		const wrap = createDiv({ cls: "sc-tree-wrap" });
 		// Expand all / Collapse all, above the tree; each branch's chevron re-syncs.
 		const bar = wrap.createDiv({ cls: "sc-tree-bar" });
 		const syncs: (() => void)[] = [];
@@ -9873,6 +9900,7 @@ export class SectionCardsView extends ItemView {
 		bar.querySelectorAll<HTMLElement>(":scope > .sc-tree-bar-btn").forEach((btn) => {
 			btn.toggleClass("is-hidden", parentKeys.length === 0);
 		});
+		return { wrap, ready: Promise.resolve(), todayRow: null };
 	}
 
 	/** A heading cell: a click (or Enter) renames the heading, at whatever rank it is.
