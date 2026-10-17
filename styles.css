@@ -2884,11 +2884,45 @@ body.is-mobile .is-layout-binder .section-card-body{
 	font-size: calc(var(--font-ui-small) * var(--sfsc-font-scale, 1));
 }
 
-/* Expand all / Collapse all, a small row above the tree. */
+/* The tree's box is the scroller both ways (the pane would otherwise scroll it
+   vertically, out from under the sticky bar): toolbar fixed above, the box fills
+   the rest, as the Rolodex lays its pane out. */
+.workspace-leaf-content .view-content.section-cards-view.is-layout-tree {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.is-layout-tree .section-cards-toolbar {
+	position: static;
+	flex: 0 0 auto;
+}
+
+.is-layout-tree .section-cards-grid {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+/* The wrap spans the whole scroll width, so the bar can stick within it. */
+.sc-tree-wrap {
+	width: max-content;
+	min-width: 100%;
+}
+
+/* Expand all / Collapse all and the zoom, a small row above the tree that stays put
+   while the tree scrolls under it — stuck to the pane's top and left edges. */
 .sc-tree-bar {
+	position: sticky;
+	top: 0;
+	left: 0;
+	z-index: 2;
 	display: flex;
 	gap: 6px;
+	width: max-content;
 	margin-bottom: 8px;
+	padding: 4px 6px;
+	border-radius: var(--radius-m, 8px);
+	background: var(--background-primary);
 }
 
 .sc-tree-bar-btn.is-hidden {
@@ -2900,7 +2934,7 @@ body.is-mobile .is-layout-binder .section-card-body{
 	display: flex;
 	gap: 2px;
 	order: 1; /* built first, shown last: the fold buttons keep the left */
-	margin-left: auto;
+	margin-left: 10px;
 }
 
 .sc-tree-zoom .sc-tree-bar-btn {
