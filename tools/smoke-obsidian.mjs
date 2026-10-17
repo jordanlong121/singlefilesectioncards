@@ -25,8 +25,8 @@ const type = async (text) => { for (const ch of text) await send("Input.dispatch
 const V = `app.workspace.getLeavesOfType("section-cards-view").find((l) => l.view.filePath === ${JSON.stringify(NOTE)}).view`;
 const P = `app.plugins.plugins["single-file-section-cards"]`;
 const noteText = () => ev(`app.vault.read(app.vault.getFileByPath(${JSON.stringify(NOTE)}))`);
-const pickLayout = async (label) => { await click(".section-cards-layout-btn"); await ev(`(() => { [...document.querySelectorAll(".sfsc-picker-tile")].find(x => x.textContent.trim() === ${JSON.stringify(label)}).click(); return 1; })()`); await sleep(900); };
-const pick = async (btnSel, label) => { await click(btnSel); await ev(`(() => { const t = [...document.querySelectorAll(".sfsc-picker-tile")].find(x => x.textContent.trim() === ${JSON.stringify(label)}); if (!t) throw new Error("no tile " + ${JSON.stringify(label)}); t.click(); return 1; })()`); await sleep(700); };
+const pickLayout = async (label) => { await click(".section-cards-layout-btn"); await ev(`(() => { [...document.querySelectorAll(".sfsc-picker-tile")].find(x => (x.querySelector(".sfsc-picker-tile-label") ?? x).textContent.trim() === ${JSON.stringify(label)}).click(); return 1; })()`); await sleep(900); };
+const pick = async (btnSel, label) => { await click(btnSel); await ev(`(() => { const t = [...document.querySelectorAll(".sfsc-picker-tile")].find(x => (x.querySelector(".sfsc-picker-tile-label") ?? x).textContent.trim() === ${JSON.stringify(label)}); if (!t) throw new Error("no tile " + ${JSON.stringify(label)}); t.click(); return 1; })()`); await sleep(700); };
 const modalOpen = () => ev(`!!document.querySelector(".modal-container .modal")`);
 const modalTitle = async () => { await sleep(600); return ev(`(() => { const hs = [...document.querySelectorAll(".modal-container h3, .modal-container .modal-title")].map(h => h.textContent.trim()).filter(Boolean); return hs[hs.length - 1] ?? ""; })()`); };
 const modalDebug = () => ev(`JSON.stringify([...document.querySelectorAll(".modal-container")].map(c => ({ cls: c.className, h3s: [...c.querySelectorAll("h3")].map(h => h.textContent) })))`);
