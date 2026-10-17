@@ -81,7 +81,8 @@ If this plugin is useful to you, you can support its development:
 
 Pick a layout from the toolbar's **Layout** button beside the note's name — it opens a grid
 of every layout, an icon and name each — from the **Layouts** row of the toolbar's ☰ menu or
-any right-click menu, or press `L` to cycle (Shift+L backwards). **Card level**, **View mode**, **Sort**, and
+any right-click menu, or press `L` to cycle (Shift+L backwards). Ctrl/⌘+L opens the picker
+from the keyboard: its tiles are numbered in their corners, and typing a number picks one. **Card level**, **View mode**, **Sort**, and
 **Group** are the same kind of button: an icon, the current choice, and a grid of icon tiles to
 pick from. Layouts you never use
 in a note can be hidden from it: Ctrl/⌘-click one in the **Layout** picker or the **Layouts**
@@ -241,37 +242,25 @@ above. Click a day to open (or create) its card. Needs date headings.
 
 ### Table
 
-The whole note as a table, every heading level at once (the card level doesn't apply).
-Each heading is a row; a heading with sub-headings becomes a cell spanning their rows, so
-the first columns read as the note's outline and the last column holds each heading's own
-text on one line, clipped with an ellipsis. A heading that has text of its own above its
-sub-headings gets a first row for it. Click a text cell to open the whole of it in an
-editor — Ctrl/⌘+Enter saves it back into the note, and clearing it removes those lines.
-Click a heading cell to rename that heading, at any level; links to it follow, as when a
-card is renamed. The ↗ at the end of a row opens the note at that heading, as a card's
-does. Text above the first heading has a row of its own at the top. With the
-Dates checkbox on, today's heading and every row under it are tinted, and the view opens
-on them.
+The whole note as a table, every heading level at once: a row per heading, a parent
+spanning its sub-headings' rows, and each heading's text in the last column on one clipped
+line (the toolbar's wrap button shows it in full). Click a text cell to edit it, a heading
+cell to rename it, or the row's ↗ to open the note there. Today's rows are tinted.
 
 ![Table](screenshots/table.png)
 
 ### Tree
 
-The note as a tree: each heading a node, its sub-headings branching off to the right, with
-the heading's own text under its title, cut off where the node ends. Click a node to edit
-its text, as in the Table. A node with sub-headings has a chevron that folds its branch
-(showing how many headings are tucked away); ← and → on a focused node do the same, and
-**Expand all** / **Collapse all** above the tree fold every branch at once. The − and + at
-the bar's right zoom the tree (so do Ctrl/⌘+wheel over it); click the percentage to go back
-to 100%.
+The same outline as nodes branching to the right, each showing its heading and a line of
+its text. Click a node to edit its text; chevrons fold branches, and the bar above has
+Expand all, Collapse all, and zoom.
 
 ![Tree](screenshots/tree.png)
 
 ### Binder
 
-The Rolodex turned on its side: one card fills the pane and every card's title is a tab
-down the right edge, like a binder's tabbed inserts. Click a tab to turn to its card, drag
-one onto another to reorder, or use `,` and `.` (and ← / →) to flip through.
+The Rolodex with its tabs down the right edge, like a binder's inserts. A colored card's
+tab wears its color; `,` and `.` flip through.
 
 ![Binder](screenshots/binder.png)
 

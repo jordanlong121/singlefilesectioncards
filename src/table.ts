@@ -187,3 +187,13 @@ export function tableLineText(text: string): string {
 		.filter((line) => line !== "")
 		.join(" · ");
 }
+
+/** A cell's wrapped reading of its text: blank lines dropped, each line kept as a line
+ * (the cell shows them with pre-line white space). */
+export function tableWrapText(text: string): string {
+	return text
+		.split("\n")
+		.map((line) => line.replace(/\s+/g, " ").trim())
+		.filter((line) => line !== "")
+		.join("\n");
+}

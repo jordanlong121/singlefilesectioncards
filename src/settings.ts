@@ -328,6 +328,8 @@ export interface PerFileView extends ViewSettings {
 	/** The hierarchy columns pane's width in px, set by dragging its edge; unset means
 	 * the columns' natural width. */
 	hierWidth?: number;
+	/** Table: cell text wraps onto several lines instead of one clipped line. */
+	tableWrap?: boolean;
 	/** Custom Grid arrangements saved under a name (tray → save), with their backgrounds. */
 	savedLayouts?: Record<string, SavedCanvasLayout>;
 	/** The saved layout last applied or saved, shown in the tray's switcher. */

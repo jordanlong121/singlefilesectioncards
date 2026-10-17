@@ -317,7 +317,19 @@ body.sfsc-flat-cards .section-cards-view {
 	box-shadow: var(--shadow-s, 0 4px 18px rgba(0, 0, 0, 0.25));
 }
 
+/* A numbered tile's number, small in its top left corner. */
+.sfsc-picker-num {
+	position: absolute;
+	top: 3px;
+	left: 5px;
+	font-size: 10px;
+	line-height: 1;
+	font-weight: 600;
+	color: var(--text-faint);
+}
+
 .sfsc-picker-tile {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -2851,6 +2863,17 @@ body.is-mobile .is-layout-binder .section-card-body{
 .sc-table-go-btn svg {
 	width: 14px;
 	height: 14px;
+}
+
+/* Wrapped cells (the toolbar's wrap toggle): every line shown, long ones folding. */
+.is-table-wrap .sc-table td.sc-table-text {
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+}
+
+.section-cards-wrap-btn.is-active {
+	color: var(--text-accent);
+	background: var(--background-modifier-hover);
 }
 
 /* One line, clipped with an ellipsis; a click opens it whole. */
