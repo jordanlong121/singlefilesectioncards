@@ -239,7 +239,8 @@ above. Click a day to open (or create) its card. Needs date headings.
 The whole note as a table, every heading level at once: a row per heading, a parent
 spanning its sub-headings' rows, and each heading's text in the last column on one clipped
 line (the toolbar's wrap button shows it in full). Click a text cell to edit it, a heading
-cell to rename it, or the row's ↗ to open the note there. Today's rows are tinted.
+cell to rename it, or the row's ↗ to open the note there; right-click a heading for its color
+(shared with the card). Today's rows are tinted.
 
 ![Table](screenshots/table.png)
 

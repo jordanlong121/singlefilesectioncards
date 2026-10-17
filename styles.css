@@ -2023,6 +2023,8 @@ body.is-mobile .section-cards-hier-col {
 .sfsc-planner-head[data-sfsc-color="red"],
 .sfsc-rolo-tab[data-sfsc-color="red"],
 .sc-tree-node[data-sfsc-color="red"],
+.sc-table th[data-sfsc-color="red"],
+.sc-table tr[data-sfsc-color="red"],
 .sfsc-swatch-red {
 	--sfsc-c: var(--sfsc-color-red, 224, 82, 82);
 	--sfsc-fg-dark: var(--sfsc-color-red-fg, #fff);
@@ -2034,6 +2036,8 @@ body.is-mobile .section-cards-hier-col {
 .sfsc-planner-head[data-sfsc-color="orange"],
 .sfsc-rolo-tab[data-sfsc-color="orange"],
 .sc-tree-node[data-sfsc-color="orange"],
+.sc-table th[data-sfsc-color="orange"],
+.sc-table tr[data-sfsc-color="orange"],
 .sfsc-swatch-orange {
 	--sfsc-c: var(--sfsc-color-orange, 235, 140, 52);
 	--sfsc-fg-dark: var(--sfsc-color-orange-fg, #fff);
@@ -2045,6 +2049,8 @@ body.is-mobile .section-cards-hier-col {
 .sfsc-planner-head[data-sfsc-color="yellow"],
 .sfsc-rolo-tab[data-sfsc-color="yellow"],
 .sc-tree-node[data-sfsc-color="yellow"],
+.sc-table th[data-sfsc-color="yellow"],
+.sc-table tr[data-sfsc-color="yellow"],
 .sfsc-swatch-yellow {
 	--sfsc-c: var(--sfsc-color-yellow, 212, 170, 20);
 	--sfsc-fg-dark: var(--sfsc-color-yellow-fg, #fff);
@@ -2056,6 +2062,8 @@ body.is-mobile .section-cards-hier-col {
 .sfsc-planner-head[data-sfsc-color="green"],
 .sfsc-rolo-tab[data-sfsc-color="green"],
 .sc-tree-node[data-sfsc-color="green"],
+.sc-table th[data-sfsc-color="green"],
+.sc-table tr[data-sfsc-color="green"],
 .sfsc-swatch-green {
 	--sfsc-c: var(--sfsc-color-green, 76, 168, 90);
 	--sfsc-fg-dark: var(--sfsc-color-green-fg, #fff);
@@ -2067,6 +2075,8 @@ body.is-mobile .section-cards-hier-col {
 .sfsc-planner-head[data-sfsc-color="cyan"],
 .sfsc-rolo-tab[data-sfsc-color="cyan"],
 .sc-tree-node[data-sfsc-color="cyan"],
+.sc-table th[data-sfsc-color="cyan"],
+.sc-table tr[data-sfsc-color="cyan"],
 .sfsc-swatch-cyan {
 	--sfsc-c: var(--sfsc-color-cyan, 44, 160, 198);
 	--sfsc-fg-dark: var(--sfsc-color-cyan-fg, #fff);
@@ -2078,6 +2088,8 @@ body.is-mobile .section-cards-hier-col {
 .sfsc-planner-head[data-sfsc-color="blue"],
 .sfsc-rolo-tab[data-sfsc-color="blue"],
 .sc-tree-node[data-sfsc-color="blue"],
+.sc-table th[data-sfsc-color="blue"],
+.sc-table tr[data-sfsc-color="blue"],
 .sfsc-swatch-blue {
 	--sfsc-c: var(--sfsc-color-blue, 76, 130, 235);
 	--sfsc-fg-dark: var(--sfsc-color-blue-fg, #fff);
@@ -2089,6 +2101,8 @@ body.is-mobile .section-cards-hier-col {
 .sfsc-planner-head[data-sfsc-color="purple"],
 .sfsc-rolo-tab[data-sfsc-color="purple"],
 .sc-tree-node[data-sfsc-color="purple"],
+.sc-table th[data-sfsc-color="purple"],
+.sc-table tr[data-sfsc-color="purple"],
 .sfsc-swatch-purple {
 	--sfsc-c: var(--sfsc-color-purple, 155, 110, 230);
 	--sfsc-fg-dark: var(--sfsc-color-purple-fg, #fff);
@@ -2100,6 +2114,8 @@ body.is-mobile .section-cards-hier-col {
 .sfsc-planner-head[data-sfsc-color="pink"],
 .sfsc-rolo-tab[data-sfsc-color="pink"],
 .sc-tree-node[data-sfsc-color="pink"],
+.sc-table th[data-sfsc-color="pink"],
+.sc-table tr[data-sfsc-color="pink"],
 .sfsc-swatch-pink {
 	--sfsc-c: var(--sfsc-color-pink, 226, 110, 170);
 	--sfsc-fg-dark: var(--sfsc-color-pink-fg, #fff);
@@ -2111,6 +2127,8 @@ body.is-mobile .section-cards-hier-col {
 .sfsc-planner-head[data-sfsc-color="gray"],
 .sfsc-rolo-tab[data-sfsc-color="gray"],
 .sc-tree-node[data-sfsc-color="gray"],
+.sc-table th[data-sfsc-color="gray"],
+.sc-table tr[data-sfsc-color="gray"],
 .sfsc-swatch-gray {
 	--sfsc-c: var(--sfsc-color-gray, 132, 140, 148);
 	--sfsc-fg-dark: var(--sfsc-color-gray-fg, #fff);
@@ -2817,6 +2835,21 @@ body.is-mobile .is-layout-binder .section-card-body{
 	color: var(--text-faint);
 	font-style: italic;
 	background: var(--sc-header);
+}
+
+/* A colored heading (right-click → Row color): the color along its cell's left edge and
+   a wash behind it; the rows under it get a lighter wash. */
+.sc-table th.sc-table-heading[data-sfsc-color] {
+	background: linear-gradient(rgba(var(--sfsc-c), 0.28), rgba(var(--sfsc-c), 0.28)), var(--sc-header);
+	box-shadow: inset 3px 0 0 rgb(var(--sfsc-c));
+}
+
+.sc-table tr[data-sfsc-color] > td {
+	background: linear-gradient(rgba(var(--sfsc-c), 0.1), rgba(var(--sfsc-c), 0.1)), var(--sc-surface);
+}
+
+.sc-table tr[data-sfsc-color] > td.sc-table-text:hover {
+	background: linear-gradient(rgba(var(--sfsc-c), 0.2), rgba(var(--sfsc-c), 0.2)), var(--sc-surface);
 }
 
 /* Today's heading and every row under it: a tint across the row, the heading in the

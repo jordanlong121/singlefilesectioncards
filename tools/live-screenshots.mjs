@@ -32,15 +32,41 @@ const shot = async (name) => {
 	console.log("wrote screenshots/" + name + ".png");
 };
 
+/** An expression (run with `v` the view) that sets the card color of each named
+ * heading, null clearing it, and refreshes. */
+const colorHeadings = (byTitle) => `(async () => {
+	const p = app.plugins.plugins["single-file-section-cards"];
+	const wanted = ${JSON.stringify(byTitle)};
+	for (const [title, color] of Object.entries(wanted)) {
+		const raw = v.noteLines.find((l) => /^#+\\s/.test(l) && l.replace(/^#+\\s*/, "") === title);
+		if (raw) await p.setCardColor(v.filePath, raw, color, v.viewSettings());
+	}
+	await v.refresh();
+	await new Promise((r) => setTimeout(r, 500));
+})()`;
+
 // The shots: which note, which layout, and what to do to it first.
 const SHOTS = [
-	{ name: "table", note: "Handbook.md", layout: "table" },
+	// Colored headings for the Table and Tree shots (a colored row, colored nodes);
+	// cleared again after each.
+	{
+		name: "table",
+		note: "Handbook.md",
+		layout: "table",
+		prep: colorHeadings({ "First Month": "blue", "Documentation": "yellow" }),
+		after: colorHeadings({ "First Month": null, "Documentation": null }),
+	},
 	{
 		name: "tree",
 		note: "Handbook.md",
 		layout: "tree",
 		// One branch folded, so the chevron's count shows.
-		prep: `(() => { const item = [...v.contentEl.querySelectorAll(".sc-tree-item")].find((i) => i.querySelector(":scope > .sc-tree-node .sc-tree-title")?.textContent === "Reference"); item?.querySelector(":scope > .sc-tree-node .sc-tree-toggle")?.click(); })()`,
+		prep: `(async () => {
+			await (${colorHeadings({ "Getting Started": "blue", "Ways Of Working": "green", "Reference": "orange", "Documentation": "purple" })});
+			const item = [...v.contentEl.querySelectorAll(".sc-tree-item")].find((i) => i.querySelector(":scope > .sc-tree-node .sc-tree-title")?.textContent === "Reference");
+			item?.querySelector(":scope > .sc-tree-node .sc-tree-toggle")?.click();
+		})()`,
+		after: colorHeadings({ "Getting Started": null, "Ways Of Working": null, "Reference": null, "Documentation": null }),
 	},
 	{
 		name: "binder",
