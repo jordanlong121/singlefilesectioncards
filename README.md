@@ -38,18 +38,11 @@ If this plugin is useful to you, you can support its development:
 
 ## New in 2.4.0
 
-- **New layouts!** **Table** lays the whole note out as a table, every heading level at once,
-  with each heading's text on one line (or wrapped) — click a cell to edit it, a heading to
-  rename it. **Tree** draws the same outline as nodes branching to the right, with folding and
-  zoom. **Binder** is the Rolodex with its tabs down the right edge, colored like their cards.
-  See [Table](#table), [Tree](#tree), and [Binder](#binder).
-- **Layouts by key.** Ctrl/⌘+L opens the layout picker with its tiles numbered; type a number
-  to pick one. Ctrl/⌘-click a tile to hide that layout from the note. Layouts are listed
-  alphabetically everywhere.
-- **Calendar.** Hover a day for an ↗ that opens the note there; the week and day slots'
-  headings carry the card's right-click menu, Update from calendar feed included.
-- **Hierarchy view's columns pane is resizable**, and the Tasks plugin's hotkeys (create or
-  edit, toggle done) work inside a card's editor.
+**New layouts!** **Table** lays the whole note out as a table, every heading level at once,
+with each heading's text on one line (or wrapped) — click a cell to edit it, a heading to
+rename it. **Tree** draws the same outline as nodes branching to the right, with folding and
+zoom. **Binder** is the Rolodex with its tabs down the right edge, colored like their cards.
+See [Table](#table), [Tree](#tree), and [Binder](#binder).
 
 ## What it does
 
