@@ -2891,8 +2891,32 @@ body.is-mobile .is-layout-binder .section-card-body{
 	margin-bottom: 8px;
 }
 
-.sc-tree-bar.is-hidden {
+.sc-tree-bar-btn.is-hidden {
 	display: none;
+}
+
+/* The zoom trio sits at the bar's right: − 100% +. */
+.sc-tree-zoom {
+	display: flex;
+	gap: 2px;
+	order: 1; /* built first, shown last: the fold buttons keep the left */
+	margin-left: auto;
+}
+
+.sc-tree-zoom .sc-tree-bar-btn {
+	min-width: 26px;
+	justify-content: center;
+	padding: 3px 6px;
+	font-variant-numeric: tabular-nums;
+}
+
+.sc-tree-zoom .sc-tree-zoom-label {
+	min-width: 48px;
+}
+
+.sc-tree-bar-btn[disabled] {
+	opacity: 0.4;
+	cursor: default;
 }
 
 .sc-tree-bar-btn {
