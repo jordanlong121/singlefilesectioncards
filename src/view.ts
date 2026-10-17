@@ -9584,6 +9584,8 @@ export class SectionCardsView extends ItemView {
 	/** Tree: the branches folded shut, per note, by the heading line that heads each
 	 * (so a fold survives the refreshes that follow edits, and a rename opens it). */
 	private treeCollapsed = new Map<string, Set<string>>();
+	/** Tree: the zoom per note, 1 = 100%; the bar's − / + and Ctrl/⌘+wheel set it. */
+	private treeZoom = new Map<string, number>();
 
 	/** Tree: each heading a node, its sub-headings branching off to the right. A node
 	 * with sub-headings carries a chevron that folds its branch; the count of headings
@@ -9605,6 +9607,38 @@ export class SectionCardsView extends ItemView {
 			});
 		};
 		const root = wrap.createDiv({ cls: "sc-tree" });
+		// Zoom: − / the percentage (a click resets it) / +, and Ctrl/⌘+wheel over the tree.
+		const zoomWrap = bar.createDiv({ cls: "sc-tree-zoom" });
+		const zoomOut = zoomWrap.createEl("button", { cls: "sc-tree-bar-btn", text: "−" });
+		zoomOut.setAttr("aria-label", "Zoom out");
+		const zoomLabel = zoomWrap.createEl("button", { cls: "sc-tree-bar-btn sc-tree-zoom-label" });
+		zoomLabel.setAttr("aria-label", "Reset zoom");
+		const zoomIn = zoomWrap.createEl("button", { cls: "sc-tree-bar-btn", text: "+" });
+		zoomIn.setAttr("aria-label", "Zoom in");
+		const applyZoom = () => {
+			const zoom = this.treeZoom.get(file.path) ?? 1;
+			root.setCssStyles({ zoom: String(zoom) });
+			zoomLabel.setText(`${Math.round(zoom * 100)}%`);
+			zoomOut.toggleAttribute("disabled", zoom <= 0.4);
+			zoomIn.toggleAttribute("disabled", zoom >= 2);
+		};
+		const setZoom = (zoom: number) => {
+			this.treeZoom.set(file.path, Math.round(Math.min(2, Math.max(0.4, zoom)) * 10) / 10);
+			applyZoom();
+		};
+		zoomOut.addEventListener("click", () => setZoom((this.treeZoom.get(file.path) ?? 1) - 0.1));
+		zoomIn.addEventListener("click", () => setZoom((this.treeZoom.get(file.path) ?? 1) + 0.1));
+		zoomLabel.addEventListener("click", () => setZoom(1));
+		wrap.addEventListener(
+			"wheel",
+			(evt: WheelEvent) => {
+				if (!evt.ctrlKey && !evt.metaKey) return;
+				evt.preventDefault();
+				setZoom((this.treeZoom.get(file.path) ?? 1) + (evt.deltaY < 0 ? 0.1 : -0.1));
+			},
+			{ passive: false },
+		);
+		applyZoom();
 		const textOf = (start: number, end: number) => lines.slice(start, end).join("\n");
 		let folded = this.treeCollapsed.get(file.path);
 		if (!folded) {
@@ -9675,7 +9709,10 @@ export class SectionCardsView extends ItemView {
 		barButton("Collapse all", "fold-vertical", "chevrons-up-down", () => {
 			for (const key of parentKeys) closed.add(key);
 		});
-		bar.toggleClass("is-hidden", parentKeys.length === 0); // a flat note has nothing to fold
+		// A flat note has nothing to fold; the zoom still applies.
+		bar.querySelectorAll<HTMLElement>(":scope > .sc-tree-bar-btn").forEach((btn) => {
+			btn.toggleClass("is-hidden", parentKeys.length === 0);
+		});
 	}
 
 	/** A heading cell: a click (or Enter) renames the heading, at whatever rank it is.

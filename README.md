@@ -261,7 +261,9 @@ The note as a tree: each heading a node, its sub-headings branching off to the r
 the heading's own text under its title, cut off where the node ends. Click a node to edit
 its text, as in the Table. A node with sub-headings has a chevron that folds its branch
 (showing how many headings are tucked away); ← and → on a focused node do the same, and
-**Expand all** / **Collapse all** above the tree fold every branch at once.
+**Expand all** / **Collapse all** above the tree fold every branch at once. The − and + at
+the bar's right zoom the tree (so do Ctrl/⌘+wheel over it); click the percentage to go back
+to 100%.
 
 ![Tree](screenshots/tree.png)
 
