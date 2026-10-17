@@ -84,9 +84,10 @@ of every layout, an icon and name each — from the **Layouts** row of the toolb
 any right-click menu, or press `L` to cycle (Shift+L backwards). **Card level**, **View mode**, **Sort**, and
 **Group** are the same kind of button: an icon, the current choice, and a grid of icon tiles to
 pick from. Layouts you never use
-in a note can be hidden from it: Ctrl/⌘-click one in the **Layouts** menu and it leaves that
-note's dropdown and `L` cycle, staying in the menu dimmed as "(hidden)" — click it there to
-bring it back (remembered per note; the layout showing can't be hidden — switch away first).
+in a note can be hidden from it: Ctrl/⌘-click one in the **Layout** picker or the **Layouts**
+menu (the picker says so in its small print) and it leaves that note's picker and `L` cycle,
+staying in the menu dimmed as "(hidden)" — click it there to bring it back (remembered per
+note; the layout showing can't be hidden — switch away first).
 
 ### Vertical
 
