@@ -254,8 +254,7 @@ Collapse all, and zoom.
 
 ### Binder
 
-The Rolodex with its tabs down the right edge, like a binder's inserts. A colored card's
-tab wears its color; `,` and `.` flip through.
+The Rolodex with its tabs down the right edge, like a binder's inserts.
 
 ![Binder](screenshots/binder.png)
 
