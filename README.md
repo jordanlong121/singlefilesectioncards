@@ -2,6 +2,8 @@
 
 [![Your notes, your layout — sixteen layouts for one note](screenshots/hero-views.webp)](#layouts)
 
+## Things You Can Do
+
 [![One note as a wall of editable cards](screenshots/hero-cards.png)](#layouts)
 
 [![A freeform canvas for sticky notes and brainstorming](screenshots/hero-canvas.png)](#custom-grid)
