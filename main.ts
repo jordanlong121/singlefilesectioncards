@@ -942,6 +942,20 @@ export default class SectionCardsPlugin extends Plugin {
 		return this.settings.perFile?.[path]?.hierWidth;
 	}
 
+	getTableWrap(path: string): boolean {
+		return this.settings.perFile?.[path]?.tableWrap ?? false;
+	}
+
+	async setTableWrap(path: string, on: boolean, base: ViewSettings): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		if (on) current.tableWrap = true;
+		else delete current.tableWrap;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
 	async setHierWidth(path: string, width: number | undefined, base: ViewSettings): Promise<void> {
 		if (!path) return;
 		this.settings.perFile = this.settings.perFile ?? {};

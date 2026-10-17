@@ -143,7 +143,7 @@ import {
 	replaceLinesInFile,
 	retitleHeadingInFile,
 } from "./writes";
-import { parseTableOutline, tableRows, tableLineText, type TableNode, type TableOutline } from "./table";
+import { parseTableOutline, tableRows, tableLineText, tableWrapText, type TableNode, type TableOutline } from "./table";
 import { nestBoundaries, nestInsertLine } from "./nesting";
 import { headingLinkEdits, applyLinkEditsElsewhere } from "./headinglinks";
 import { feedDayEvents, feedEventLine, feedEventsByDays, feedFirstDay, daysBetween, mergeFeedLines } from "./icalfeed";
@@ -330,6 +330,9 @@ interface PickerSpec {
 	onModPick?: (value: string) => void;
 	/** A line of small print under the tiles, saying what the modifier click does. */
 	footer?: string;
+	/** Number the tiles in their top left corners; typing a number picks that tile
+	 * (two digits where there are ten or more — a short pause or Enter settles one). */
+	numbered?: boolean;
 }
 
 export interface CardsViewState {
@@ -960,8 +963,11 @@ export class SectionCardsView extends ItemView {
 		const value = typeof spec.value === "function" ? spec.value() : spec.value;
 		const columns = spec.compact ? Math.max(1, options.length) : (spec.columns ?? 3);
 		pop.setCssProps({ "--sfsc-picker-cols": String(columns) });
+		const tiles: HTMLElement[] = [];
 		for (const option of options) {
 			const tile = pop.createEl("button", { cls: "sfsc-picker-tile" });
+			tiles.push(tile);
+			if (spec.numbered) tile.createSpan({ cls: "sfsc-picker-num", text: String(tiles.length) });
 			tile.setAttr("role", "menuitemradio");
 			tile.setAttr("aria-checked", String(option.value === value));
 			if (option.hint) tile.setAttr("title", option.hint);
@@ -991,11 +997,49 @@ export class SectionCardsView extends ItemView {
 			if (pop.contains(target) || anchor.contains(target)) return;
 			this.closePicker();
 		};
+		// Numbered tiles: digits pick. With ten or more tiles a first digit that could
+		// start a two-digit number waits a moment (or for Enter) before it settles.
+		let typed = "";
+		let settle: number | null = null;
+		const pickTyped = () => {
+			if (settle !== null) window.clearTimeout(settle);
+			settle = null;
+			const tile = tiles[Number(typed) - 1];
+			typed = "";
+			if (tile && !tile.hasAttribute("disabled")) tile.click();
+		};
 		const onKey = (evt: KeyboardEvent) => {
-			if (evt.key !== "Escape") return;
-			evt.preventDefault();
-			this.closePicker();
-			anchor.focus();
+			if (evt.key === "Escape") {
+				evt.preventDefault();
+				this.closePicker();
+				anchor.focus();
+				return;
+			}
+			if (!spec.numbered) return;
+			if (/^[0-9]$/.test(evt.key)) {
+				evt.preventDefault();
+				evt.stopPropagation();
+				typed += evt.key;
+				const n = Number(typed);
+				if (n === 0 || n > tiles.length) {
+					typed = "";
+					return;
+				}
+				if (n * 10 > tiles.length) pickTyped(); // no longer number could follow
+				else {
+					if (settle !== null) window.clearTimeout(settle);
+					settle = window.setTimeout(pickTyped, 650);
+				}
+			} else if (evt.key === "Enter" && typed) {
+				evt.preventDefault();
+				evt.stopPropagation();
+				pickTyped();
+			} else if (evt.key === "Backspace" && typed) {
+				evt.preventDefault();
+				typed = "";
+				if (settle !== null) window.clearTimeout(settle);
+				settle = null;
+			}
 		};
 		const doc = this.contentEl.doc;
 		doc.addEventListener("pointerdown", onDown, true);
@@ -1003,6 +1047,7 @@ export class SectionCardsView extends ItemView {
 		this.pickerCleanup = () => {
 			doc.removeEventListener("pointerdown", onDown, true);
 			doc.removeEventListener("keydown", onKey, true);
+			if (settle !== null) window.clearTimeout(settle);
 		};
 		(pop.querySelector<HTMLElement>(".sfsc-picker-tile.is-active") ?? pop.querySelector<HTMLElement>(".sfsc-picker-tile"))?.focus();
 	}
@@ -1290,6 +1335,7 @@ export class SectionCardsView extends ItemView {
 		// 1–6: switch to that heading level (only levels the dropdown offers).
 		for (let level = 1; level <= 6; level++) {
 			this.scope.register([], String(level), (evt) => {
+				if (this.pickerPopover) return true; // an open picker's numbered tiles take the digits
 				if (!this.plainShortcutOk(evt)) return true;
 				// 2 on the Calendar picks its 2-weeks range (calendarRangeKeysOn).
 				if (level === 2 && this.calendarRangeKeysOn()) {
@@ -1325,6 +1371,14 @@ export class SectionCardsView extends ItemView {
 		};
 		this.scope.register([], "L", (evt) => cycleLayout(evt, 1));
 		this.scope.register(["Shift"], "L", (evt) => cycleLayout(evt, -1));
+		// Ctrl/⌘+L: the layout picker, its tiles numbered for the keys that follow.
+		this.scope.register(["Mod"], "L", (evt) => {
+			if (!this.plainShortcutOk(evt) || this.sticky) return true;
+			const btn = this.toolbarEl?.querySelector<HTMLElement>(".section-cards-layout-btn");
+			if (!btn) return true;
+			if (!this.pickerPopover || this.pickerAnchor !== btn) btn.click();
+			return false;
+		});
 		// V: cycle the View mode — one flat wall, hierarchy columns, divider bars —
 		// mirroring the toolbar's three-way toggle. Not on the layouts that place
 		// everything themselves, where the modes don't apply.
@@ -4825,7 +4879,8 @@ export class SectionCardsView extends ItemView {
 					}
 					void this.toggleLayoutEnabled(picked as Layout);
 				},
-				footer: "Ctrl/⌘-click a layout to hide it from this note; the ☰ menu's Layouts row brings it back.",
+				footer: "Type a tile's number to pick it. Ctrl/⌘-click a layout to hide it from this note; the ☰ menu's Layouts row brings it back.",
+				numbered: true,
 			});
 			// The Calendar's range sits right after the layout it belongs to: the scrolling
 			// wall of months, two weeks, one week, or one day.
@@ -4845,6 +4900,23 @@ export class SectionCardsView extends ItemView {
 						fallback: CALENDAR_RANGE_ICONS[value][1],
 					})),
 					onPick: (value) => this.setCalendarRange(value as CalendarRange),
+				});
+			}
+			// The Table's text cells: one clipped line each, or wrapped in full.
+			if (this.layout === "table") {
+				const wrapBtn = cluster.createEl("button", { cls: "section-cards-icon-btn section-cards-wrap-btn" });
+				fastIcon(wrapBtn, "wrap-text");
+				const syncWrap = () => {
+					const on = this.plugin.getTableWrap(this.filePath);
+					wrapBtn.toggleClass("is-active", on);
+					wrapBtn.setAttr("aria-label", on ? "Cell text wraps — click for one line per cell" : "One line per cell — click to wrap the text");
+				};
+				syncWrap();
+				wrapBtn.addEventListener("click", () => {
+					void this.plugin.setTableWrap(this.filePath, !this.plugin.getTableWrap(this.filePath), this.viewSettings()).then(() => {
+						syncWrap();
+						return this.refresh();
+					});
 				});
 			}
 		}
@@ -9502,6 +9574,7 @@ export class SectionCardsView extends ItemView {
 			this.rememberView();
 			return;
 		}
+		this.contentEl.toggleClass("is-table-wrap", this.layout === "table" && this.plugin.getTableWrap(file.path));
 		if (this.layout === "table") this.renderTable(file, lines, outline);
 		else this.renderTree(file, lines, outline);
 		this.rememberView();
@@ -9511,6 +9584,7 @@ export class SectionCardsView extends ItemView {
 	 * (when it has some above them) on a first row of its own, each text in one line. */
 	private renderTable(file: TFile, lines: string[], outline: TableOutline): void {
 		const columns = Math.max(outline.depth, 1);
+		const wrapText = this.plugin.getTableWrap(file.path);
 		const wrap = this.gridEl.createDiv({ cls: "sc-table-wrap" });
 		const table = wrap.createEl("table", { cls: "sc-table" });
 		table.setCssProps({ "--sc-table-cols": String(columns) });
@@ -9555,7 +9629,7 @@ export class SectionCardsView extends ItemView {
 				} else if (cell.kind === "preamble") {
 					el.setText("Before the first heading");
 				} else if (cell.kind === "text" && cell.range) {
-					this.wireOutlineText(el, el, file, cell.node ?? null, cell.range, cell.text);
+					this.wireOutlineText(el, el, file, cell.node ?? null, cell.range, cell.text, wrapText);
 					// The row's last cell: open the note at this row's heading (or, for the
 					// text above the first heading, at that text), as a card's ↗ button does.
 					const line = cell.node ? cell.node.headingLine : cell.range[0];
@@ -9771,8 +9845,9 @@ export class SectionCardsView extends ItemView {
 		node: TableNode | null,
 		range: [number, number],
 		text: string,
+		wrap = false,
 	): void {
-		const line = tableLineText(text);
+		const line = wrap ? tableWrapText(text) : tableLineText(text);
 		textEl.setText(line);
 		textEl.toggleClass("is-empty", line === "");
 		clickEl.setAttr("role", "button");
