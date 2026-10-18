@@ -150,6 +150,7 @@ import {
 	tableLineText,
 	tableWrapText,
 	tableOneLineMarkdown,
+	filterTableOutline,
 	type TableNode,
 	type TableOutline,
 } from "./table";
@@ -1992,6 +1993,13 @@ export class SectionCardsView extends ItemView {
 	private applyFilter(): void {
 		// Starred-only also hides the non-starred lines inside the surviving cards (CSS).
 		this.contentEl.toggleClass("is-starred-only", this.starredOnly);
+		// The Table has no cards to hide: its rows are rebuilt from the filtered outline
+		// (swapped in place, so typing in the box doesn't blank the pane).
+		if (this.layout === "table") {
+			const file = this.getFile();
+			if (file && this.noteLines.length) this.renderOutlineLayout(file, this.noteLines);
+			return;
+		}
 		if (!this.cardEntries.length) return;
 		const q = this.filterQuery.trim().toLowerCase();
 		const emoji = this.plugin.starEmoji();
@@ -9588,15 +9596,24 @@ export class SectionCardsView extends ItemView {
 			grid.scrollTop = scroll.top;
 		}
 
-		const outline = parseTableOutline(lines);
+		const whole = parseTableOutline(lines);
+		// The Table takes the toolbar's filter: rows that don't fit the text go.
+		const outline = this.layout === "table" ? filterTableOutline(whole, lines, this.filterQuery) : whole;
 		if (!outline.roots.length && !outline.preamble) {
 			showing?.remove();
+			grid.querySelector(":scope > .section-cards-empty")?.remove();
 			const empty = grid.createDiv({ cls: "section-cards-empty" });
-			empty.createEl("p", { text: `${file.basename} has no headings yet.` });
-			empty.createEl("p", { text: "These layouts lay a note out by its headings, every level at once." });
+			if (whole.roots.length || whole.preamble) {
+				empty.createEl("p", { text: `No rows contain “${this.filterQuery.trim()}”.` });
+				empty.createEl("p", { text: "Clear the filter box to see every row again." });
+			} else {
+				empty.createEl("p", { text: `${file.basename} has no headings yet.` });
+				empty.createEl("p", { text: "These layouts lay a note out by its headings, every level at once." });
+			}
 			this.rememberView();
 			return;
 		}
+		grid.querySelector(":scope > .section-cards-empty")?.remove();
 		this.contentEl.toggleClass("is-table-wrap", this.layout === "table" && this.plugin.getTableWrap(file.path));
 		const built = this.layout === "table" ? this.renderTable(file, lines, outline) : this.renderTree(file, lines, outline);
 		// Today's rows come into view on the note's first render and on a layout switch,

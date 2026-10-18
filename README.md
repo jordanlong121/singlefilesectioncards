@@ -240,7 +240,8 @@ The whole note as a table, every heading level at once: a row per heading, a par
 spanning its sub-headings' rows, and each heading's text rendered in the last column — tasks
 as checkboxes you can tick — on one clipped line (the toolbar's wrap button shows it in full). Click a text cell to edit it, a heading
 cell to rename it, or the row's ↗ to open the note there; right-click a heading for its color
-(shared with the card). Today's rows are tinted.
+(shared with the card). The toolbar's filter box keeps only the rows whose headings or text
+contain what you type. Today's rows are tinted.
 
 ![Table](screenshots/table.png)
 

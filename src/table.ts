@@ -224,3 +224,29 @@ export function tableOneLineMarkdown(text: string): string {
 	}
 	return out.join("\n");
 }
+
+/**
+ * The outline with only the rows that fit a filter: a heading stays when its name or
+ * its own text contains the query (case-insensitive), when a heading above it does,
+ * or when something under it does. A heading kept only for what's under it shows no
+ * text row of its own; one kept by name (or a name above it) shows everything it has.
+ */
+export function filterTableOutline(outline: TableOutline, lines: string[], query: string): TableOutline {
+	const q = query.trim().toLowerCase();
+	if (!q) return outline;
+	const has = (text: string) => text.toLowerCase().includes(q);
+	const prune = (node: TableNode, inherited: boolean): TableNode | null => {
+		const byName = inherited || has(node.title);
+		const byText = has(lines.slice(node.textStart, node.textEnd).join("\n"));
+		const children = node.children.map((child) => prune(child, byName)).filter((c): c is TableNode => c !== null);
+		if (!byName && !byText && !children.length) return null;
+		return { ...node, textEnd: byName || byText ? node.textEnd : node.textStart, children };
+	};
+	const roots = outline.roots.map((root) => prune(root, false)).filter((r): r is TableNode => r !== null);
+	const preamble =
+		outline.preamble && has(lines.slice(outline.preamble.textStart, outline.preamble.textEnd).join("\n"))
+			? outline.preamble
+			: null;
+	const depthOf = (nodes: TableNode[]): number => (nodes.length ? 1 + Math.max(...nodes.map((n) => depthOf(n.children))) : 0);
+	return { preamble, roots, depth: depthOf(roots) };
+}

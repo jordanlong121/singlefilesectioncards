@@ -2749,7 +2749,6 @@ body.is-mobile .is-layout-binder .section-card-body{
 }
 
 /* Cards' controls don't apply: nothing to sort, group, filter, or pick a level for. */
-.is-layout-table .section-cards-filter,
 .is-layout-table .section-cards-sort-control,
 .is-layout-table .section-cards-group-control,
 .is-layout-table .section-cards-level-control,
