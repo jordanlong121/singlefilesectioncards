@@ -1,5 +1,5 @@
 // The Table and Tree layouts' model: the note's outline and its rows.
-import { parseTableOutline, tableRows, tableLineText, tableWrapText, tableOneLineMarkdown } from "./.tmp/main.js";
+import { parseTableOutline, tableRows, tableLineText, tableWrapText, tableOneLineMarkdown, filterTableOutline } from "./.tmp/main.js";
 import assert from "assert";
 import { t } from "./harness.mjs";
 
@@ -135,4 +135,28 @@ t("tableOneLineMarkdown: continuation lines join their block; lists, blanks, fen
   assert.equal(tableOneLineMarkdown("Slow start, which\napparently counts.\n- [ ] task one\n  continued\n- [x] task two"), "Slow start, which apparently counts.\n- [ ] task one continued\n- [x] task two");
   assert.equal(tableOneLineMarkdown("para\n\nnext para\n#### Head\n> quote\nmore quote"), "para\n\nnext para\n#### Head\n> quote more quote");
   assert.equal(tableOneLineMarkdown("```\ncode\nmore\n```\nafter"), "```\ncode\nmore\n```\nafter");
+});
+
+t("filterTableOutline: rows that fit by name, text, a name above, or something below; empty query is the whole outline", () => {
+  const o = parseTableOutline(NOTE);
+  assert.strictEqual(filterTableOutline(o, NOTE, "  "), o);
+  // "deep" sits only in Alpha two deep's text: Alpha and Alpha two stay as its path, without their own text rows.
+  const f = filterTableOutline(o, NOTE, "DEEP");
+  assert.deepEqual(f.roots.map((r) => r.title), ["Alpha"]);
+  assert.equal(f.roots[0].textEnd, f.roots[0].textStart, "Alpha's own text row goes");
+  assert.deepEqual(f.roots[0].children.map((c) => c.title), ["Alpha two"]);
+  assert.equal(f.roots[0].children[0].children[0].title, "Alpha two deep");
+  assert.equal(f.depth, 3);
+  // A heading matched by name keeps everything under it, text rows included.
+  const g = filterTableOutline(o, NOTE, "alpha");
+  assert.deepEqual(g.roots.map((r) => r.title), ["Alpha"]);
+  assert.ok(g.roots[0].textEnd > g.roots[0].textStart);
+  assert.deepEqual(g.roots[0].children.map((c) => c.title), ["Alpha one", "Alpha two"]);
+  // The preamble stays only when its own text fits.
+  assert.ok(filterTableOutline(o, NOTE, "intro").preamble);
+  assert.equal(filterTableOutline(o, NOTE, "gamma").preamble, null);
+  assert.deepEqual(filterTableOutline(o, NOTE, "gamma").roots.map((r) => r.title), ["Gamma"]);
+  const none = filterTableOutline(o, NOTE, "zzz");
+  assert.deepEqual(none.roots, []);
+  assert.equal(none.depth, 0);
 });
