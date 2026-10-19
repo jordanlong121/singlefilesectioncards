@@ -9772,7 +9772,8 @@ export class SectionCardsView extends ItemView {
 			if (gen !== this.renderGeneration) return;
 			await Promise.all(
 				cells.slice(i, i + batch).map(async ({ el, text, markdown, range }) => {
-					const host = createDiv({ cls: "sc-table-md" });
+					// markdown-rendered: Obsidian's reading-view styling for lists, tasks, tags.
+					const host = createDiv({ cls: "sc-table-md markdown-rendered" });
 					await MarkdownRenderer.render(this.app, bodyForRender(markdown), host, file.path, this);
 					if (gen !== this.renderGeneration) return;
 					el.empty();

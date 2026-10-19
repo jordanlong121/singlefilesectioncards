@@ -2948,11 +2948,6 @@ body.is-mobile .is-layout-binder .section-card-body{
 	color: var(--text-faint);
 }
 
-.sc-table td.sc-table-text .sc-table-md .list-bullet,
-.sc-table td.sc-table-text .sc-table-md .list-collapse-indicator {
-	display: none;
-}
-
 /* The theme hangs a task's checkbox in the list's indent; inline, it sits before its text. */
 .sc-table td.sc-table-text .sc-table-md .task-list-item-checkbox,
 .sc-table td.sc-table-text .sc-table-md input[type="checkbox"] {
@@ -3002,16 +2997,25 @@ body.is-mobile .is-layout-binder .section-card-body{
 
 .is-table-wrap .sc-table td.sc-table-text .sc-table-md,
 .is-table-wrap .sc-table td.sc-table-text .sc-table-md > *,
-.is-table-wrap .sc-table td.sc-table-text .sc-table-md p,
-.is-table-wrap .sc-table td.sc-table-text .sc-table-md li {
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md p {
 	display: block;
+	white-space: normal;
+}
+
+/* List items keep their markers (the renderer's lists use the native ones). */
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md li {
+	display: list-item;
 	white-space: normal;
 }
 
 .is-table-wrap .sc-table td.sc-table-text .sc-table-md :is(ul, ol) {
 	display: block;
-	padding-left: 1.2em;
+	padding-left: 1.4em;
 	list-style: revert;
+}
+
+.is-table-wrap .sc-table td.sc-table-text .sc-table-md li.task-list-item {
+	list-style: none;
 }
 
 .is-table-wrap .sc-table td.sc-table-text .sc-table-md > * + *::before,
@@ -3022,10 +3026,6 @@ body.is-mobile .is-layout-binder .section-card-body{
 
 .is-table-wrap .sc-table td.sc-table-text .sc-table-md > * + * {
 	margin-top: 4px;
-}
-
-.is-table-wrap .sc-table td.sc-table-text .sc-table-md .list-bullet {
-	display: revert;
 }
 
 .section-cards-wrap-btn.is-active {
