@@ -9697,8 +9697,32 @@ export class SectionCardsView extends ItemView {
 					this.applyCardColor(el, colors[headingRaw]);
 					this.wireOutlineHeading(el, file, cell.node, headingRaw);
 					this.wireOutlineMenu(el, file, cell.node, headingRaw, "Row color…");
-				} else if (cell.kind === "preamble") {
+				} else if (cell.kind === "preamble" && outline.preamble) {
+					// A click here titles that text: a heading goes in above it, at the
+					// note's top level, and the text becomes that heading's own.
 					el.setText("Before the first heading");
+					el.setAttr("role", "button");
+					el.tabIndex = 0;
+					el.setAttr("aria-label", "Add a heading above this text");
+					el.setAttr("title", "Click to add a heading at the top of the note");
+					const at = outline.preamble.textStart;
+					const level = outline.roots[0]?.level ?? 1;
+					const add = () => {
+						new TextInputModal(this.app, "New heading at the top", "", "Add", (value) => {
+							const title = value.trim();
+							if (!title) return;
+							void replaceLinesInFile(this.app, file, at, at, "", `${"#".repeat(level)} ${title}`).then(async (ok) => {
+								if (!ok) new Notice("Couldn't add the heading — the file changed on disk.");
+								await this.refresh();
+							});
+						}).open();
+					};
+					el.addEventListener("click", add);
+					el.addEventListener("keydown", (evt) => {
+						if (evt.key !== "Enter" && evt.key !== " ") return;
+						evt.preventDefault();
+						add();
+					});
 				} else if (cell.kind === "text" && cell.range) {
 					if (cell.node) this.applyCardColor(tr, rowColor.get(cell.node));
 					this.wireOutlineText(el, el, file, cell.node ?? null, cell.range, cell.text, wrapText);

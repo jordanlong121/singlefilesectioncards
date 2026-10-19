@@ -2834,6 +2834,16 @@ body.is-mobile .is-layout-binder .section-card-body{
 	color: var(--text-faint);
 	font-style: italic;
 	background: var(--sc-header);
+	cursor: pointer;
+}
+
+/* A click on it adds a heading at the top of the note. */
+.sc-table td.sc-table-preamble:hover,
+.sc-table td.sc-table-preamble:focus-visible {
+	color: var(--text-normal);
+	background: var(--sc-surface-hover);
+	outline: none;
+	box-shadow: inset 0 0 0 1px var(--interactive-accent);
 }
 
 /* A colored heading (right-click → Row color): the color along its cell's left edge and

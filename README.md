@@ -241,7 +241,8 @@ spanning its sub-headings' rows, and each heading's text rendered in the last co
 as checkboxes you can tick — on one clipped line (the toolbar's wrap button shows it in full). Click a text cell to edit it, a heading
 cell to rename it, or the row's ↗ to open the note there; right-click a heading for its color
 (shared with the card). The toolbar's filter box keeps only the rows whose headings or text
-contain what you type. Today's rows are tinted.
+contain what you type. Today's rows are tinted. Text above the first heading has a row of
+its own; click its label to give it a heading at the top of the note.
 
 ![Table](screenshots/table.png)
 
