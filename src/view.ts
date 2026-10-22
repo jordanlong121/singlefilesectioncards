@@ -7380,11 +7380,16 @@ export class SectionCardsView extends ItemView {
 			const target = linkpath
 				? this.app.metadataCache.getFirstLinkpathDest(linkpath, this.filePath)
 				: file;
-			// Unresolved links, or links to anything that isn't a note, fall through to Obsidian.
-			if (!target || target.extension !== "md") return;
-
 			evt.preventDefault();
 			evt.stopPropagation();
+			// A note opens as cards. Anything else — a link to a note that doesn't exist
+			// yet, or to an image or other file — goes to Obsidian's own link opening,
+			// which creates the missing note (as a click in the reading view does) or
+			// opens the file; its handler doesn't reach into a plugin's rendered text.
+			if (!target || target.extension !== "md") {
+				void this.app.workspace.openLinkText(linktext, this.filePath, false);
+				return;
+			}
 			void this.navigateTo(target.path, subpath);
 		});
 	}
