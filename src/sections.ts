@@ -160,6 +160,12 @@ export function parseSections(lines: string[], level: number): Section[] {
 
 export const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
+/** Lowercase with accents stripped from Latin and Greek letters, for matching text the
+ * way Obsidian 1.15's own suggestions do: "cafe" finds "café". Fold both sides. */
+export function searchFold(text: string): string {
+	return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 /** How many task lines (any state) a section body holds — the count sorts' key. */
 export function sectionTaskCount(body: string): number {
 	return taskLineIndexes(body.split("\n")).length;
