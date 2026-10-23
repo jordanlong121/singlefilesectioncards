@@ -5,7 +5,7 @@
  * view renders the rows and writes an edited cell back by its line range.
  */
 
-import { HEADING_RE, stepFence } from "./sections";
+import { HEADING_RE, searchFold, stepFence } from "./sections";
 
 /** One heading of the note, with its own text and the headings nested under it. */
 export interface TableNode {
@@ -232,9 +232,9 @@ export function tableOneLineMarkdown(text: string): string {
  * text row of its own; one kept by name (or a name above it) shows everything it has.
  */
 export function filterTableOutline(outline: TableOutline, lines: string[], query: string): TableOutline {
-	const q = query.trim().toLowerCase();
+	const q = searchFold(query.trim());
 	if (!q) return outline;
-	const has = (text: string) => text.toLowerCase().includes(q);
+	const has = (text: string) => searchFold(text).includes(q);
 	const prune = (node: TableNode, inherited: boolean): TableNode | null => {
 		const byName = inherited || has(node.title);
 		const byText = has(lines.slice(node.textStart, node.textEnd).join("\n"));

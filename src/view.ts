@@ -76,6 +76,7 @@ import { levelCoverage,
 	sectionFromEdited,
 	pickHeadingLevel,
 	planCardReuse,
+	searchFold,
 } from "./sections";
 import { groupCards } from "./grouping";
 import {
@@ -2001,7 +2002,7 @@ export class SectionCardsView extends ItemView {
 			return;
 		}
 		if (!this.cardEntries.length) return;
-		const q = this.filterQuery.trim().toLowerCase();
+		const q = searchFold(this.filterQuery.trim());
 		const emoji = this.plugin.starEmoji();
 		// Hide future / past dates (menu): a gate on the heading's date, relative to today.
 		const hide = this.plugin.getDateHide(this.filePath);
@@ -2014,7 +2015,7 @@ export class SectionCardsView extends ItemView {
 			// the unfiled card, so raw alone wouldn't cover it).
 			let text = this.searchTextCache.get(section);
 			if (text === undefined) {
-				text = (section.title + "\n" + section.raw).toLowerCase();
+				text = searchFold(section.title + "\n" + section.raw);
 				this.searchTextCache.set(section, text);
 			}
 			let starOk = true;

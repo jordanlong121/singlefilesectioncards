@@ -1,5 +1,5 @@
 // The Table and Tree layouts' model: the note's outline and its rows.
-import { parseTableOutline, tableRows, tableLineText, tableWrapText, tableOneLineMarkdown, filterTableOutline } from "./.tmp/main.js";
+import { parseTableOutline, tableRows, tableLineText, tableWrapText, tableOneLineMarkdown, filterTableOutline, searchFold } from "./.tmp/main.js";
 import assert from "assert";
 import { t } from "./harness.mjs";
 
@@ -159,4 +159,12 @@ t("filterTableOutline: rows that fit by name, text, a name above, or something b
   const none = filterTableOutline(o, NOTE, "zzz");
   assert.deepEqual(none.roots, []);
   assert.equal(none.depth, 0);
+});
+
+t("filterTableOutline and searchFold: accents don't matter, as in Obsidian 1.15's suggestions", () => {
+  assert.equal(searchFold("Café RÉSUMÉ Ωμέγα"), "cafe resume ωμεγα");
+  const N = L("# Café plans\nespresso notes\n# Other\ntext");
+  const o = parseTableOutline(N);
+  assert.deepEqual(filterTableOutline(o, N, "cafe").roots.map((r) => r.title), ["Café plans"]);
+  assert.deepEqual(filterTableOutline(o, N, "CAFÉ").roots.map((r) => r.title), ["Café plans"]);
 });
