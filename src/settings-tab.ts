@@ -148,7 +148,7 @@ export class SectionCardsSettingTab extends PluginSettingTab {
 						control: {
 							type: "dropdown",
 							key: "weekStart",
-							options: { locale: "Language default", sunday: "Sunday", monday: "Monday" },
+							options: { monday: "Monday", sunday: "Sunday", language: "Language default" },
 						},
 					},
 					{

@@ -264,8 +264,9 @@ export interface SectionCardsSettings {
 	starEmoji: string;
 	/** Full toolbar with text labels, or the compact one-line version for narrow panes. */
 	toolbarStyle: "full" | "compact";
-	/** First day of the Calendar layout's weeks; "locale" follows the language default. */
-	weekStart: "locale" | "sunday" | "monday";
+	/** First day of the Calendar layout's weeks; "language" follows the language default.
+	 * Monday by default, so the Week range's weekend band holds a Saturday and its Sunday. */
+	weekStart: "language" | "sunday" | "monday";
 	/** Calendar feeds: the heading a day's events go under, inside the day's card. */
 	feedHeading: string;
 	/** Calendar feeds: where a card's feed heading goes when it doesn't have one yet. */
@@ -589,7 +590,7 @@ export const DEFAULT_SETTINGS: SectionCardsSettings = {
 	strikeNestedUnderDone: true,
 	starEmoji: "⭐",
 	toolbarStyle: "compact",
-	weekStart: "locale",
+	weekStart: "monday",
 	feedHeading: "Calendar",
 	feedPlacement: "bottom",
 	feedAsTasks: false,
