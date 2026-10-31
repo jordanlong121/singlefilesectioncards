@@ -4301,6 +4301,33 @@ export class SectionCardsView extends ItemView {
 			back.setAttr("aria-label", this.calendarRange === "2weeks" ? "Back to the weeks holding today" : `Back to the ${unit} holding today`);
 			back.addEventListener("click", () => this.setCalendarAnchor(todayIso));
 		}
+		this.buildCalendarWeekendWarning(nav, days);
+	}
+
+	/** The weekend band pairs each week's Saturday and Sunday. A week that starts on a
+	 * Sunday (often the language default) holds them at opposite ends, so the band reads
+	 * Sunday first and six days apart from its Saturday: say so under the nav, and offer
+	 * the setting that puts them back together. */
+	private buildCalendarWeekendWarning(nav: HTMLElement, days: string[]): void {
+		if (this.calendarRange !== "week" && this.calendarRange !== "2weeks") return;
+		const split: string[][] = [];
+		for (let i = 0; i < days.length; i += 7) {
+			const weekend = days.slice(i, i + 7).filter(isWeekendIso);
+			if (weekend.length === 2 && weekend[1] !== shiftIso(weekend[0], 1)) split.push(weekend);
+		}
+		if (!split.length) return;
+		const [first, last] = split[0].map((iso) => SectionCardsView.calendarDayLabel(iso));
+		const warn = nav.createDiv({ cls: "sc-cal-nav-warning" });
+		fastIcon(warn.createSpan({ cls: "sc-cal-nav-warning-icon" }), "alert-triangle");
+		warn.createSpan({
+			text: `This week starts on Sunday, so the weekend shows ${first} before ${last}. To keep Saturday and Sunday together, set Settings → Single File Section Cards → "Start the week on" to Monday.`,
+		});
+		const fix = warn.createEl("button", { cls: "sc-cal-nav-today", text: "Fix it" });
+		fix.setAttr("aria-label", "Start the week on Monday");
+		fix.addEventListener("click", () => {
+			this.plugin.settings.weekStart = "monday";
+			void this.plugin.saveSettings().then(() => this.plugin.refreshAllViews());
+		});
 	}
 
 	/** What the nav row calls the range: one day in full, or a week as its two ends.

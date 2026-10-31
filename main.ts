@@ -1684,6 +1684,10 @@ export default class SectionCardsPlugin extends Plugin {
 		if ((this.settings.layout as string) === "hierarchy") this.settings.layout = "grid";
 		// Sections did too; it's the toolbar dividers toggle now.
 		if ((this.settings.layout as string) === "sections") this.settings.layout = "grid";
+		// The week used to start on the language's default day unless told otherwise
+		// ("locale", saved by every install); Monday is the default now. Choosing the
+		// language default again saves it as "language", which this leaves alone.
+		if ((this.settings.weekStart as string) === "locale") this.settings.weekStart = "monday";
 	}
 
 	async saveSettings(): Promise<void> {

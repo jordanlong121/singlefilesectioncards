@@ -731,7 +731,7 @@ Sync with plugin settings, it travels with them.
 | Card height | Maximum card height before the body scrolls |
 | Card text size / Divider text size | Scale the text on cards (titles, bodies, editors) and, separately, on the divider bars, relative to the theme |
 | Date detection format | An extra moment pattern that marks a heading as a date, with `*` wildcards for text around it (`*MMMM D, YYYY*`) |
-| Start the week on | First day of the Calendar layout's weeks: the language default, Sunday, or Monday |
+| Start the week on | First day of the Calendar layout's weeks: Monday (default), Sunday, or the language default. A Sunday start puts Sunday before Saturday in the Week range's weekend band, and the Calendar warns about it and offers a one-click fix |
 | Heading for a day's events | The heading a [calendar feed](#calendar-feeds) writes a day's events under, one level below the card (default *Calendar*) |
 | Where the heading goes | Where a day's card gets the feed heading the first time: the bottom of the card, or the top, under its title (default bottom) |
 | Write events as tasks | Feed events as open tasks instead of plain bullets; a ticked one stays ticked through updates (off by default) |

@@ -1466,6 +1466,34 @@ body.is-mobile .is-layout-calendar .section-card > .sc-cal-open {
 	cursor: pointer;
 }
 
+/* A week starting on Sunday splits its weekend band (Sunday first, six days from its
+   Saturday): a second line in the nav row says so and offers the fix. It lives in
+   the nav because the planner's rows are fixed. */
+.sc-cal-nav {
+	flex-wrap: wrap;
+}
+
+.sc-cal-nav-warning {
+	flex: 1 0 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 2px 4px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-warning);
+}
+
+.sc-cal-nav-warning-icon {
+	display: flex;
+}
+
+.sc-cal-nav-warning-icon svg {
+	width: 13px;
+	height: 13px;
+}
+
 /* ---------- section dividers (toolbar toggle) ----------
    A clickable divider bar above each group of cards — the group's ancestor heading,
    a card count, and a horizontal rule filling the rest of the row. Spanning every
