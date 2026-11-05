@@ -6342,3 +6342,87 @@ body.is-phone .section-cards-label {
 .sfsc-feed-status.is-error {
 	color: var(--text-error);
 }
+
+/* ---------- Move line to other card: the day picker ---------- */
+.sfsc-pickdate-nav {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 8px;
+}
+
+.sfsc-pickdate-title {
+	font-weight: var(--font-semibold);
+}
+
+.sfsc-pickdate-grid {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(0, 1fr));
+	gap: 4px;
+}
+
+.sfsc-pickdate-dow {
+	text-align: center;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	padding-bottom: 2px;
+}
+
+.sfsc-pickdate-modal button.sfsc-pickdate-day {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 2.4em;
+	padding: 0;
+	box-shadow: none;
+	background: transparent;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	color: var(--text-normal);
+	font-variant-numeric: tabular-nums;
+	cursor: var(--cursor);
+}
+
+.sfsc-pickdate-modal button.sfsc-pickdate-day:hover:not(:disabled),
+.sfsc-pickdate-modal button.sfsc-pickdate-day:focus-visible {
+	background: var(--background-modifier-hover);
+}
+
+.sfsc-pickdate-modal button.sfsc-pickdate-day.has-card {
+	font-weight: var(--font-semibold);
+}
+
+.sfsc-pickdate-modal button.sfsc-pickdate-day.is-today {
+	border-color: var(--interactive-accent);
+	color: var(--text-accent);
+}
+
+.sfsc-pickdate-modal button.sfsc-pickdate-day.is-source {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.sfsc-pickdate-dot {
+	display: inline-block;
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background: var(--interactive-accent);
+}
+
+.sfsc-pickdate-day .sfsc-pickdate-dot {
+	position: absolute;
+	bottom: 3px;
+	left: 50%;
+	transform: translateX(-50%);
+}
+
+.sfsc-pickdate-legend {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 10px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
