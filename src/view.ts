@@ -238,6 +238,7 @@ import { SavedLayoutChangesModal, ConfirmActionModal,
 	ConfirmClearModal,
 	ShortcutsModal,
 	CreateDateCardModal,
+	PickDateModal,
 	CalendarFeedModal,
 	FeedUpdateAllModal,
 	type FeedCreateScope,
@@ -10743,6 +10744,36 @@ export class SectionCardsView extends ItemView {
 		}).open();
 	}
 
+	/** "Move line to other card…": a calendar of this note's days; the picked day's
+	 * card takes the line at its end, like a drop on the card. A day with no card yet
+	 * offers to create it — template and placement applied — with the line inside. */
+	private pickCardForBlock(file: TFile, section: Section, blockIndex: number, blockText: string): void {
+		const fmt = this.cardFormat();
+		const detect = this.plugin.settings.dateDetectFormat;
+		const cardDays = new Set<string>();
+		for (const e of this.cardEntries) {
+			const iso = titleToIso(e.holder.section.title, fmt, detect);
+			if (iso) cardDays.add(iso);
+		}
+		const sourceIso = titleToIso(section.title, fmt, detect);
+		new PickDateModal(this.app, {
+			heading: "Move line to which day?",
+			startIso: sourceIso ?? mo().format("YYYY-MM-DD"),
+			sourceIso,
+			cardDays,
+			firstDow: this.weekFirstDow(),
+			onPick: (iso) => {
+				const target = this.dateEntry(iso)?.holder.section;
+				if (target) {
+					if (target.headingRaw === section.headingRaw) return;
+					void this.completeBlockDrag(file, { section, blockIndex, blockText }, target, null);
+				} else {
+					this.promptCreateDateCardWithBlock(iso, { holder: { section }, blockIndex, blockText });
+				}
+			},
+		}).open();
+	}
+
 	private openBlockMenu(
 		evt: MouseEvent,
 		file: TFile,
@@ -10781,6 +10812,17 @@ export class SectionCardsView extends ItemView {
 					.onClick(() => void this.completeBlockDrag(file, { section, blockIndex, blockText }, next, 0)),
 			);
 		}
+		// Dated notes: pick any day on a calendar. A day with no card asks first, then
+		// starts the card and files the line in it in one write.
+		const showOther = this.hasDateHeadings;
+		if (showOther) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Move line to other card…")
+					.setIcon("calendar-search")
+					.onClick(() => this.pickCardForBlock(file, section, blockIndex, blockText)),
+			);
+		}
 		// Dated notes: send the block to today's card — the natural "do this today
 		// instead" move. Lands at the end, like a drop on the card. A missing today card
 		// (weekends in a workday note) is created first, template and placement applied.
@@ -10811,7 +10853,7 @@ export class SectionCardsView extends ItemView {
 					}),
 			);
 		}
-		if (prev || next || showToday) menu.addSeparator();
+		if (prev || next || showOther || showToday) menu.addSeparator();
 		if (this.addFeedItem(menu, section, "Update this day from calendar feed")) menu.addSeparator();
 
 		menu.addItem((item) =>

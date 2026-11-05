@@ -9,6 +9,7 @@ import {
 	Platform,
 	Setting,
 	setIcon,
+	moment,
 	TFile,
 	TFolder,
 		normalizePath,
@@ -1635,6 +1636,111 @@ export class FeedUpdateAllModal extends Modal {
 				});
 			});
 		sync();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/** "Move line to other card…": a month calendar to pick the day whose card takes the
+ * line. Days that already have a card are marked; the line's own day can't be picked.
+ * A day without a card is still pickable — the caller asks before creating it. */
+export class PickDateModal extends Modal {
+	/** The first of the month on show, as an ISO day. */
+	private month: string;
+	private gridEl: HTMLElement | null = null;
+	private monthEl: HTMLElement | null = null;
+
+	constructor(
+		app: App,
+		private readonly opts: {
+			heading: string;
+			/** The day the calendar opens on, and marks as the line's own. */
+			startIso: string;
+			/** The line's own day, when its card names one — not a destination. */
+			sourceIso: string | null;
+			/** The days that already have a card. */
+			cardDays: Set<string>;
+			/** 0 = Sunday … 6 = Saturday. */
+			firstDow: number;
+			onPick: (iso: string) => void;
+		},
+	) {
+		super(app);
+		this.month = `${opts.startIso.slice(0, 7)}-01`;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.addClass("sfsc-pickdate-modal");
+		contentEl.createEl("h3", { text: this.opts.heading });
+
+		const nav = contentEl.createDiv({ cls: "sfsc-pickdate-nav" });
+		const prevBtn = nav.createEl("button", { cls: "clickable-icon", attr: { "aria-label": "Previous month" } });
+		setIcon(prevBtn, "chevron-left");
+		this.monthEl = nav.createDiv({ cls: "sfsc-pickdate-title" });
+		const nextBtn = nav.createEl("button", { cls: "clickable-icon", attr: { "aria-label": "Next month" } });
+		setIcon(nextBtn, "chevron-right");
+		prevBtn.addEventListener("click", () => this.turn(-1));
+		nextBtn.addEventListener("click", () => this.turn(1));
+
+		this.gridEl = contentEl.createDiv({ cls: "sfsc-pickdate-grid" });
+		const legend = contentEl.createDiv({ cls: "sfsc-pickdate-legend" });
+		legend.createSpan({ cls: "sfsc-pickdate-dot" });
+		legend.createSpan({ text: "has a card — other days offer to create one" });
+		this.render();
+
+		// Page Up / Page Down turn the month, as in the native date pickers.
+		this.scope.register([], "PageUp", () => (this.turn(-1), false));
+		this.scope.register([], "PageDown", () => (this.turn(1), false));
+	}
+
+	private turn(delta: number): void {
+		const [y, m] = this.month.split("-").map(Number);
+		const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+		this.month = d.toISOString().slice(0, 10);
+		this.render();
+	}
+
+	private render(): void {
+		const grid = this.gridEl;
+		if (!grid || !this.monthEl) return;
+		grid.empty();
+		const first = this.month;
+		this.monthEl.setText(moment(first, "YYYY-MM-DD").format("MMMM YYYY"));
+
+		const firstDow = this.opts.firstDow;
+		const names = moment.weekdaysMin();
+		for (let i = 0; i < 7; i++) grid.createDiv({ cls: "sfsc-pickdate-dow", text: names[(firstDow + i) % 7] });
+
+		const [y, m] = first.split("-").map(Number);
+		const lead = (((new Date(y, m - 1, 1).getDay() - firstDow) % 7) + 7) % 7;
+		for (let i = 0; i < lead; i++) grid.createDiv({ cls: "sfsc-pickdate-blank" });
+
+		const today = moment().format("YYYY-MM-DD");
+		const days = new Date(y, m, 0).getDate();
+		let focusEl: HTMLButtonElement | null = null;
+		for (let d = 1; d <= days; d++) {
+			const iso = `${first.slice(0, 8)}${String(d).padStart(2, "0")}`;
+			const own = iso === this.opts.sourceIso;
+			const has = this.opts.cardDays.has(iso);
+			const btn = grid.createEl("button", { cls: "sfsc-pickdate-day", text: String(d) });
+			btn.toggleClass("is-today", iso === today);
+			btn.toggleClass("has-card", has);
+			btn.toggleClass("is-source", own);
+			const label = moment(iso, "YYYY-MM-DD").format("dddd, MMMM D, YYYY");
+			btn.setAttr("aria-label", own ? `${label} — this line's card` : has ? label : `${label} — no card yet`);
+			if (has) btn.createSpan({ cls: "sfsc-pickdate-dot" });
+			if (own) btn.disabled = true;
+			else
+				btn.addEventListener("click", () => {
+					this.close();
+					this.opts.onPick(iso);
+				});
+			if (!own && (iso === today || (!focusEl && iso === this.opts.startIso))) focusEl = btn;
+		}
+		focusEl?.focus();
 	}
 
 	onClose(): void {
