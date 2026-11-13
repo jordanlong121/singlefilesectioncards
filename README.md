@@ -45,6 +45,8 @@ links, and days, with overdue and due-soon tasks you can tick off in place. **Th
 can now show one year, quarter, or month, shade days by tasks, words, or a `#tag`, and preview
 a day's text on hover. See [Dashboard](#dashboard) and [Heatmap](#heatmap).
 
+![The Dashboard layout: tiles for cards and tasks, a progress bar, and overdue, due-today, and upcoming tasks to tick off](screenshots/dashboard.png)
+
 **Safer saves.** If a card you're editing is changed somewhere else meanwhile — by sync,
 another pane, another app, or an AI agent — saving now warns you instead of quietly replacing
 those changes: keep editing, discard your edits, or overwrite.
@@ -245,9 +247,11 @@ starred cards, tags, links, and images, with a progress bar for tasks done. Belo
 - **Days** (dated notes) — the first and last day, days with cards, the current and longest
   streak, and a button to open or create today's card.
 
+![Dashboard](screenshots/dashboard.png)
+
 ### Heatmap
 
-A year-at-a-glance graph of the dated cards, with streak stats above. Click a day to open
+A graph of the dated cards, a square a day, with stats above. Click a day to open
 (or create) its card; hover one to preview its text and tallies. Needs date headings.
 
 - **Span** — **All** (every dated day), or one **Year**, **Quarter**, or **Month**, with
@@ -260,7 +264,7 @@ A year-at-a-glance graph of the dated cards, with streak stats above. Click a da
 
 The span, shading, and tag are remembered per note.
 
-![Heatmap](screenshots/heatmap.png)
+![The Heatmap over a year of daily notes, shaded by tasks done, with the span buttons, shading picker, and stats above](screenshots/heatmap.png)
 
 ### Table
 

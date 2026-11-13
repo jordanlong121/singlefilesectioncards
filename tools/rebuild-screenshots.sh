@@ -44,7 +44,6 @@ echo "default note"
 stage def; harness def
 for p in grid aligned tight horizontal vertical rolodex custom links hierarchy dividers deck; do shoot def "$p" "$p" 1280,760; done
 shoot def tasks tasks 1280,720
-shoot def heatmap heatmap-full 1280,760
 shoot def context-menu context-menu-full 1280,760
 "$CHROME" --headless=new --disable-gpu --dump-dom "file:///C:/Users/Jordan.Long/AppData/Local/Temp/rebuild/def/context-menu.html" 2>/dev/null > "$OUT/context-menu.dom.html"
 
@@ -95,7 +94,7 @@ echo "crops"
 python3 "$REPO/tools/crop_screenshots.py" "$OUT"
 # Everything but the uncropped captures replaces its screenshot, then the heroes follow.
 for f in "$OUT"/*.png; do
-	case "$(basename "$f")" in heatmap-full.png|context-menu-full.png|mobile-full.png) continue ;; esac
+	case "$(basename "$f")" in context-menu-full.png|mobile-full.png) continue ;; esac
 	cp "$f" "$REPO/screenshots/"
 done
 echo "heroes"
