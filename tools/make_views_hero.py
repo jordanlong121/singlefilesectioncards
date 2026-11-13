@@ -4,7 +4,7 @@
 
 Thumbnails come from the layout screenshots in screenshots/ (rebuild those first:
 tools/rebuild-screenshots.sh for the harness pages, tools/live-screenshots.mjs for
-the Table, Tree and Binder). Same panel, fonts and colors as make_heroes.py.
+the Table, Tree, Binder, Dashboard and Heatmap). Same panel, fonts and colors as make_heroes.py.
 """
 
 from PIL import Image, ImageDraw, ImageFont
@@ -64,6 +64,12 @@ def rounded(img, radius):
 def cover(img, w, h):
     """Scale to fill w×h and crop the overflow from the bottom/right (the shots share a
     top-left toolbar, so that corner is the one to keep)."""
+    if img.width / img.height > w / h:
+        # A clipped shot (the Heatmap's) is wider than the tile: extend it downward with
+        # the pane's own background instead of zooming in on its left end.
+        tall = Image.new("RGBA", (img.width, round(img.width * h / w)), img.getpixel((img.width // 2, img.height - 1)))
+        tall.paste(img, (0, 0))
+        img = tall
     scale = max(w / img.width, h / img.height)
     scaled = img.resize((round(img.width * scale), round(img.height * scale)), Image.LANCZOS)
     return scaled.crop((0, 0, w, h))
