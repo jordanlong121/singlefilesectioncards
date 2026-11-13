@@ -18,7 +18,7 @@ import {
 } from "obsidian";
 import { createEmbeddedEditor, type EmbeddedEditor } from "../editor-embed";
 import { MOD_LABEL, Placement, CALENDAR_RANGE_OPTIONS, CALENDAR_RANGE_KEYS } from "./settings";
-import { parseAncestorHeadings } from "./sections";
+import { parseAncestorHeadings, mo } from "./sections";
 import { noteFolderOf, folderOfPath, QuickAddPlacement } from "./writes";
 import { LevelRole, LevelSetup, DocumentLevels, LEVEL_ROLE_LABELS, PERIOD_FORMATS, formatPeriod } from "./periods";
 import type SectionCardsPlugin from "../main";
@@ -1772,7 +1772,7 @@ export class PickDateModal extends Modal {
 		if (!grid || !this.monthEl) return;
 		grid.empty();
 		const first = this.month;
-		this.monthEl.setText(moment(first, "YYYY-MM-DD").format("MMMM YYYY"));
+		this.monthEl.setText(mo(first, "YYYY-MM-DD").format("MMMM YYYY"));
 
 		const firstDow = this.opts.firstDow;
 		const names = moment.weekdaysMin();
@@ -1782,7 +1782,7 @@ export class PickDateModal extends Modal {
 		const lead = (((new Date(y, m - 1, 1).getDay() - firstDow) % 7) + 7) % 7;
 		for (let i = 0; i < lead; i++) grid.createDiv({ cls: "sfsc-pickdate-blank" });
 
-		const today = moment().format("YYYY-MM-DD");
+		const today = mo().format("YYYY-MM-DD");
 		const days = new Date(y, m, 0).getDate();
 		let focusEl: HTMLButtonElement | null = null;
 		for (let d = 1; d <= days; d++) {
@@ -1793,7 +1793,7 @@ export class PickDateModal extends Modal {
 			btn.toggleClass("is-today", iso === today);
 			btn.toggleClass("has-card", has);
 			btn.toggleClass("is-source", own);
-			const label = moment(iso, "YYYY-MM-DD").format("dddd, MMMM D, YYYY");
+			const label = mo(iso, "YYYY-MM-DD").format("dddd, MMMM D, YYYY");
 			btn.setAttr("aria-label", own ? `${label} — this line's card` : has ? label : `${label} — no card yet`);
 			if (has) btn.createSpan({ cls: "sfsc-pickdate-dot" });
 			if (own) btn.disabled = true;
