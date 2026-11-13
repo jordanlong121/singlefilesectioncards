@@ -54,6 +54,16 @@ try {
 			return ev(`(() => { const v = ${V}; const c = v.contentEl; const shown = { grid: c.querySelectorAll(".section-card").length, planner: c.querySelectorAll(".sfsc-planner-item").length, rolo: c.querySelectorAll(".sfsc-rolo-tab").length, cal: c.querySelectorAll(".sc-cal-month").length, heat: c.querySelectorAll(".sc-heat-wrap, .sc-heat-cell, .sc-heat-day").length, table: c.querySelectorAll(".sc-table tr").length, tree: c.querySelectorAll(".sc-tree-node").length, tray: c.querySelectorAll(".section-cards-tray-tile").length }; return v.layout + " · " + JSON.stringify(shown); })()`);
 		});
 	}
+	// Leaving the Dashboard must take its panels with it (they once stayed above the cards).
+	await check("layout: Dashboard, then Grid", async () => {
+		await pickLayout("Dashboard");
+		const tiles = await ev(`${V}.contentEl.querySelectorAll(".sc-dash-tile").length`);
+		if (!tiles) throw new Error("no dashboard tiles");
+		await pickLayout("Grid");
+		const left = await ev(`${V}.contentEl.querySelectorAll(".sc-dash").length`);
+		if (left) throw new Error("dashboard still in the grid");
+		return tiles + " tiles, then cards only";
+	});
 	// ---- view modes
 	await check("view mode: Hierarchy", async () => { await pick(".section-cards-mode-btn", "Hierarchy view"); return ev(`${V}.contentEl.querySelectorAll(".section-cards-hier-col").length + " columns"`); });
 	await check("view mode: Divider", async () => { await pick(".section-cards-mode-btn", "Divider view"); return ev(`${V}.contentEl.querySelectorAll(".section-cards-section-bar").length + " bars"`); });

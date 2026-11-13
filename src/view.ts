@@ -7127,7 +7127,7 @@ export class SectionCardsView extends ItemView {
 		// section rebuilds one card and every other card's rendered markdown is kept.
 		for (const stray of Array.from(
 			this.gridEl.querySelectorAll(
-				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty, .sc-cal-nav, .sc-cal-divider, .sc-cal-dow, .sc-cal-month, .sc-cal-blank, .sc-heat-wrap, .sc-table-wrap, .sc-tree-wrap, .sfsc-deck-card",
+				".section-cards-row-rule, .section-cards-pin-rule, .section-cards-section-bar, .section-cards-empty, .sc-cal-nav, .sc-cal-divider, .sc-cal-dow, .sc-cal-month, .sc-cal-blank, .sc-heat-wrap, .sc-dash, .sc-table-wrap, .sc-tree-wrap, .sfsc-deck-card",
 			),
 		)) {
 			stray.remove();
