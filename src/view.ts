@@ -1846,6 +1846,22 @@ export class SectionCardsView extends ItemView {
 				if (card.style?.gridRowEnd) card.setCssStyles({ gridRowEnd: "" });
 			}
 		}
+		// Layouts that never pack columns don't run the masonry pass that clears its
+		// one-column class, so it goes here (the Horizontal layout's would otherwise stay).
+		if (this.gridEl && (this.isWholeNoteLayout() || this.isDateLayout() || this.isCanvasLayout())) {
+			this.gridEl.removeClass("is-one-col");
+		}
+		// The cards are reused across layouts, so the classes one layout gives them go
+		// when it does. A stale is-cal-outside in particular reads as "hidden by the
+		// Calendar's range" to revealCard, which would turn a calendar that isn't there.
+		const calendarShown = this.layout === "calendar" && !this.deckMode;
+		const singleShown = (this.isSingleCardLayout() || this.sticky) && !this.deckMode;
+		if (!calendarShown || !singleShown) {
+			for (const entry of this.cardEntries) {
+				if (!calendarShown) entry.el.removeClass("is-cal-outside", "is-cal-extra", "is-cal-wknd");
+				if (!singleShown) entry.el.removeClass("is-rolo-active");
+			}
+		}
 		this.updateWheelPan();
 	}
 
@@ -6965,6 +6981,9 @@ export class SectionCardsView extends ItemView {
 		// The Images and Links canvases render the note's links, not its sections —
 		// the whole card pipeline below doesn't apply, so they take over here.
 		if (this.layout === "images" || this.layout === "links") {
+			// The level notice doesn't apply to a canvas: hide it (and the padding its
+			// class adds) before returning, or the previous layout's stays.
+			this.syncLevelBar(lines);
 			this.clearPreviewTiles(this.layout === "images" ? "links" : "images");
 			if (this.layout === "images") this.renderImagesLayout(file, content);
 			else this.renderLinksLayout(file, content);
