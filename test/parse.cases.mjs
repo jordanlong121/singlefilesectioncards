@@ -1725,13 +1725,13 @@ t("heatmapDays tallies tasks per dated section; same-day sections pool", () => {
   ];
   const days = heatmapDays(parseCards(lines, 3, null), "YYYY-MM-DD, dddd");
   assert.deepEqual([...days.keys()].sort(), ["2026-08-05", "2026-08-06"]);
-  assert.deepEqual(days.get("2026-08-05"), { done: 2, open: 2, headingLine: 0 });
-  assert.deepEqual(days.get("2026-08-06"), { done: 0, open: 0, headingLine: 9 });
+  assert.deepEqual((({ done, open, headingLine }) => ({ done, open, headingLine }))(days.get("2026-08-05")), { done: 2, open: 2, headingLine: 0 });
+  assert.deepEqual((({ done, open, headingLine }) => ({ done, open, headingLine }))(days.get("2026-08-06")), { done: 0, open: 0, headingLine: 9 });
 });
 
 t("heatmapDays ignores tasks inside code fences", () => {
   const sections = parseCards(["### 2026-03-02", "```", "- [ ] fenced", "```", "- [ ] real"], 3, null);
-  assert.deepEqual(heatmapDays(sections, "YYYY-MM-DD").get("2026-03-02"), { done: 0, open: 1, headingLine: 0 });
+  assert.deepEqual((({ done, open, headingLine }) => ({ done, open, headingLine }))(heatmapDays(sections, "YYYY-MM-DD").get("2026-03-02")), { done: 0, open: 1, headingLine: 0 });
 });
 
 t("heatmapStreaks: longest run wins; current forgives an unwritten today", () => {

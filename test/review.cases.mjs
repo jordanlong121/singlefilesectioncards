@@ -165,3 +165,29 @@ ta("history: edits to two cards with the same heading are two undo steps", async
   }
   assert.equal(history.undo("u.md", state.text).text, "## Todo\na1\n\n## Todo\nb\n", "the second edit alone comes off");
 });
+
+// 2026-11-12 review: a card save must not silently replace changes made elsewhere.
+import { writeSectionChecked, sameSectionText } from "./.tmp/main.js";
+
+ta("writes: a guarded save refuses a card that changed on disk; force overwrites it", async () => {
+  const state = { text: "## Mon\n- [ ] a\n\n## Tue\nx\n" };
+  const app = { vault: { process: async (_f, fn) => { state.text = fn(state.text); return state.text; } } };
+  const [mon] = parseCards(state.text.split("\n"), 2);
+  state.text = "## Mon\n- [x] a\n- [ ] added elsewhere\n\n## Tue\nx\n";
+  const guarded = await writeSectionChecked(app, { path: "n.md" }, 2, mon, "## Mon\n- [ ] a\n- [ ] typed in card");
+  assert.equal(guarded, "conflict");
+  assert.ok(state.text.includes("added elsewhere"), "nothing was written");
+  const forced = await writeSectionChecked(app, { path: "n.md" }, 2, mon, "## Mon\n- [ ] a\n- [ ] typed in card", true);
+  assert.equal(forced, "ok");
+  assert.equal(state.text, "## Mon\n- [ ] a\n- [ ] typed in card\n\n## Tue\nx\n");
+});
+
+ta("writes: an unchanged card saves; trailing blank lines and CRLF don't count as changes", async () => {
+  const state = { text: "## Mon\r\na\r\n\r\n\r\n## Tue\r\nx\r\n" };
+  const app = { vault: { process: async (_f, fn) => { state.text = fn(state.text); return state.text; } } };
+  const [mon] = parseCards(state.text.split(/\r?\n/), 2);
+  assert.equal(await writeSectionChecked(app, { path: "n.md" }, 2, { ...mon, raw: "## Mon\na" }, "## Mon\nb\n"), "ok");
+  assert.ok(state.text.startsWith("## Mon\r\nb\r\n") && !state.text.includes("\na\r"), "the edit landed, CRLF kept");
+  assert.ok(sameSectionText("## A\r\nx\r\n\r\n", "## A\nx"));
+  assert.ok(!sameSectionText("## A\nx", "## A\ny"));
+});

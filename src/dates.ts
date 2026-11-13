@@ -1,9 +1,9 @@
 // Dates in headings: today matching, detection, ISO conversion, heatmap days and streaks.
 
 import { moment } from "obsidian";
-import { Section, moParse, ISO_DATE_RE, validIsoDate, parseAncestorHeadings } from "./sections";
+import { Section, moParse, ISO_DATE_RE, validIsoDate, parseAncestorHeadings, stepFence } from "./sections";
 import { TASK_RE, taskDone, taskLineIndexes } from "./tasks";
-import type { CalendarRange } from "./settings";
+import type { CalendarRange, HeatMetric, HeatRange } from "./settings";
 
 /**
  * Does a date heading refer to today? Matches an ISO date anywhere in the heading
@@ -178,15 +178,51 @@ export function retitledDateTitle(title: string, format: string, iso: string, de
 	return to.format(format);
 }
 
-/** One day's activity on the Heatmap: task tallies and where its section lives. */
+/** One day's activity on the Heatmap: task tallies, words, #tags, and where its
+ * section lives (with its text, for the hover preview). */
 export interface HeatDay {
 	done: number;
 	open: number;
+	words: number;
+	/** #tag (lowercased, without the #) → how many times the day's text uses it. */
+	tags: Record<string, number>;
 	headingLine: number;
+	title: string;
+	body: string;
 }
 
-/** The Heatmap's data: every dated section's day, with its task tallies. Two
- * sections naming the same day pool their counts (the first one keeps the click). */
+/** A #tag the way Obsidian reads one: after a space, a bracket, or a line start, and
+ * with at least one non-digit (#2026 is not a tag). */
+const BODY_TAG_RE = /(^|[\s(])#([\p{L}\p{N}_/-]+)/gu;
+/** A word: any run without whitespace holding a letter or digit — list markers,
+ * checkboxes, and lone punctuation don't count. */
+const WORD_RE = /[\p{L}\p{N}]/u;
+
+/** Words and #tags in a body's text, skipping fenced code like every other tally. */
+export function bodyTextStats(lines: string[]): { words: number; tags: Record<string, number> } {
+	let words = 0;
+	const tags: Record<string, number> = {};
+	let fence: string | null = null;
+	for (const line of lines) {
+		const step = stepFence(line, fence);
+		fence = step.open;
+		if (step.marker || fence) continue;
+		// A list marker and its checkbox (`- [x]`) are markup, not words.
+		const text = line.replace(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[.\]\s+)?/, "");
+		for (const token of text.split(/\s+/)) if (WORD_RE.test(token)) words++;
+		if (!line.includes("#")) continue;
+		BODY_TAG_RE.lastIndex = 0;
+		for (let m = BODY_TAG_RE.exec(line); m; m = BODY_TAG_RE.exec(line)) {
+			if (/^[\d/_-]+$/.test(m[2])) continue;
+			const tag = m[2].toLowerCase();
+			tags[tag] = (tags[tag] ?? 0) + 1;
+		}
+	}
+	return { words, tags };
+}
+
+/** The Heatmap's data: every dated section's day, with its tallies. Two sections
+ * naming the same day pool their counts (the first one keeps the click). */
 export function heatmapDays(sections: Section[], format: string, detect = ""): Map<string, HeatDay> {
 	const days = new Map<string, HeatDay>();
 	for (const section of sections) {
@@ -201,15 +237,73 @@ export function heatmapDays(sections: Section[], format: string, detect = ""): M
 			if (!taskDone(TASK_RE.exec(lines[i])?.[2])) open++;
 			else done++;
 		}
+		const { words, tags } = bodyTextStats(lines);
 		const day = days.get(iso);
 		if (day) {
 			day.done += done;
 			day.open += open;
+			day.words += words;
+			for (const [tag, n] of Object.entries(tags)) day.tags[tag] = (day.tags[tag] ?? 0) + n;
+			day.body = day.body ? `${day.body}\n\n${section.body}` : section.body;
 		} else {
-			days.set(iso, { done, open, headingLine: section.headingLine });
+			days.set(iso, { done, open, words, tags, headingLine: section.headingLine, title: section.title, body: section.body });
 		}
 	}
 	return days;
+}
+
+/** What a Heatmap cell counts for a day under the chosen metric. */
+export function heatValue(day: HeatDay, metric: HeatMetric, tag = ""): number {
+	if (metric === "tasks") return day.done + day.open;
+	if (metric === "words") return day.words;
+	if (metric === "tag") return day.tags[tag.toLowerCase()] ?? 0;
+	return day.done;
+}
+
+/** Shade 0–4 for a cell: 0 no card, 1 a card that counts nothing, 2–4 by share of the max. */
+export function heatLevel(day: HeatDay | undefined, value: number, max: number): number {
+	if (!day) return 0;
+	if (value <= 0) return 1;
+	return Math.min(4, 1 + Math.ceil((3 * value) / Math.max(1, max)));
+}
+
+/** Every #tag the dated days use, most used first (ties A→Z). */
+export function heatmapTags(days: Iterable<HeatDay>): string[] {
+	const totals = new Map<string, number>();
+	for (const day of days) for (const [tag, n] of Object.entries(day.tags)) totals.set(tag, (totals.get(tag) ?? 0) + n);
+	return [...totals.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([tag]) => tag);
+}
+
+/** The first and last ISO day of the period holding `anchor`. "all" spans the note's
+ * first dated day through its last or today, whichever is later. */
+export function heatRangeSpan(range: HeatRange, anchor: string, first: string, last: string): { start: string; end: string } {
+	if (range === "all") return { start: first, end: last };
+	const [y, m] = anchor.split("-").map(Number);
+	const iso = (year: number, month: number, day: number) => new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10);
+	if (range === "year") return { start: iso(y, 1, 1), end: iso(y, 12, 31) };
+	if (range === "quarter") {
+		const q = Math.floor((m - 1) / 3) * 3 + 1;
+		return { start: iso(y, q, 1), end: iso(y, q + 3, 0) };
+	}
+	return { start: iso(y, m, 1), end: iso(y, m + 1, 0) };
+}
+
+/** The anchor moved one period back (-1) or forward (+1). Lands on the 1st, so a
+ * 31st never spills into the month after next. */
+export function shiftHeatAnchor(anchor: string, range: HeatRange, delta: number): string {
+	if (range === "all") return anchor;
+	const [y, m] = anchor.split("-").map(Number);
+	const months = range === "year" ? 12 : range === "quarter" ? 3 : 1;
+	return new Date(Date.UTC(y, m - 1 + delta * months, 1)).toISOString().slice(0, 10);
+}
+
+/** The period's name in the Heatmap's header: "2026", "Q3 2026", "August 2026". */
+export function heatRangeLabel(range: HeatRange, anchor: string): string {
+	const [y, m] = anchor.split("-").map(Number);
+	if (range === "year") return String(y);
+	if (range === "quarter") return `Q${Math.floor((m - 1) / 3) + 1} ${y}`;
+	if (range === "month") return moParse(anchor, "YYYY-MM-DD", true).format("MMMM YYYY");
+	return "All days";
 }
 
 /** The ISO day before/after, in UTC so DST can never skip or double a day. */

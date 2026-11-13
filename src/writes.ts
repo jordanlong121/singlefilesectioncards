@@ -24,6 +24,7 @@ import {
 	flipMarkerLine,
 	moveBlockBetween,
 	removeBlock,
+	trimTrailingBlankLines,
 } from "./blocks";
 import { plannerCards } from "./planner";
 import { mergeFeedLines } from "./icalfeed";
@@ -840,10 +841,61 @@ export async function insertSectionWithBlock(
 	return ok;
 }
 
+/** What a guarded card save did: wrote it, couldn't find the card, or found the card
+ * changed on disk since the editor opened (and wrote nothing). */
+export type SectionWriteResult = "ok" | "missing" | "conflict";
+
+/** Whether two takes on a card say the same thing — trailing blank lines (the gap
+ * before the next heading) and line endings aside. */
+export function sameSectionText(a: string, b: string): boolean {
+	return trimTrailingBlankLines(a.replace(/\r\n/g, "\n")) === trimTrailingBlankLines(b.replace(/\r\n/g, "\n"));
+}
+
 /**
- * Replace one section in the file with new text, re-locating it at write time so a
- * card edit can't clobber changes made elsewhere in the file since it was rendered.
+ * Save an edited card over `original`. Unless `force`, the card on disk must still
+ * read as `original` did when the editor opened: if something else changed it since —
+ * Sync, another pane, another app, an AI agent — nothing is written and "conflict"
+ * comes back, so the caller can ask before replacing those changes.
  */
+export async function writeSectionChecked(
+	app: App,
+	file: TFile,
+	level: number,
+	original: Section,
+	newRaw: string,
+	force = false,
+): Promise<SectionWriteResult> {
+	let result = "ok" as SectionWriteResult;
+	await processNote(app, file, "Edit card", (data) => {
+		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+		const lines = data.split(/\r?\n/);
+		const target = locateCard(lines, level, original);
+		if (!target) {
+			result = "missing";
+			return data;
+		}
+		if (!force && !sameSectionText(target.raw, original.raw)) {
+			result = "conflict";
+			return data;
+		}
+		const replacement = newRaw.split(/\r?\n/);
+		lines.splice(target.startLine, target.endLine - target.startLine, ...replacement);
+		return lines.join(eol);
+	}, `edit:${original.startLine}:${original.headingRaw}`);
+	if (result === "missing") new Notice("Couldn't find that section — the file changed on disk. Edit not saved.");
+	return result;
+}
+
+/** Whether the card on disk no longer reads as `original` (false when it can't be found
+ * at all — the save itself reports that). Reads the file fresh, not from the cache. */
+export async function sectionChangedOnDisk(app: App, file: TFile, level: number, original: Section): Promise<boolean> {
+	const lines = (await app.vault.read(file)).split(/\r?\n/);
+	const target = locateCard(lines, level, original);
+	return !!target && !sameSectionText(target.raw, original.raw);
+}
+
+/** Save an edited card over `original` whatever is on disk now — for callers that
+ * already checked (or asked) about changes made elsewhere. */
 export async function writeSection(
 	app: App,
 	file: TFile,
@@ -851,27 +903,7 @@ export async function writeSection(
 	original: Section,
 	newRaw: string,
 ): Promise<boolean> {
-	let ok = true;
-
-	await processNote(app, file, "Edit card", (data) => {
-		const eol = data.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
-		const lines = data.split(/\r?\n/);
-		const target = locateCard(lines, level, original);
-
-		if (!target) {
-			ok = false;
-			return data;
-		}
-
-		const replacement = newRaw.split(/\r?\n/);
-		lines.splice(target.startLine, target.endLine - target.startLine, ...replacement);
-		return lines.join(eol);
-	}, `edit:${original.startLine}:${original.headingRaw}`);
-
-	if (!ok) {
-		new Notice("Couldn't find that section — the file changed on disk. Edit not saved.");
-	}
-	return ok;
+	return (await writeSectionChecked(app, file, level, original, newRaw, true)) === "ok";
 }
 
 /**

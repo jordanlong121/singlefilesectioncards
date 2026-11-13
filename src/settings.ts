@@ -79,6 +79,7 @@ export type Layout =
 	| "links"
 	| "calendar"
 	| "heatmap"
+	| "dashboard"
 	| "rolodex"
 	| "planner"
 	| "table"
@@ -99,6 +100,7 @@ export const LAYOUT_OPTIONS: [Layout, string, string][] = [
 	["binder", "Binder", "One card at a time, filling the pane; every card's title is a tab down the right edge, like a binder's inserts"],
 	["calendar", "Calendar", "Date cards on a calendar grid — a month, two weeks, a week, or one day — needs the Dates checkbox (C)"],
 	["custom", "Custom Grid", "Freeform canvas: drag cards on from the tray, place and resize them"],
+	["dashboard", "Dashboard", "The note at a glance: its sections, tasks due and done, tags, links, and dates"],
 	[
 		"planner",
 		"Day Planner",
@@ -150,6 +152,7 @@ export const LAYOUT_ICONS: Record<Layout, [string, string]> = {
 	links: ["link", "link"],
 	calendar: ["calendar", "calendar"],
 	heatmap: ["activity", "bar-chart-2"],
+	dashboard: ["gauge", "bar-chart"],
 	table: ["table", "table-2"],
 	tree: ["git-fork", "network"],
 	binder: ["book-marked", "bookmark"],
@@ -172,6 +175,26 @@ export const GROUP_BY_ICONS: Record<string, [string, string]> = {
 	stars: ["star", "star"],
 	length: ["ruler", "align-left"],
 };
+
+/** How much of the note the Heatmap shows: every dated day, or one year, quarter, or month. */
+export type HeatRange = "all" | "year" | "quarter" | "month";
+
+export const HEAT_RANGE_OPTIONS: [HeatRange, string][] = [
+	["all", "All"],
+	["year", "Year"],
+	["quarter", "Quarter"],
+	["month", "Month"],
+];
+
+/** What shades a Heatmap day: tasks done, all tasks, words written, or one #tag's uses. */
+export type HeatMetric = "done" | "tasks" | "words" | "tag";
+
+export const HEAT_METRIC_OPTIONS: [HeatMetric, string][] = [
+	["done", "Tasks done"],
+	["tasks", "All tasks"],
+	["words", "Words written"],
+	["tag", "A tag"],
+];
 
 /** How much of the calendar the Calendar layout shows at once. "month" is the
  * scrolling wall of whole months; "2weeks", "week" and "day" show one range with arrows. */
@@ -331,6 +354,10 @@ export interface PerFileView extends ViewSettings {
 	hierWidth?: number;
 	/** Table: cell text wraps onto several lines instead of one clipped line. */
 	tableWrap?: boolean;
+	/** Heatmap: the span shown, what shades a day, and the tag when that's a tag. */
+	heatRange?: HeatRange;
+	heatMetric?: HeatMetric;
+	heatTag?: string;
 	/** Custom Grid arrangements saved under a name (tray → save), with their backgrounds. */
 	savedLayouts?: Record<string, SavedCanvasLayout>;
 	/** The saved layout last applied or saved, shown in the tray's switcher. */
