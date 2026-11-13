@@ -24,5 +24,6 @@ await import(path.join(tmp, "..", "history.cases.mjs"));
 await import(path.join(tmp, "..", "links.cases.mjs"));
 await import(path.join(tmp, "..", "table.cases.mjs"));
 await import(path.join(tmp, "..", "review.cases.mjs"));
+await import(path.join(tmp, "..", "heatdash.cases.mjs"));
 const { report } = await import(path.join(tmp, "..", "harness.mjs"));
 await report();

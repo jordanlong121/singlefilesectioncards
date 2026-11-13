@@ -20,6 +20,7 @@ import {
 	type ViewStateResult,
 } from "obsidian";
 import { createEmbeddedEditor, type EmbeddedEditor } from "../editor-embed";
+import { summarizeNote, type DashTask, type DashSection } from "./dashboard";
 import { fastIcon } from "./icons";
 import { GROUP_BY_ICONS, DECK_SORT_ICONS, LAYOUT_ICONS, DECK_BACKGROUND_KEY,
 	VIEW_TYPE_SECTION_CARDS,
@@ -41,6 +42,9 @@ import { GROUP_BY_ICONS, DECK_SORT_ICONS, LAYOUT_ICONS, DECK_BACKGROUND_KEY,
 	GROUP_BY_LABELS,
 	CalendarRange,
 	CALENDAR_RANGE_OPTIONS,
+	HEAT_RANGE_OPTIONS,
+	HEAT_METRIC_OPTIONS,
+	type HeatMetric,
 	CALENDAR_RANGE_ICONS,
 	CARD_COLORS,
 	DEFAULT_SETTINGS,
@@ -90,6 +94,13 @@ import {
 	isWeekendIso,
 	clampIso,
 	heatmapStreaks,
+	heatValue,
+	heatLevel,
+	heatmapTags,
+	heatRangeSpan,
+	shiftHeatAnchor,
+	heatRangeLabel,
+	type HeatDay,
 	dateHeadingCounts,
 	bestDateLevel,
 } from "./dates";
@@ -138,6 +149,8 @@ import {
 	insertSection,
 	insertSectionWithBlock,
 	writeSection,
+	writeSectionChecked,
+	sectionChangedOnDisk,
 	syncFeedIntoSection,
 	syncFeedIntoSections,
 	insertSections,
@@ -232,6 +245,7 @@ import { SavedLayoutChangesModal, ConfirmActionModal,
 	MergeCardsModal,
 	TextInputModal,
 	UnsavedChangesModal,
+	askEditConflict,
 	NoteLibraryModal,
 	DeleteImageModal,
 	PasteImageModal,
@@ -490,7 +504,7 @@ export class SectionCardsView extends ItemView {
 	private activeEditor: {
 		card: HTMLElement;
 		finish: (save: boolean) => Promise<void>;
-		autosave: () => Promise<void>;
+		autosave: (closing?: boolean) => Promise<void>;
 		/** Tear the editor down without writing or refreshing: its autosave stops and
 		 * its CodeMirror is destroyed, so a render over it can't leave either behind. */
 		discard: () => void;
@@ -563,6 +577,10 @@ export class SectionCardsView extends ItemView {
 	 * Unset until the first render picks one (today, pulled into the note's span).
 	 * Session state: where you were looking isn't part of the note's remembered view. */
 	private calendarAnchor: string | null = null;
+	/** Heatmap: a day inside the year, quarter, or month on show (null = today's). */
+	private heatAnchor: string | null = null;
+	/** Heatmap: takes down the open hover preview and its rendered markdown. */
+	private heatPreviewClose: (() => void) | null = null;
 	/** Set while the today-card jump may still need re-aiming after deferred bodies land. */
 	private todayJumpPending = false;
 	/** Set by a layout switch on a dated note: the next render centres today's card
@@ -780,6 +798,7 @@ export class SectionCardsView extends ItemView {
 		this.groupBy = resolved.groupBy ?? "none";
 		this.calendarRange = resolved.calendarRange ?? "month";
 		this.calendarAnchor = null; // another note, another span: the anchor is re-picked
+		this.heatAnchor = null;
 	}
 
 	/** The current view as one ViewSettings value — the shape everything persists.
@@ -835,6 +854,12 @@ export class SectionCardsView extends ItemView {
 		return this.layout === "table" || this.layout === "tree";
 	}
 
+	/** Table, Tree, and the Dashboard draw from the whole note, not a wall of cards:
+	 * the level bar and Hide future / past dates have nothing to act on there. */
+	private isWholeNoteLayout(): boolean {
+		return this.isOutlineLayout() || this.layout === "dashboard";
+	}
+
 	/** Calendar and Heatmap both place by date headings: they borrow the note's date
 	 * level, need the Dates checkbox, and grey out in notes with no date headings. */
 	private isDateLayout(): boolean {
@@ -846,7 +871,7 @@ export class SectionCardsView extends ItemView {
 	 * day at a time and walks to the next with its arrows — hiding the days ahead
 	 * would leave the arrows nowhere to go. */
 	private dateHideApplies(): boolean {
-		return !this.isDateLayout() && !this.isOutlineLayout() && this.layout !== "planner" && !this.sticky;
+		return !this.isDateLayout() && !this.isWholeNoteLayout() && this.layout !== "planner" && !this.sticky;
 	}
 
 	/** The freeform canvases — Custom Grid (section cards) and Images (previews) —
@@ -1792,6 +1817,7 @@ export class SectionCardsView extends ItemView {
 			"links",
 			"calendar",
 			"heatmap",
+			"dashboard",
 			"rolodex",
 			"planner",
 			"binder",
@@ -1826,6 +1852,7 @@ export class SectionCardsView extends ItemView {
 	async onClose(): Promise<void> {
 		this.removeDropBar(); // it lives on the document, outside the view
 		this.imageLightboxClose?.(); // its Escape listener lives on the document
+		this.heatPreviewClose?.(); // the hover preview floats on the document body
 		if (this.autosaveTimer !== null) {
 			window.clearInterval(this.autosaveTimer);
 			this.autosaveTimer = null;
@@ -1835,7 +1862,7 @@ export class SectionCardsView extends ItemView {
 		// the periodic-autosave opt-in.
 		const open = this.activeEditor;
 		if (open) {
-			if (this.plugin.settings.saveOnLeave || this.plugin.settings.autosaveEnabled) await open.autosave().catch(() => {});
+			if (this.plugin.settings.saveOnLeave || this.plugin.settings.autosaveEnabled) await open.autosave(true).catch(() => {});
 			open.discard();
 			this.activeEditor = null;
 			this.editingKey = null;
@@ -6768,7 +6795,7 @@ export class SectionCardsView extends ItemView {
 		// the Rolodex and Day Planner do get it — one card at a time hides the rest of
 		// the note even more quietly than a sparse wall.
 		const applies =
-			!this.deckMode && !this.sticky && !this.isDateLayout() && !this.isCanvasLayout() && !this.isOutlineLayout();
+			!this.deckMode && !this.sticky && !this.isDateLayout() && !this.isCanvasLayout() && !this.isWholeNoteLayout();
 		const coverage = applies ? levelCoverage(lines, this.headingLevel) : null;
 		const key = `${this.filePath}:${this.headingLevel}`;
 		const show = !!coverage && coverage.hiddenLines > 0 && this.levelBarDismissed !== key;
@@ -6846,6 +6873,7 @@ export class SectionCardsView extends ItemView {
 		}
 
 		this.closeMaximized();
+		this.heatPreviewClose?.();
 		const gen = ++this.renderGeneration;
 
 		const file = this.getFile();
@@ -6993,6 +7021,12 @@ export class SectionCardsView extends ItemView {
 		// Table and Tree draw the note's whole outline — no cards.
 		if (this.isOutlineLayout()) {
 			this.renderOutlineLayout(file, lines);
+			return;
+		}
+
+		// The Dashboard summarises the whole note — no cards.
+		if (this.layout === "dashboard") {
+			this.renderDashboardLayout(file, lines, sections, cardFormat, detect);
 			return;
 		}
 
@@ -8445,9 +8479,12 @@ export class SectionCardsView extends ItemView {
 				restore();
 				return;
 			}
-			void writeSection(this.app, file, this.headingLevel, holder.section, next).then((ok) => {
-				if (ok) void this.refresh();
-				else restore();
+			// The properties changed elsewhere since they were drawn: don't write over
+			// them — show what's there now and let the edit be made again.
+			void writeSectionChecked(this.app, file, this.headingLevel, holder.section, next).then((result) => {
+				if (result === "conflict") new Notice("The properties changed elsewhere — showing them as they are now. Edit not saved.");
+				if (result === "missing") restore();
+				else void this.refresh();
 			});
 		};
 		field.addEventListener("keydown", (evt: Event) => {
@@ -10103,9 +10140,239 @@ export class SectionCardsView extends ItemView {
 		});
 	}
 
+	/**
+	 * The Dashboard layout: the note at a glance — tiles for its size, tasks, and links;
+	 * the tasks that need attention (tick them here); the busiest and longest cards;
+	 * the outline by level; its tags; and, on a dated note, its days and streak.
+	 * Rows open the note at their line; a tag shows the Grid filtered to it.
+	 */
+	private renderDashboardLayout(file: TFile, lines: string[], sections: Section[], format: string, detect: string): void {
+		this.clearAllCards();
+		this.clearHierarchy();
+		this.pendingEditHeading = null;
+		this.pendingMaximizeHeading = null;
+		this.gridEl.appendChild(this.canvasExtentEl); // clearAllCards emptied the grid
+
+		const todayIso = mo().format("YYYY-MM-DD");
+		const sum = summarizeNote(lines, sections, {
+			todayIso,
+			format,
+			detect,
+			dated: this.containsDates,
+			starEmoji: this.plugin.starEmoji(),
+		});
+		const n = (value: number) => value.toLocaleString();
+		const plural = (count: number, one: string, many: string) => `${n(count)} ${count === 1 ? one : many}`;
+		const reveal = (line: number) => void this.plugin.revealSection(file, line);
+
+		const wrap = this.gridEl.createDiv({ cls: "sc-dash" });
+		const head = wrap.createDiv({ cls: "sc-dash-head" });
+		head.createDiv({ cls: "sc-dash-title", text: file.basename });
+		const edited = (moment as unknown as (t: number) => { fromNow: () => string })(file.stat.mtime).fromNow();
+		head.createDiv({
+			cls: "sc-dash-sub",
+			text: [plural(sum.lines, "line", "lines"), plural(sum.words, "word", "words"), `edited ${edited}`].join(" · "),
+		});
+
+		// Tiles: the headline numbers. Ones that call for action wear an accent.
+		const tiles = wrap.createDiv({ cls: "sc-dash-tiles" });
+		const tile = (value: string, label: string, opts: { tone?: "warn" | "good"; hint?: string; onClick?: () => void } = {}) => {
+			const box = tiles.createDiv({ cls: "sc-dash-tile" });
+			if (opts.tone) box.addClass(`is-${opts.tone}`);
+			box.createDiv({ cls: "sc-dash-tile-value", text: value });
+			box.createDiv({ cls: "sc-dash-tile-label", text: label });
+			if (opts.hint) box.setAttr("title", opts.hint);
+			if (opts.onClick) {
+				box.addClass("is-clickable");
+				box.setAttr("role", "button");
+				box.tabIndex = 0;
+				box.addEventListener("click", opts.onClick);
+				box.addEventListener("keydown", (evt) => {
+					if (evt.key === "Enter" || evt.key === " ") {
+						evt.preventDefault();
+						opts.onClick?.();
+					}
+				});
+			}
+		};
+		tile(n(sum.sections), sum.sections === 1 ? "card" : "cards", {
+			hint: sum.emptySections ? `${plural(sum.emptySections, "card is", "cards are")} empty` : undefined,
+		});
+		tile(n(sum.open), "open tasks", { onClick: sum.open ? () => this.setLayout("tasks") : undefined, hint: "Show the Tasks layout" });
+		tile(n(sum.done), "done");
+		tile(n(sum.overdue.length), "overdue", { tone: sum.overdue.length ? "warn" : undefined });
+		tile(n(sum.dueToday.length), "due today", { tone: sum.dueToday.length ? "good" : undefined });
+		if (sum.starredSections) tile(n(sum.starredSections), sum.starredSections === 1 ? "starred card" : "starred cards");
+		tile(n(sum.tags.length), sum.tags.length === 1 ? "tag" : "tags");
+		tile(n(sum.wikilinks + sum.links), "links", { hint: `${plural(sum.wikilinks, "note", "notes")} linked, ${plural(sum.links, "web link", "web links")}` });
+		if (sum.images) tile(n(sum.images), sum.images === 1 ? "image" : "images", { onClick: () => this.setLayout("images"), hint: "Show the Images layout" });
+
+		// Task progress across the whole note.
+		const total = sum.open + sum.done;
+		if (total) {
+			const pct = Math.round((100 * sum.done) / total);
+			const prog = wrap.createDiv({ cls: "sc-dash-progress" });
+			const label = prog.createDiv({ cls: "sc-dash-progress-label" });
+			label.createSpan({ text: "Tasks complete" });
+			label.createSpan({ cls: "sc-dash-progress-pct", text: `${pct}% · ${n(sum.done)} of ${n(total)}` });
+			const bar = prog.createDiv({ cls: "sc-dash-bar", attr: { role: "progressbar", "aria-valuenow": String(pct), "aria-valuemin": "0", "aria-valuemax": "100" } });
+			bar.createDiv({ cls: "sc-dash-bar-fill" }).setCssStyles({ width: `${pct}%` });
+		}
+
+		const panels = wrap.createDiv({ cls: "sc-dash-panels" });
+		const panel = (title: string, icon: string, cls = "") => {
+			const box = panels.createDiv({ cls: `sc-dash-panel ${cls}`.trim() });
+			const h = box.createDiv({ cls: "sc-dash-panel-head" });
+			fastIcon(h.createSpan({ cls: "sc-dash-panel-icon" }), icon);
+			h.createSpan({ text: title });
+			return box.createDiv({ cls: "sc-dash-panel-body" });
+		};
+		const emptyNote = (el: HTMLElement, text: string) => el.createDiv({ cls: "sc-dash-empty", text });
+
+		// Needs attention: overdue, today, and the week ahead — each tickable in place.
+		const attention = panel("Needs attention", "alarm-clock", "is-wide");
+		const taskGroup = (label: string, tasks: DashTask[], tone: string) => {
+			if (!tasks.length) return;
+			attention.createDiv({ cls: `sc-dash-group is-${tone}`, text: `${label} (${tasks.length})` });
+			for (const task of tasks.slice(0, 12)) this.dashTaskRow(attention, file, sections, task, todayIso, reveal);
+			if (tasks.length > 12) attention.createDiv({ cls: "sc-dash-more", text: `and ${tasks.length - 12} more` });
+		};
+		taskGroup("Overdue", sum.overdue, "warn");
+		taskGroup("Due today", sum.dueToday, "good");
+		taskGroup("Next 7 days", sum.upcoming, "muted");
+		if (!sum.overdue.length && !sum.dueToday.length && !sum.upcoming.length) {
+			emptyNote(attention, sum.open ? "No open task has a due date in the coming week." : "No open tasks.");
+		}
+
+		// Ranked cards with a bar scaled to the leader.
+		const ranking = (title: string, icon: string, rows: DashSection[], measure: (r: DashSection) => number, unit: (v: number) => string, none: string) => {
+			const body = panel(title, icon);
+			if (!rows.length) {
+				emptyNote(body, none);
+				return;
+			}
+			const max = Math.max(1, ...rows.map(measure));
+			for (const row of rows) {
+				const item = body.createDiv({ cls: "sc-dash-rank", attr: { role: "button", tabindex: "0" } });
+				const top = item.createDiv({ cls: "sc-dash-rank-top" });
+				top.createSpan({ cls: "sc-dash-rank-title", text: row.title });
+				top.createSpan({ cls: "sc-dash-rank-value", text: unit(measure(row)) });
+				item.createDiv({ cls: "sc-dash-bar is-thin" }).createDiv({ cls: "sc-dash-bar-fill" }).setCssStyles({ width: `${(100 * measure(row)) / max}%` });
+				item.addEventListener("click", () => reveal(row.headingLine));
+				item.addEventListener("keydown", (evt) => {
+					if (evt.key === "Enter") reveal(row.headingLine);
+				});
+			}
+		};
+		ranking("Most open tasks", "list-todo", sum.busiest, (r) => r.open, (v) => `${n(v)} open`, "No card has an open task.");
+		ranking("Longest cards", "ruler", sum.longest, (r) => r.words, (v) => plural(v, "word", "words"), "Every card is empty.");
+
+		// Outline: headings per level; a click shows that level as cards.
+		const outline = panel("Outline", "list-tree");
+		const maxH = Math.max(1, ...sum.headings);
+		let anyHeading = false;
+		for (let level = 1; level <= 6; level++) {
+			const count = sum.headings[level];
+			if (!count) continue;
+			anyHeading = true;
+			const row = outline.createDiv({ cls: "sc-dash-level", attr: { role: "button", tabindex: "0" } });
+			row.setAttr("aria-label", `Show the H${level} headings as cards`);
+			row.toggleClass("is-current", level === this.headingLevel);
+			row.createSpan({ cls: "sc-dash-level-name", text: `H${level}` });
+			row.createDiv({ cls: "sc-dash-bar is-thin" }).createDiv({ cls: "sc-dash-bar-fill" }).setCssStyles({ width: `${(100 * count) / maxH}%` });
+			row.createSpan({ cls: "sc-dash-level-count", text: n(count) });
+			const pick = () => {
+				this.headingLevel = level;
+				this.setLayout("grid");
+			};
+			row.addEventListener("click", pick);
+			row.addEventListener("keydown", (evt) => {
+				if (evt.key === "Enter") pick();
+			});
+		}
+		if (!anyHeading) emptyNote(outline, "No headings yet.");
+
+		// Tags: a click shows the Grid filtered to the tag.
+		const tagBody = panel("Tags", "tag");
+		if (!sum.tags.length) emptyNote(tagBody, "No #tags in this note.");
+		const chips = tagBody.createDiv({ cls: "sc-dash-tags" });
+		for (const [tag, count] of sum.tags.slice(0, 30)) {
+			const chip = chips.createEl("button", { cls: "sc-dash-tag" });
+			chip.createSpan({ text: `#${tag}` });
+			chip.createSpan({ cls: "sc-dash-tag-count", text: n(count) });
+			chip.setAttr("aria-label", `Show the cards with #${tag}`);
+			chip.addEventListener("click", () => {
+				this.filterQuery = `#${tag}`;
+				this.setLayout("grid");
+			});
+		}
+		if (sum.tags.length > 30) tagBody.createDiv({ cls: "sc-dash-more", text: `and ${sum.tags.length - 30} more` });
+
+		// Dates: the span of dated cards, the streak, and today's card.
+		if (sum.dates) {
+			const d = sum.dates;
+			const body = panel("Days", "calendar-days");
+			const facts = body.createDiv({ cls: "sc-dash-facts" });
+			const fact = (label: string, value: string) => {
+				facts.createDiv({ cls: "sc-dash-fact-label", text: label });
+				facts.createDiv({ cls: "sc-dash-fact-value", text: value });
+			};
+			fact("First day", d.first);
+			fact("Last day", d.last);
+			fact("Days with cards", n(d.count));
+			fact("Current streak", plural(d.current, "day", "days"));
+			fact("Longest streak", plural(d.longest, "day", "days"));
+			const actions = body.createDiv({ cls: "sc-dash-actions" });
+			const todayBtn = actions.createEl("button", { cls: "mod-cta", text: d.todayLine !== null ? "Open today's card" : "Create today's card" });
+			todayBtn.addEventListener("click", () => {
+				if (d.todayLine !== null) reveal(d.todayLine);
+				else this.promptCreateDateCard(todayIso);
+			});
+			actions.createEl("button", { text: "Heatmap" }).addEventListener("click", () => this.setLayout("heatmap"));
+			actions.createEl("button", { text: "Calendar" }).addEventListener("click", () => this.setLayout("calendar"));
+		}
+
+		this.rememberView();
+		this.syncLeafTitle();
+	}
+
+	/** One task row on the Dashboard: a checkbox that ticks it in the note, its text
+	 * (a click opens the note at it), and its due date and card underneath. */
+	private dashTaskRow(
+		parent: HTMLElement,
+		file: TFile,
+		sections: Section[],
+		task: DashTask,
+		todayIso: string,
+		reveal: (line: number) => void,
+	): void {
+		const row = parent.createDiv({ cls: "sc-dash-task" });
+		const box = row.createEl("input", { type: "checkbox", cls: "task-list-item-checkbox" });
+		box.setAttr("aria-label", `Mark “${task.text}” done`);
+		const section = sections.find((s) => task.line >= s.startLine && task.line < s.endLine && !s.properties);
+		const nth = section ? taskLineIndexes(section.body.split("\n")).indexOf(task.line - bodyStartLine(section)) : -1;
+		if (!section || nth < 0) box.disabled = true;
+		box.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			if (!section || nth < 0) return;
+			void this.toggleNthTask(file, section, nth, box, row);
+		});
+		const text = row.createDiv({ cls: "sc-dash-task-text", attr: { role: "button", tabindex: "0" } });
+		text.createDiv({ cls: "sc-dash-task-title", text: task.text || "(empty task)" });
+		const meta: string[] = [];
+		if (task.due) meta.push(task.due === todayIso ? "today" : task.due);
+		if (task.section) meta.push(`in ${task.section}`);
+		text.createDiv({ cls: "sc-dash-task-meta", text: meta.join(" · ") });
+		text.addEventListener("click", () => reveal(task.line));
+		text.addEventListener("keydown", (evt) => {
+			if (evt.key === "Enter") reveal(task.line);
+		});
+	}
+
 	private renderHeatmapLayout(file: TFile, sections: Section[], format: string, detect: string): void {
 		this.clearAllCards();
 		this.clearHierarchy();
+		this.heatPreviewClose?.();
 		this.jumpDateWrap?.toggleClass("is-hidden", true);
 		this.starBtn?.toggleClass("is-hidden", true);
 		this.pendingEditHeading = null;
@@ -10121,34 +10388,117 @@ export class SectionCardsView extends ItemView {
 			return;
 		}
 
+		const options = this.plugin.getHeatmapOptions(file.path);
+		const tags = heatmapTags(days.values());
+		// A remembered tag the note no longer uses falls back to its most used one.
+		if (options.metric === "tag" && !tags.includes(options.tag)) options.tag = tags[0] ?? "";
+		const save = (next: Partial<typeof options>) => {
+			void this.plugin.setHeatmapOptions(file.path, { ...options, ...next }, this.viewSettings()).then(() => this.refresh());
+		};
+
 		const todayIso = mo().format("YYYY-MM-DD");
 		const isos = [...days.keys()].sort();
-		const streaks = heatmapStreaks(isos, todayIso);
-		let doneTotal = 0;
+		const firstIso = isos[0];
+		const lastIso = isos[isos.length - 1] > todayIso ? isos[isos.length - 1] : todayIso;
+		const anchor = this.heatAnchor ?? todayIso;
+		const { start: first, end: last } = heatRangeSpan(options.range, anchor, firstIso, lastIso);
+		const inSpan = isos.filter((iso) => iso >= first && iso <= last);
+		const value = (day: HeatDay) => heatValue(day, options.metric, options.tag);
+
+		let total = 0;
 		let openTotal = 0;
-		let maxDone = 1;
-		for (const day of days.values()) {
-			doneTotal += day.done;
+		let maxValue = 1;
+		let best: { iso: string; value: number } | null = null;
+		for (const iso of inSpan) {
+			const day = days.get(iso) as HeatDay;
+			const v = value(day);
+			total += v;
 			openTotal += day.open;
-			if (day.done > maxDone) maxDone = day.done;
+			if (v > maxValue) maxValue = v;
+			if (v > 0 && (!best || v > best.value)) best = { iso, value: v };
 		}
 
-		const wrap = this.gridEl.createDiv({ cls: "sc-heat-wrap" });
-		const stats = wrap.createDiv({ cls: "sc-heat-stats" });
-		const stat = (value: number, label: string) => {
-			const box = stats.createDiv({ cls: "sc-heat-stat" });
-			box.createDiv({ cls: "sc-heat-stat-value", text: String(value) });
-			box.createDiv({ cls: "sc-heat-stat-label", text: label });
-		};
-		stat(streaks.current, "day streak");
-		stat(streaks.longest, "longest streak");
-		stat(days.size, days.size === 1 ? "day with a card" : "days with cards");
-		stat(doneTotal, doneTotal === 1 ? "task done" : "tasks done");
-		if (openTotal) stat(openTotal, "still open");
+		const wrap = this.gridEl.createDiv({ cls: `sc-heat-wrap is-range-${options.range}` });
 
-		// Week columns run from the first card's week through today's (or the last
-		// card's, for notes that reach into the future). Same week-start rule as the
-		// Calendar: the setting first, the locale otherwise.
+		// Controls: the span (with arrows through its periods), then what shades a day.
+		const controls = wrap.createDiv({ cls: "sc-heat-controls" });
+		const ranges = controls.createDiv({ cls: "sc-heat-ranges", attr: { role: "group", "aria-label": "Heatmap span" } });
+		for (const [range, label] of HEAT_RANGE_OPTIONS) {
+			const btn = ranges.createEl("button", { cls: "sc-heat-range", text: label });
+			btn.toggleClass("is-active", range === options.range);
+			btn.setAttr("aria-pressed", String(range === options.range));
+			btn.addEventListener("click", () => {
+				if (range === options.range) return;
+				this.heatAnchor = null; // a new span opens on the period holding today
+				save({ range });
+			});
+		}
+		if (options.range !== "all") {
+			const nav = controls.createDiv({ cls: "sc-heat-nav" });
+			const step = (delta: number) => {
+				this.heatAnchor = shiftHeatAnchor(anchor, options.range, delta);
+				void this.refresh();
+			};
+			const back = nav.createEl("button", { cls: "clickable-icon sc-heat-step", attr: { "aria-label": "Previous" } });
+			fastIcon(back, "chevron-left");
+			back.addEventListener("click", () => step(-1));
+			nav.createSpan({ cls: "sc-heat-period", text: heatRangeLabel(options.range, anchor) });
+			const fwd = nav.createEl("button", { cls: "clickable-icon sc-heat-step", attr: { "aria-label": "Next" } });
+			fastIcon(fwd, "chevron-right");
+			fwd.addEventListener("click", () => step(1));
+			const { start: todayStart } = heatRangeSpan(options.range, todayIso, firstIso, lastIso);
+			if (todayStart !== first) {
+				const now = nav.createEl("button", { cls: "sc-heat-today", text: "Today" });
+				now.addEventListener("click", () => {
+					this.heatAnchor = null;
+					void this.refresh();
+				});
+			}
+		}
+		const metricWrap = controls.createDiv({ cls: "sc-heat-metric" });
+		const metricSelect = metricWrap.createEl("select", { cls: "dropdown", attr: { "aria-label": "What shades a day" } });
+		for (const [metric, label] of HEAT_METRIC_OPTIONS) {
+			if (metric === "tag" && !tags.length) continue;
+			metricSelect.createEl("option", { value: metric, text: label });
+		}
+		metricSelect.value = options.metric === "tag" && !tags.length ? "done" : options.metric;
+		metricSelect.addEventListener("change", () => save({ metric: metricSelect.value as HeatMetric, tag: options.tag || tags[0] || "" }));
+		if (options.metric === "tag" && tags.length) {
+			const tagSelect = metricWrap.createEl("select", { cls: "dropdown", attr: { "aria-label": "Tag" } });
+			for (const tag of tags) tagSelect.createEl("option", { value: tag, text: `#${tag}` });
+			tagSelect.value = options.tag;
+			tagSelect.addEventListener("change", () => save({ tag: tagSelect.value }));
+		}
+
+		// Stats for the span on show; the current streak is always as of today.
+		const metricNoun = (n: number): string => {
+			if (options.metric === "words") return n === 1 ? "word" : "words";
+			if (options.metric === "tag") return `× #${options.tag}`;
+			if (options.metric === "tasks") return n === 1 ? "task" : "tasks";
+			return n === 1 ? "task done" : "tasks done";
+		};
+		const stats = wrap.createDiv({ cls: "sc-heat-stats" });
+		const stat = (shown: string, label: string, hint?: string) => {
+			const box = stats.createDiv({ cls: "sc-heat-stat" });
+			box.createDiv({ cls: "sc-heat-stat-value", text: shown });
+			box.createDiv({ cls: "sc-heat-stat-label", text: label });
+			if (hint) box.setAttr("title", hint);
+		};
+		const streakAll = heatmapStreaks(isos, todayIso);
+		const streakSpan = heatmapStreaks(inSpan, todayIso);
+		stat(String(streakAll.current), "day streak");
+		stat(String(streakSpan.longest), options.range === "all" ? "longest streak" : "longest in span");
+		stat(String(inSpan.length), inSpan.length === 1 ? "day with a card" : "days with cards");
+		stat(total.toLocaleString(), metricNoun(total));
+		if (inSpan.length) {
+			const avg = total / inSpan.length;
+			stat(avg >= 10 ? String(Math.round(avg)) : avg.toFixed(1), "per day with a card");
+		}
+		if (best) stat(best.value.toLocaleString(), "best day", `${best.iso}: ${best.value.toLocaleString()} ${metricNoun(best.value)}`);
+		if (openTotal && (options.metric === "done" || options.metric === "tasks")) stat(String(openTotal), "still open");
+
+		// Week columns from the span's first week through its last. Same week-start
+		// rule as the Calendar: the setting first, the locale otherwise.
 		const locale = moment as unknown as {
 			weekdaysShort: (localeSorted: boolean) => string[];
 			localeData: () => { firstDayOfWeek: () => number };
@@ -10157,9 +10507,6 @@ export class SectionCardsView extends ItemView {
 		const firstDow =
 			weekStartSetting === "sunday" ? 0 : weekStartSetting === "monday" ? 1 : locale.localeData().firstDayOfWeek();
 		const names = locale.weekdaysShort(false);
-
-		const first = isos[0];
-		const last = isos[isos.length - 1] > todayIso ? isos[isos.length - 1] : todayIso;
 		let cursor = first;
 		while (new Date(`${cursor}T00:00:00Z`).getUTCDay() !== firstDow) cursor = shiftIso(cursor, -1);
 
@@ -10167,9 +10514,10 @@ export class SectionCardsView extends ItemView {
 		const graph = scroll.createDiv({ cls: "sc-heat-graph" });
 		const dowCol = graph.createDiv({ cls: "sc-heat-week sc-heat-dows" });
 		dowCol.createDiv({ cls: "sc-heat-mlabel" });
+		// The bigger cells of a month or quarter have room for every weekday's name.
+		const everyName = options.range === "month" || options.range === "quarter";
 		for (let i = 0; i < 7; i++) {
-			// Every other name keeps the column legible without crowding it.
-			dowCol.createDiv({ cls: "sc-heat-dow", text: i % 2 === 1 ? names[(firstDow + i) % 7] : "" });
+			dowCol.createDiv({ cls: "sc-heat-dow", text: everyName || i % 2 === 1 ? names[(firstDow + i) % 7] : "" });
 		}
 
 		let lastMonth = "";
@@ -10189,18 +10537,23 @@ export class SectionCardsView extends ItemView {
 					continue;
 				}
 				const day = days.get(iso);
-				const level = !day ? 0 : day.done === 0 ? 1 : 1 + Math.ceil((3 * day.done) / maxDone);
-				cell.addClass(`lv${level}`);
+				const v = day ? value(day) : 0;
+				cell.addClass(`lv${heatLevel(day, v, maxValue)}`);
 				if (iso === todayIso) cell.addClass("is-today");
+				if (iso > todayIso && !day) cell.addClass("is-future");
+				if (options.range === "month") cell.createSpan({ cls: "sc-heat-daynum", text: String(Number(iso.slice(8))) });
 				const summary = day
-					? `${iso} — ${day.done} done, ${day.open} open`
+					? `${iso} — ${day.done} done, ${day.open} open, ${day.words} ${day.words === 1 ? "word" : "words"}` +
+						(options.metric === "tag" ? `, ${v} × #${options.tag}` : "")
 					: `${iso} — no card (click to create one)`;
 				cell.setAttr("aria-label", summary);
-				cell.setAttr("title", summary);
 				cell.addEventListener("click", () => {
+					this.heatPreviewClose?.();
 					if (day) void this.plugin.revealSection(file, day.headingLine);
 					else this.promptCreateDateCard(iso);
 				});
+				if (day) this.bindHeatPreview(cell, file, day);
+				else cell.setAttr("title", summary);
 			}
 		}
 
@@ -10215,6 +10568,58 @@ export class SectionCardsView extends ItemView {
 
 		this.rememberView();
 		this.syncLeafTitle();
+	}
+
+	/**
+	 * Heatmap: hovering a day with a card floats a preview of its text beside the cell —
+	 * the tallies up top, the markdown rendered beneath. One at a time; leaving the cell
+	 * (or the layout) takes it down, and its rendered markdown unloads with it.
+	 */
+	private bindHeatPreview(cell: HTMLElement, file: TFile, day: HeatDay): void {
+		let timer: number | null = null;
+		const show = () => {
+			this.heatPreviewClose?.();
+			const doc = cell.doc;
+			const pop = doc.body.createDiv({ cls: "sc-heat-preview popover" });
+			const head = pop.createDiv({ cls: "sc-heat-preview-head" });
+			head.createDiv({ cls: "sc-heat-preview-title", text: day.title });
+			head.createDiv({
+				cls: "sc-heat-preview-meta",
+				text: `${day.done} done · ${day.open} open · ${day.words.toLocaleString()} ${day.words === 1 ? "word" : "words"}`,
+			});
+			const body = pop.createDiv({ cls: "sc-heat-preview-body markdown-rendered" });
+			const scope = new Component();
+			this.addChild(scope);
+			const text = day.body.trim();
+			if (text) void MarkdownRenderer.render(this.app, bodyForRender(text), body, file.path, scope);
+			else body.createDiv({ cls: "sc-heat-preview-empty", text: "Nothing written yet." });
+			// Beside the cell, flipped to the other side or above when it would run off-screen.
+			const rect = cell.getBoundingClientRect();
+			const win = cell.win;
+			const width = Math.min(340, win.innerWidth - 16);
+			let left = rect.right + 8;
+			if (left + width > win.innerWidth - 8) left = Math.max(8, rect.left - width - 8);
+			pop.setCssStyles({ left: `${left}px`, top: `${Math.max(8, rect.top - 8)}px`, width: `${width}px` });
+			const fit = () => {
+				const h = pop.offsetHeight;
+				if (rect.top - 8 + h > win.innerHeight - 8) pop.setCssStyles({ top: `${Math.max(8, win.innerHeight - 8 - h)}px` });
+			};
+			win.requestAnimationFrame(fit);
+			this.heatPreviewClose = () => {
+				this.removeChild(scope);
+				pop.remove();
+				this.heatPreviewClose = null;
+			};
+		};
+		cell.addEventListener("mouseenter", () => {
+			if (timer !== null) cell.win.clearTimeout(timer);
+			timer = cell.win.setTimeout(show, 300);
+		});
+		cell.addEventListener("mouseleave", () => {
+			if (timer !== null) cell.win.clearTimeout(timer);
+			timer = null;
+			this.heatPreviewClose?.();
+		});
 	}
 
 	/** Apply the zoom factor: cards, extent marker, preview and dots all ride the var. */
@@ -11441,8 +11846,29 @@ export class SectionCardsView extends ItemView {
 
 		let settled = false;
 		let autosaveRun: Promise<void> | null = null;
-		const finish = async (save: boolean) => {
+		// While the changed-elsewhere question is open, another finish (a refresh's
+		// save-on-leave) waits on that answer instead of asking twice.
+		let conflictAsk: Promise<void> | null = null;
+		const finish = async (save: boolean, force = false): Promise<void> => {
 			if (settled) return;
+			if (conflictAsk) return conflictAsk;
+			// Saving over a card that changed on disk since the editor opened would
+			// silently drop those changes: ask first.
+			if (save && !force) {
+				if (autosaveRun) await autosaveRun.catch(() => {});
+				if (settled) return;
+				if (toRaw(readValue()) !== currentRaw() && (await sectionChangedOnDisk(this.app, file, this.headingLevel, section))) {
+					if (settled) return;
+					conflictAsk = (async () => {
+						const choice = await askEditConflict(this.app, section.title || "(untitled)", true);
+						conflictAsk = null;
+						if (settled) return;
+						if (choice === "keep") refocus();
+						else await finish(choice === "overwrite", true);
+					})();
+					return conflictAsk;
+				}
+			}
 			settled = true;
 			if (this.autosaveTimer !== null) {
 				window.clearInterval(this.autosaveTimer);
@@ -11535,11 +11961,28 @@ export class SectionCardsView extends ItemView {
 		// the editor, so a card left in edit mode can't lose more than one interval of
 		// work. Refreshes are already suppressed while editing, so the write is invisible
 		// to this view until the editor settles.
-		const autosave = async () => {
+		// A card changed elsewhere meanwhile isn't autosaved over: the timer skips it
+		// (saying so once), and the final save asks. Closing the view asks right away,
+		// since there's no editor left to come back to.
+		let conflictNoticed = false;
+		const autosave = async (closing = false) => {
 			if (settled) return;
 			const edited = toRaw(readValue());
 			if (edited === trimTrailingBlankLines(section.raw)) return;
-			if (!(await writeSection(this.app, file, this.headingLevel, section, edited))) return;
+			let result = await writeSectionChecked(this.app, file, this.headingLevel, section, edited);
+			if (result === "conflict") {
+				if (!closing) {
+					if (!conflictNoticed) {
+						conflictNoticed = true;
+						new Notice(`“${section.title}” changed elsewhere while you were editing — autosave is paused for it. You'll be asked when you save.`, 8000);
+					}
+					return;
+				}
+				const choice = await askEditConflict(this.app, section.title || "(untitled)", false);
+				if (choice !== "overwrite") return;
+				result = await writeSectionChecked(this.app, file, this.headingLevel, section, edited, true);
+			}
+			if (result !== "ok") return;
 			section = sectionFromEdited(section, edited);
 			if (!settled) this.editingKey = section.headingRaw;
 		};

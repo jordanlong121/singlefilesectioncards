@@ -38,12 +38,16 @@ If this plugin is useful to you, you can support its development:
 
 <a href="https://buymeacoffee.com/zippydo"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="42"></a>
 
-## New in 2.4.0
+## New in 2.5.0
 
-**New layouts!** **Table** lays the whole note out as a table, every heading level at once,
-with each heading's text on one line (or wrapped). **Tree** draws the same outline as nodes branching to the right, with folding and
-zoom. **Binder** is the Rolodex with its tabs down the right edge, colored like their cards.
-See [Table](#table), [Tree](#tree), and [Binder](#binder).
+**A Dashboard layout** shows the note at a glance: its cards, tasks done and due, tags,
+links, and days, with overdue and due-soon tasks you can tick off in place. **The Heatmap**
+can now show one year, quarter, or month, shade days by tasks, words, or a `#tag`, and preview
+a day's text on hover. See [Dashboard](#dashboard) and [Heatmap](#heatmap).
+
+**Safer saves.** If a card you're editing is changed somewhere else meanwhile — by sync,
+another pane, another app, or an AI agent — saving now warns you instead of quietly replacing
+those changes: keep editing, discard your edits, or overwrite.
 
 ## What it does
 
@@ -227,10 +231,34 @@ card.
 
 Hover a day and an ↗ appears in its top corner: it opens the note at that day's heading.
 
+### Dashboard
+
+The note at a glance. Tiles for its cards, open and done tasks, overdue and due-today tasks,
+starred cards, tags, links, and images, with a progress bar for tasks done. Below them:
+
+- **Needs attention** — overdue tasks, tasks due today, and tasks due in the next seven
+  days (Tasks' `📅` dates or a `[due:: …]` field). Tick one off right there; click its text
+  to open the note at that line.
+- **Most open tasks** and **Longest cards** — the busiest cards, ranked.
+- **Outline** — how many headings each level has; click a level to see it as cards.
+- **Tags** — every `#tag` with its count; click one to see the Grid filtered to it.
+- **Days** (dated notes) — the first and last day, days with cards, the current and longest
+  streak, and a button to open or create today's card.
+
 ### Heatmap
 
-A year-at-a-glance graph of the dated cards, shaded by tasks done, with streak stats
-above. Click a day to open (or create) its card. Needs date headings.
+A year-at-a-glance graph of the dated cards, with streak stats above. Click a day to open
+(or create) its card; hover one to preview its text and tallies. Needs date headings.
+
+- **Span** — **All** (every dated day), or one **Year**, **Quarter**, or **Month**, with
+  arrows to step through them and **Today** to come back. A quarter gets bigger squares; a
+  month is laid out as a calendar with numbered days.
+- **Shade by** — **Tasks done**, **All tasks**, **Words written**, or **A tag** (pick which
+  `#tag`: a habit or a mood, say).
+- **Stats** follow the span and the shading: the current streak, the longest streak in the
+  span, days with cards, the total, the average per day, and the best day.
+
+The span, shading, and tag are remembered per note.
 
 ![Heatmap](screenshots/heatmap.png)
 

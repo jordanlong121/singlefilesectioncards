@@ -12,6 +12,8 @@ import {
 	SectionCardsSettings,
 	PerFileView,
 	ViewSettings,
+	type HeatRange,
+	type HeatMetric,
 	CARD_COLORS,
 	PaletteColor,
 	hexToTriplet,
@@ -42,6 +44,7 @@ export * from "./src/settings";
 export * from "./src/sections";
 export * from "./src/grouping";
 export * from "./src/dates";
+export * from "./src/dashboard";
 export * from "./src/blocks";
 export * from "./src/tasks";
 export * from "./src/writes";
@@ -933,6 +936,28 @@ export default class SectionCardsPlugin extends Plugin {
 		const current = this.settings.perFile[path] ?? { ...base };
 		if (collapsed) current.trayCollapsed = true;
 		else delete current.trayCollapsed;
+		this.settings.perFile[path] = current;
+		await this.saveSettings();
+	}
+
+	/** The Heatmap's remembered span, metric, and tag for a note. */
+	getHeatmapOptions(path: string): { range: HeatRange; metric: HeatMetric; tag: string } {
+		const entry = this.settings.perFile?.[path];
+		return { range: entry?.heatRange ?? "all", metric: entry?.heatMetric ?? "done", tag: entry?.heatTag ?? "" };
+	}
+
+	async setHeatmapOptions(
+		path: string,
+		options: { range: HeatRange; metric: HeatMetric; tag: string },
+		base: ViewSettings,
+	): Promise<void> {
+		if (!path) return;
+		this.settings.perFile = this.settings.perFile ?? {};
+		const current = this.settings.perFile[path] ?? { ...base };
+		current.heatRange = options.range;
+		current.heatMetric = options.metric;
+		if (options.tag) current.heatTag = options.tag;
+		else delete current.heatTag;
 		this.settings.perFile[path] = current;
 		await this.saveSettings();
 	}

@@ -421,6 +421,70 @@ export class UnsavedChangesModal extends Modal {
 	}
 }
 
+/**
+ * A card being edited changed on disk since its editor opened — Sync, another pane,
+ * another app. Saving would replace those changes, so ask: overwrite them with this
+ * edit, drop this edit and keep what's on disk, or go back to the editor (where the
+ * text can be copied). `canKeep` is false when the editor is already gone (the view
+ * is closing); closing the dialog any other way counts as "keep" (or "discard"
+ * without an editor to keep), so nothing is overwritten by accident.
+ */
+export class EditConflictModal extends Modal {
+	private decided = false;
+
+	constructor(
+		app: App,
+		private readonly cardTitle: string,
+		private readonly canKeep: boolean,
+		private readonly onChoice: (choice: "overwrite" | "discard" | "keep") => void,
+	) {
+		super(app);
+	}
+
+	private choose(choice: "overwrite" | "discard" | "keep"): void {
+		if (this.decided) return;
+		this.decided = true;
+		this.close();
+		this.onChoice(choice);
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.createEl("h3", { text: "This card changed elsewhere" });
+		contentEl.createEl("p", {
+			text:
+				`“${this.cardTitle}” was changed outside this editor after you started editing it — ` +
+				"by sync, another pane, or another app. Saving your version will replace those changes.",
+		});
+		if (this.canKeep) {
+			contentEl.createEl("p", {
+				cls: "setting-item-description",
+				text: "To merge by hand, keep editing, copy your text, then discard and edit the card again.",
+			});
+		}
+		const setting = new Setting(contentEl);
+		if (this.canKeep) setting.addButton((b) => b.setButtonText("Keep editing").onClick(() => this.choose("keep")));
+		setting
+			.addButton((b) => b.setButtonText("Discard my edits").onClick(() => this.choose("discard")))
+			.addButton((b) => b.setButtonText("Overwrite").setDestructive().onClick(() => this.choose("overwrite")));
+		// Enter takes the first, safest choice — never the overwrite.
+		setting.controlEl.querySelector("button")?.focus();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+		if (!this.decided) {
+			this.decided = true;
+			this.onChoice(this.canKeep ? "keep" : "discard");
+		}
+	}
+}
+
+/** Ask EditConflictModal's question and wait for the answer. */
+export function askEditConflict(app: App, cardTitle: string, canKeep: boolean): Promise<"overwrite" | "discard" | "keep"> {
+	return new Promise((resolve) => new EditConflictModal(app, cardTitle, canKeep, resolve).open());
+}
+
 /** A generic confirmation: heading, one paragraph, Cancel + one action button. */
 export class ConfirmActionModal extends Modal {
 	private readonly title: string;

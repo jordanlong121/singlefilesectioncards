@@ -4815,6 +4815,170 @@ body.is-mobile .sfsc-library-btn {
 	cursor: default;
 }
 
+/* Span buttons, period arrows, and the metric picker above the stats. */
+.sc-heat-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 14px;
+	margin-bottom: 12px;
+}
+
+.sc-heat-ranges {
+	display: inline-flex;
+	border: 1px solid var(--sc-line);
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+.sc-heat-ranges .sc-heat-range {
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+	background: transparent;
+	padding: 4px 10px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.sc-heat-ranges .sc-heat-range + .sc-heat-range {
+	border-left: 1px solid var(--sc-line);
+}
+
+.sc-heat-ranges .sc-heat-range.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.sc-heat-nav {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.sc-heat-period {
+	min-width: 7.5em;
+	text-align: center;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.sc-heat-today {
+	font-size: var(--font-ui-smaller);
+	padding: 2px 8px;
+}
+
+.sc-heat-metric {
+	display: inline-flex;
+	gap: 6px;
+	margin-left: auto;
+}
+
+/* A quarter or a month has room for bigger cells; a month numbers its days. */
+.sc-heat-wrap.is-range-quarter .sc-heat-graph .sc-heat-cell {
+	width: 24px;
+	height: 24px;
+}
+
+.sc-heat-wrap.is-range-quarter .sc-heat-dow {
+	height: 24px;
+	line-height: 24px;
+}
+
+.sc-heat-wrap.is-range-month .sc-heat-graph .sc-heat-cell {
+	width: 44px;
+	height: 44px;
+	border-radius: 6px;
+	position: relative;
+}
+
+.sc-heat-wrap.is-range-month .sc-heat-graph,
+.sc-heat-wrap.is-range-month .sc-heat-week,
+.sc-heat-wrap.is-range-quarter .sc-heat-graph,
+.sc-heat-wrap.is-range-quarter .sc-heat-week {
+	gap: 5px;
+}
+
+/* A month reads as a calendar: each week a row, the weekday names a header row. */
+.sc-heat-wrap.is-range-month .sc-heat-graph {
+	flex-direction: column;
+}
+
+.sc-heat-wrap.is-range-month .sc-heat-week {
+	flex-direction: row;
+}
+
+.sc-heat-wrap.is-range-month .sc-heat-mlabel {
+	display: none;
+}
+
+.sc-heat-wrap.is-range-month .sc-heat-dows {
+	margin: 0 0 2px;
+}
+
+.sc-heat-wrap.is-range-month .sc-heat-dow {
+	width: 44px;
+	height: auto;
+	line-height: 1.6;
+	text-align: center;
+}
+
+.sc-heat-daynum {
+	position: absolute;
+	top: 3px;
+	left: 5px;
+	font-size: 11px;
+	color: var(--text-muted);
+}
+
+.sc-heat-cell.lv3 .sc-heat-daynum,
+.sc-heat-cell.lv4 .sc-heat-daynum {
+	color: var(--text-on-accent);
+}
+
+.sc-heat-cell.is-future {
+	opacity: 0.45;
+}
+
+/* The hover preview: a day's tallies over its rendered text. */
+.sc-heat-preview {
+	position: fixed;
+	z-index: var(--layer-popover);
+	max-height: min(360px, 70vh);
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	padding: 0;
+	pointer-events: none;
+}
+
+.sc-heat-preview-head {
+	padding: 8px 12px 6px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.sc-heat-preview-title {
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.sc-heat-preview-meta {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.sc-heat-preview-body {
+	padding: 4px 12px 8px;
+	overflow: hidden;
+	font-size: var(--font-ui-small);
+	mask-image: linear-gradient(to bottom, black 85%, transparent);
+}
+
+.sc-heat-preview-empty {
+	padding: 6px 0;
+	color: var(--text-faint);
+}
+
 /* ---------- Links canvas: live page previews ---------- */
 
 /* A link tile stacks its title bar over the page frame. */
@@ -6425,4 +6589,324 @@ body.is-phone .section-cards-label {
 	margin-top: 10px;
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
+}
+
+/* ---------- Dashboard: the note at a glance ---------- */
+
+.is-layout-dashboard .section-cards-grid {
+	display: block;
+	overflow: auto;
+	padding: var(--sc-pad);
+}
+
+/* The card level still says what counts as a card; sorting, grouping, and filtering
+   a wall that isn't there don't apply. */
+.is-layout-dashboard .section-cards-filter,
+.is-layout-dashboard .section-cards-sort-control,
+.is-layout-dashboard .section-cards-group-control,
+.is-layout-dashboard .section-cards-mode-control,
+.is-layout-dashboard .section-cards-pinned,
+.is-layout-dashboard .section-cards-datehide-btn {
+	display: none;
+}
+
+.sc-dash {
+	max-width: 1100px;
+	margin: 8px auto 24px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.sc-dash-title {
+	font-size: 1.5em;
+	font-weight: 700;
+	color: var(--text-normal);
+	line-height: 1.25;
+	overflow-wrap: anywhere;
+}
+
+.sc-dash-sub {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.sc-dash-tiles {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+	gap: 10px;
+}
+
+.sc-dash-tile {
+	padding: 10px 12px;
+	border: 1px solid var(--sc-line);
+	border-radius: 8px;
+	background-color: var(--sc-surface);
+}
+
+.sc-dash-tile.is-clickable {
+	cursor: pointer;
+}
+
+.sc-dash-tile.is-clickable:hover {
+	border-color: var(--interactive-accent);
+}
+
+.sc-dash-tile-value {
+	font-size: 1.6em;
+	font-weight: 700;
+	line-height: 1.2;
+	color: var(--text-normal);
+	font-variant-numeric: tabular-nums;
+}
+
+.sc-dash-tile-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.sc-dash-tile.is-warn .sc-dash-tile-value {
+	color: var(--text-error);
+}
+
+.sc-dash-tile.is-good .sc-dash-tile-value {
+	color: var(--text-accent);
+}
+
+.sc-dash-progress-label {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 4px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.sc-dash-progress-pct {
+	font-variant-numeric: tabular-nums;
+}
+
+.sc-dash-bar {
+	height: 8px;
+	border-radius: 4px;
+	background-color: rgba(var(--mono-rgb-100), 0.08);
+	overflow: hidden;
+}
+
+.sc-dash-bar.is-thin {
+	height: 4px;
+	border-radius: 2px;
+}
+
+.sc-dash-bar-fill {
+	height: 100%;
+	border-radius: inherit;
+	background-color: var(--interactive-accent);
+}
+
+.sc-dash-panels {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+	gap: 12px;
+	align-items: start;
+}
+
+.sc-dash-panel {
+	border: 1px solid var(--sc-line);
+	border-radius: 8px;
+	background-color: var(--sc-surface);
+	min-width: 0;
+}
+
+.sc-dash-panel.is-wide {
+	grid-column: 1 / -1;
+}
+
+.sc-dash-panel-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--sc-line);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.sc-dash-panel-icon {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+
+.sc-dash-panel-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+.sc-dash-panel-body {
+	padding: 8px 12px 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.sc-dash-empty,
+.sc-dash-more {
+	font-size: var(--font-ui-small);
+	color: var(--text-faint);
+}
+
+.sc-dash-group {
+	margin-top: 4px;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+}
+
+.sc-dash-group.is-warn {
+	color: var(--text-error);
+}
+
+.sc-dash-group.is-good {
+	color: var(--text-accent);
+}
+
+.sc-dash-task {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+}
+
+.sc-dash-task input[type="checkbox"] {
+	margin-top: 3px;
+	flex: 0 0 auto;
+}
+
+.sc-dash-task-text {
+	min-width: 0;
+	cursor: pointer;
+}
+
+.sc-dash-task-text:hover .sc-dash-task-title {
+	color: var(--text-accent);
+}
+
+.sc-dash-task-title {
+	color: var(--text-normal);
+	overflow-wrap: anywhere;
+}
+
+.sc-dash-task-meta {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.sc-dash-task.is-toggling {
+	opacity: 0.5;
+}
+
+.sc-dash-rank,
+.sc-dash-level {
+	cursor: pointer;
+	border-radius: 4px;
+	padding: 2px 4px;
+	margin: 0 -4px;
+}
+
+.sc-dash-rank:hover,
+.sc-dash-level:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.sc-dash-rank-top {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 3px;
+	font-size: var(--font-ui-small);
+}
+
+.sc-dash-rank-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-normal);
+}
+
+.sc-dash-rank-value {
+	flex: 0 0 auto;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.sc-dash-level {
+	display: grid;
+	grid-template-columns: 2.2em 1fr 3em;
+	align-items: center;
+	gap: 8px;
+	font-size: var(--font-ui-small);
+}
+
+.sc-dash-level.is-current .sc-dash-level-name {
+	color: var(--text-accent);
+	font-weight: 700;
+}
+
+.sc-dash-level-name {
+	color: var(--text-muted);
+}
+
+.sc-dash-level-count {
+	text-align: right;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.sc-dash-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.sc-dash-tags .sc-dash-tag {
+	display: inline-flex;
+	gap: 6px;
+	padding: 2px 8px;
+	height: auto;
+	border-radius: 999px;
+	font-size: var(--font-ui-small);
+	color: var(--tag-color, var(--text-accent));
+	background-color: var(--tag-background, rgba(var(--mono-rgb-100), 0.06));
+	box-shadow: none;
+}
+
+.sc-dash-tag-count {
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.sc-dash-facts {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 4px 12px;
+	font-size: var(--font-ui-small);
+}
+
+.sc-dash-fact-label {
+	color: var(--text-muted);
+}
+
+.sc-dash-fact-value {
+	color: var(--text-normal);
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.sc-dash-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 6px;
 }
