@@ -132,7 +132,9 @@ export function summarizeNote(
 	const { words, tags } = bodyTextStats(lines);
 	const content = lines.join("\n");
 	const wikis = new Set<string>();
-	for (const m of content.matchAll(WIKILINK_RE)) wikis.add(m[1].trim().toLowerCase());
+	// An exec loop rather than matchAll: the latter is ES2020, past this project's lib.
+	WIKILINK_RE.lastIndex = 0;
+	for (let m = WIKILINK_RE.exec(content); m; m = WIKILINK_RE.exec(content)) wikis.add(m[1].trim().toLowerCase());
 
 	const ranked: DashSection[] = sections
 		.filter((s) => !s.properties)
