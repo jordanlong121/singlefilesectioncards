@@ -38,6 +38,7 @@ import { TextInputModal, NoteLibraryModal, ConfirmActionModal } from "./src/moda
 import { SectionCardsSettingTab } from "./src/settings-tab";
 import { StructuredNoteModal, StructuredSpec, specFormat, structuredNoteContent, structuredPlacements, structuredNotePath } from "./src/structured";
 import { SectionCardsView } from "./src/view";
+import { DashSidebarView, VIEW_TYPE_DASH_SIDEBAR } from "./src/dashsidebar";
 import { NoteHistory, setNoteRecorder } from "./src/history";
 
 export * from "./src/settings";
@@ -45,6 +46,8 @@ export * from "./src/sections";
 export * from "./src/grouping";
 export * from "./src/dates";
 export * from "./src/dashboard";
+export * from "./src/dashrender";
+export * from "./src/dashsidebar";
 export * from "./src/blocks";
 export * from "./src/tasks";
 export * from "./src/writes";
@@ -77,6 +80,7 @@ export default class SectionCardsPlugin extends Plugin {
 		addIcon(ROLODEX_ICON, ROLODEX_SVG);
 
 		this.registerView(VIEW_TYPE_SECTION_CARDS, (leaf) => new SectionCardsView(leaf, this));
+		this.registerView(VIEW_TYPE_DASH_SIDEBAR, (leaf) => new DashSidebarView(leaf));
 
 		this.addRibbonIcon(DECK_ICON, "Open section cards in a new tab", () => {
 			// Every click opens its own tab, even when one already shows the note.
@@ -89,6 +93,12 @@ export default class SectionCardsPlugin extends Plugin {
 			id: "open-section-cards",
 			name: "Open section cards (default note)",
 			callback: () => this.openCardsView(),
+		});
+
+		this.addCommand({
+			id: "toggle-dashboard-sidebar",
+			name: "Toggle the dashboard sidebar",
+			callback: () => void this.toggleDashSidebar(),
 		});
 
 		this.addCommand({
@@ -332,6 +342,14 @@ export default class SectionCardsPlugin extends Plugin {
 		// tabs come and go; removed again when the setting turns off.
 		this.app.workspace.onLayoutReady(() => this.syncNoteActions());
 		this.registerEvent(this.app.workspace.on("layout-change", () => this.syncNoteActions()));
+		// The toolbars' dashboard sidebar buttons follow the sidebar however it opens or closes.
+		this.registerEvent(
+			this.app.workspace.on("layout-change", () => {
+				for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SECTION_CARDS)) {
+					if (leaf.view instanceof SectionCardsView) leaf.view.syncDashSidebarButton();
+				}
+			}),
+		);
 
 		this.addSettingTab(new SectionCardsSettingTab(this.app, this));
 		this.applyBodyClasses();
@@ -1629,6 +1647,32 @@ export default class SectionCardsPlugin extends Plugin {
 			name: path.replace(/\.md$/, "").split("/").pop() ?? path,
 			pinned: this.settings.pinnedRecentFiles.includes(path),
 		}));
+	}
+
+	/** Whether a dashboard sidebar is open (it may sit in a collapsed sidebar). */
+	dashSidebarOpen(): boolean {
+		return this.app.workspace.getLeavesOfType(VIEW_TYPE_DASH_SIDEBAR).length > 0;
+	}
+
+	/** Open the dashboard sidebar in the right sidebar, or close it when it's showing. */
+	async toggleDashSidebar(): Promise<void> {
+		const ws = this.app.workspace;
+		const open = ws.getLeavesOfType(VIEW_TYPE_DASH_SIDEBAR);
+		if (open.length) {
+			for (const leaf of open) leaf.detach();
+		} else {
+			const leaf = ws.getRightLeaf(false);
+			if (!leaf) return;
+			await leaf.setViewState({ type: VIEW_TYPE_DASH_SIDEBAR, active: false });
+			await ws.revealLeaf(leaf);
+		}
+	}
+
+	/** A cards view just rendered: the dashboard sidebars following it redraw. */
+	dashSidebarsChanged(view: SectionCardsView): void {
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_DASH_SIDEBAR)) {
+			if (leaf.view instanceof DashSidebarView) leaf.view.viewChanged(view);
+		}
 	}
 
 	/** Re-render every open cards view, e.g. after a setting changes what they draw. */

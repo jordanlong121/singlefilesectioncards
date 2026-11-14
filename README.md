@@ -249,6 +249,13 @@ starred cards, tags, links, and images, with a progress bar for tasks done. Belo
 
 ![Dashboard](screenshots/dashboard.png)
 
+**The dashboard sidebar** puts the same panels in Obsidian's right sidebar, stacked in one
+column, beside whatever layout you're using. Open it with the toolbar's sidebar button or the
+**Toggle the dashboard sidebar** command. It follows the cards tab in front and redraws whenever
+the note changes — an edit in a card, a ticked task, a sync. Clicks work as on the Dashboard:
+a task or ranked card opens the note at that line, and a level or tag applies to the layout
+showing (filtering its cards in place where it has cards to filter).
+
 ### Heatmap
 
 A graph of the dated cards, a square a day, with stats above. Click a day to open
@@ -301,8 +308,9 @@ The canvas for the note's web links: placed tiles show a live page preview.
 
 ### Hierarchy & Dividers
 
-The toolbar's **View mode** toggle groups cards by the headings above the card level, in any
-layout except the Custom Grid canvas. **Hierarchy** adds drill-down columns on the left — click
+The toolbar's **View mode** toggle groups cards by the headings above the card level, on the
+wall layouts (Grid, Grid Aligned, Tight, Tasks Only, Vertical, and Horizontal). The
+toggle leaves the toolbar on the layouts that place cards themselves or draw the whole note. **Hierarchy** adds drill-down columns on the left — click
 a heading to see its branch, with card and open-task counts per row. **Dividers** keeps one
 wall, split by a collapsible bar per ancestor heading; the count at the bar's right end shows
 the group's size. In either mode, `,` and `.` step to the previous/next heading — switching the
