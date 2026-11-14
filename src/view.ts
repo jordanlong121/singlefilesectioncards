@@ -1158,6 +1158,14 @@ export class SectionCardsView extends ItemView {
 		// scroll position carried over from a wall layout, a scrollIntoView reaching past
 		// the inner scroller) would slide the toolbar up out of sight. Put it back.
 		this.registerDomEvent(this.contentEl, "scroll", () => this.pinPaneScroll());
+		// The tab's own box never scrolls — but scrollIntoView reaches past the pane to
+		// any ancestor that can, overflow hidden or not. The Calendar's jump to today
+		// slid the whole view up that way, toolbar and all, out of the tab. Undo it.
+		this.registerDomEvent(this.containerEl, "scroll", () => {
+			const leaf = this.containerEl;
+			if (leaf.scrollTop !== 0) leaf.scrollTop = 0;
+			if (leaf.scrollLeft !== 0) leaf.scrollLeft = 0;
+		});
 		// A narrower pane (a sidebar opening, a split) may no longer fit the compact bar.
 		const fit = new ResizeObserver(() => this.fitToolbar());
 		fit.observe(this.contentEl);

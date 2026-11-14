@@ -148,6 +148,34 @@ try {
 		if (wrong.length) throw new Error(JSON.stringify(seen));
 		return "on Tight and Grid only";
 	});
+	// The Calendar's jump to today once scrolled the tab's own box (scrollIntoView goes
+	// past the pane), sliding the toolbar out of the tab. Needs a note with today in it.
+	await check("Images → Calendar keeps the toolbar in the tab (today's card present)", async () => {
+		const path = "Smoke Calendar.md";
+		await ev(`(async () => { const m = window.moment; const lines = []; for (let i = -40; i <= 40; i++) { const d = m().add(i, "days"); lines.push("### " + d.format("YYYY-MM-DD, dddd"), "- [ ] task " + i, ""); } const f = app.vault.getFileByPath(${JSON.stringify(path)}); if (f) await app.vault.modify(f, lines.join("\\n")); else await app.vault.create(${JSON.stringify(path)}, lines.join("\\n")); return 1; })()`);
+		// Held by reference: the view's filePath changes once it shows the temporary note.
+		await ev(`(() => { window.__smokeCalView = ${V}; return 1; })()`);
+		const VC = `window.__smokeCalView`;
+		const seen = {};
+		const range0 = await ev(`${VC}.calendarRange`);
+		try {
+			await ev(`${VC}.navigateTo(${JSON.stringify(path)})`);
+			await sleep(1000);
+			for (const range of ["week", "2weeks", "month"]) {
+				await ev(`(() => { ${VC}.calendarRange = ${JSON.stringify(range)}; ${VC}.setLayout("images"); return 1; })()`);
+				await sleep(1300);
+				await ev(`(() => { ${VC}.setLayout("calendar"); return 1; })()`);
+				await sleep(1800);
+				seen[range] = await ev(`(() => { const v = ${VC}; const bar = v.contentEl.querySelector(".section-cards-toolbar").getBoundingClientRect().top; return { shift: Math.round(bar - v.containerEl.getBoundingClientRect().top), leafScroll: v.containerEl.scrollTop + v.containerEl.scrollLeft }; })()`);
+			}
+		} finally {
+			await ev(`(async () => { const v = ${VC}; v.calendarRange = ${JSON.stringify(range0)}; v.setLayout("grid"); await v.navigateTo(${JSON.stringify(NOTE)}); const f = app.vault.getFileByPath(${JSON.stringify(path)}); if (f) await app.vault.delete(f); return 1; })()`);
+			await sleep(900);
+		}
+		const bad = Object.entries(seen).filter(([, r]) => r.leafScroll !== 0 || r.shift < 0);
+		if (bad.length) throw new Error(JSON.stringify(seen));
+		return "week, two weeks, month: toolbar in place";
+	});
 	// ---- dashboard sidebar: opens beside any layout, follows edits, ticks, reveals, closes
 	await check("dashboard sidebar: opens from the toolbar beside the Grid", async () => {
 		await pickLayout("Grid");
@@ -206,6 +234,7 @@ try {
 	// Put the fixture back: original text, Grid at H3, no leftovers.
 	await ev(`app.vault.modify(app.vault.getFileByPath(${JSON.stringify(NOTE)}), ${JSON.stringify(original)})`);
 	await ev(`(async () => { const f = app.vault.getFileByPath("Smoke Kanban.md"); if (f) await app.vault.delete(f); return 1; })()`);
+	await ev(`(async () => { const f = app.vault.getFileByPath("Smoke Calendar.md"); if (f) await app.vault.delete(f); return 1; })()`);
 	await ev(`${P}.deleteSavedLayout(${JSON.stringify(NOTE)}, "Smoke layout")`);
 	if (savedPerFile && savedPerFile !== "null") await ev(`(async () => { ${P}.settings.perFile[${JSON.stringify(NOTE)}] = ${savedPerFile}; await ${P}.saveSettings(); return 1; })()`);
 	await closeModals();
