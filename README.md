@@ -38,7 +38,22 @@ If this plugin is useful to you, you can support its development:
 
 <a href="https://buymeacoffee.com/zippydo"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="42"></a>
 
-## New in 2.5.0
+## New in 2.5.2
+
+**A dashboard sidebar.** The Dashboard's panels — tiles, task progress, overdue and due-soon
+tasks, the busiest cards, the outline, and tags — stacked in Obsidian's right sidebar, beside
+whatever layout you're working in. It follows the cards tab in front and updates as the note
+changes. Tick tasks off right there, and click a task or card to jump to it in the note. Open it
+with the toolbar's sidebar button or the **Toggle the dashboard sidebar** command. See
+[Dashboard](#dashboard).
+
+![The dashboard sidebar beside the Grid: tiles, task progress, and overdue, due-today, and upcoming tasks in a narrow column](screenshots/dashboard-sidebar.png)
+
+Also in 2.5.2: the compact toolbar fits narrow panes (pickers drop their text before
+anything is cut off), the View mode picker shows only on the layouts it works with, and
+switching to the Calendar no longer pushes the toolbar out of the tab.
+
+### New in 2.5.0
 
 **A Dashboard layout** shows the note at a glance: its cards, tasks done and due, tags,
 links, and days, with overdue and due-soon tasks you can tick off in place. **The Heatmap**
