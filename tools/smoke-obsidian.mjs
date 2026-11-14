@@ -137,6 +137,70 @@ try {
 	await check("New note wizard creates a Kanban note", async () => { await ev(`app.commands.executeCommandById("single-file-section-cards:new-structured-note")`); await sleep(400); await ev(`(() => { const s = document.querySelector(".sfsc-structured-modal select"); s.value = "kanban"; s.dispatchEvent(new Event("change", { bubbles: true })); return 1; })()`); await sleep(200); await ev(`(() => { const i = [...document.querySelectorAll(".sfsc-structured-modal input[type=text]")][0]; i.value = "Smoke Kanban"; i.dispatchEvent(new Event("input", { bubbles: true })); return 1; })()`); await ev(`document.querySelector(".sfsc-structured-modal button.mod-cta").click()`); await sleep(1500); const text = await ev(`app.vault.getFileByPath("Smoke Kanban.md") ? app.vault.read(app.vault.getFileByPath("Smoke Kanban.md")) : null`); const view = await ev(`(() => { const l = app.workspace.getLeavesOfType("section-cards-view").find(l => l.view.filePath === "Smoke Kanban.md"); return l ? l.view.layout : null; })()`); await ev(`(async () => { const l = app.workspace.getLeavesOfType("section-cards-view").find(l => l.view.filePath === "Smoke Kanban.md"); l?.detach(); const f = app.vault.getFileByPath("Smoke Kanban.md"); if (f) await app.vault.delete(f); return 1; })()`); if (!text || !text.includes("## To do") || !text.includes("## Done") || !text.includes("*Work that")) throw new Error("content: " + (text ?? "none").slice(0, 80)); if (view !== "vertical") throw new Error("layout " + view); return "To do / In progress / Done with hints, opened in Vertical"; });
 	await check("Deck (D) shows tiles, D returns", async () => { await ev(`${P}.openCardsView(${JSON.stringify(NOTE)})`); await sleep(600); await click(".section-cards-grid, .sfsc-planner"); await key("d"); await sleep(700); const tiles = await ev(`document.querySelectorAll(".sfsc-deck-card").length`); const label = await ev(`document.querySelector(".section-cards-file-btn span")?.textContent`); await key("d"); await sleep(600); if (tiles < 1 || label !== "Choose a note…") throw new Error(`tiles ${tiles} label ${label}`); return `${tiles} tiles, picker reads "Choose a note…"`; });
 	await check("sticky window opens and closes", async () => { const h = await ev(`${V}.cardEntries[0].holder.section.headingRaw`); await ev(`${P}.openSticky(${JSON.stringify(NOTE)}, ${JSON.stringify(h)})`); await sleep(1500); const s = await ev(`app.workspace.getLeavesOfType("section-cards-view").filter(l => l.view.sticky).map(l => l.view.getDisplayText())`); await ev(`app.workspace.getLeavesOfType("section-cards-view").filter(l => l.view.sticky).forEach(l => l.detach())`); if (s.length !== 1) throw new Error("stickies: " + s.length); return s[0]; });
+	// ---- view mode picker: only on the layouts it acts on
+	await check("view mode picker leaves the toolbar where it can't apply", async () => {
+		const seen = {};
+		for (const label of ["Rolodex", "Calendar", "Custom Grid", "Table", "Dashboard", "Tight", "Grid"]) {
+			await pickLayout(label);
+			seen[label] = await ev(`!!${V}.contentEl.querySelector(".section-cards-mode-control")`);
+		}
+		const wrong = Object.entries(seen).filter(([l, on]) => on !== (l === "Tight" || l === "Grid"));
+		if (wrong.length) throw new Error(JSON.stringify(seen));
+		return "on Tight and Grid only";
+	});
+	// ---- dashboard sidebar: opens beside any layout, follows edits, ticks, reveals, closes
+	await check("dashboard sidebar: opens from the toolbar beside the Grid", async () => {
+		await pickLayout("Grid");
+		await click(".section-cards-dashside-btn");
+		await sleep(1000);
+		const r = await ev(`(() => { const s = document.querySelector(".sc-dash-sidebar"); return { title: s?.querySelector(".sc-dash-title")?.textContent, panels: s?.querySelectorAll(".sc-dash-panel").length ?? 0, active: document.querySelector(".section-cards-dashside-btn").classList.contains("is-active") }; })()`);
+		if (r.title !== NOTE.replace(/\.md$/, "") || r.panels < 4 || !r.active) throw new Error(JSON.stringify(r));
+		return `${r.panels} panels, button on`;
+	});
+	await check("dashboard sidebar: an edit on disk shows up, ticking writes the note", async () => {
+		await ev(`(async () => { const today = window.moment().format("YYYY-MM-DD"); await app.vault.process(app.vault.getFileByPath(${JSON.stringify(NOTE)}), (c) => c + "\\n- [ ] sidebar smoke 📅 " + today + "\\n"); return 1; })()`);
+		await sleep(1500);
+		const shown = await ev(`[...document.querySelectorAll(".sc-dash-sidebar .sc-dash-task-title")].some((t) => t.textContent === "sidebar smoke")`);
+		if (!shown) throw new Error("new task not in the sidebar");
+		await ev(`(() => { const row = [...document.querySelectorAll(".sc-dash-sidebar .sc-dash-task")].find((r) => r.textContent.includes("sidebar smoke")); row.querySelector("input").click(); return 1; })()`);
+		await sleep(1500);
+		const ticked = /- \[x\] sidebar smoke/.test(await noteText());
+		const gone = await ev(`![...document.querySelectorAll(".sc-dash-sidebar .sc-dash-task-title")].some((t) => t.textContent === "sidebar smoke")`);
+		await ev(`app.vault.modify(app.vault.getFileByPath(${JSON.stringify(NOTE)}), ${JSON.stringify(original)})`);
+		await sleep(800);
+		if (!ticked || !gone) throw new Error(`ticked ${ticked}, left the list ${gone}`);
+		return "appeared, ticked in the note, left Needs attention";
+	});
+	await check("dashboard sidebar: follows a layout switch and a level click", async () => {
+		await pickLayout("Tasks Only");
+		const title = await ev(`document.querySelector(".sc-dash-sidebar .sc-dash-title")?.textContent`);
+		const before = await ev(`${V}.headingLevel`);
+		await ev(`(() => { [...document.querySelectorAll(".sc-dash-sidebar .sc-dash-level")].find((r) => !r.classList.contains("is-current")).click(); return 1; })()`);
+		await sleep(1200);
+		const after = await ev(`[${V}.layout, ${V}.headingLevel, document.querySelector(".sc-dash-sidebar .sc-dash-level.is-current .sc-dash-level-name")?.textContent]`);
+		await ev(`${V}.changeHeadingLevel(${before})`);
+		await sleep(800);
+		if (!title || after[0] !== "tasks" || after[1] === before || after[2] !== "H" + after[1]) throw new Error(JSON.stringify({ title, before, after }));
+		return `kept Tasks Only, H${before} → H${after[1]}, sidebar marks it`;
+	});
+	await check("dashboard sidebar: a ranked card opens the note at its heading", async () => {
+		const want = await ev(`document.querySelector(".sc-dash-sidebar .sc-dash-rank-title")?.textContent`);
+		await ev(`(() => { document.querySelector(".sc-dash-sidebar .sc-dash-rank").click(); return 1; })()`);
+		await sleep(1200);
+		const got = await ev(`(() => { const v = app.workspace.activeLeaf.view; if (v.getViewType() !== "markdown") return null; const line = v.editor.getLine(v.editor.getCursor().line); v.leaf.detach(); return line; })()`);
+		await sleep(500);
+		if (!want || !got || !got.includes(want)) throw new Error(`${want} → ${got}`);
+		return got;
+	});
+	await check("dashboard sidebar: the toolbar button closes it", async () => {
+		await ev(`${P}.openCardsView(${JSON.stringify(NOTE)})`);
+		await sleep(600);
+		await click(".section-cards-dashside-btn");
+		await sleep(600);
+		const r = await ev(`[app.workspace.getLeavesOfType("section-cards-dashboard-sidebar").length, document.querySelector(".section-cards-dashside-btn").classList.contains("is-active")]`);
+		if (r[0] || r[1]) throw new Error(JSON.stringify(r));
+		return "closed, button off";
+	});
 	await check("no uncaught errors during the run", async () => { const errs = await ev(`window.__sfscErrors`); if (errs.length) throw new Error(errs.join(" | ")); return "clean"; });
 } finally {
 	// Put the fixture back: original text, Grid at H3, no leftovers.
@@ -145,6 +209,7 @@ try {
 	await ev(`${P}.deleteSavedLayout(${JSON.stringify(NOTE)}, "Smoke layout")`);
 	if (savedPerFile && savedPerFile !== "null") await ev(`(async () => { ${P}.settings.perFile[${JSON.stringify(NOTE)}] = ${savedPerFile}; await ${P}.saveSettings(); return 1; })()`);
 	await closeModals();
+	await ev(`(() => { app.workspace.getLeavesOfType("section-cards-dashboard-sidebar").forEach((l) => l.detach()); return 1; })()`);
 	await ev(`${P}.openCardsView(${JSON.stringify(NOTE)})`); await sleep(500);
 	await pickLayout("Grid").catch(() => {});
 	ws.close();

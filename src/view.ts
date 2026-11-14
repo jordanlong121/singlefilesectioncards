@@ -20,7 +20,7 @@ import {
 	type ViewStateResult,
 } from "obsidian";
 import { createEmbeddedEditor, type EmbeddedEditor } from "../editor-embed";
-import { summarizeNote, type DashTask, type DashSection } from "./dashboard";
+import { renderDashboard, type DashContext } from "./dashrender";
 import { fastIcon } from "./icons";
 import { GROUP_BY_ICONS, DECK_SORT_ICONS, LAYOUT_ICONS, DECK_BACKGROUND_KEY,
 	VIEW_TYPE_SECTION_CARDS,
@@ -705,6 +705,7 @@ export class SectionCardsView extends ItemView {
 	private levelOptionsShown = "";
 	/** The toolbar's filter box, so the Ctrl/⌘+F shortcut can focus it. */
 	private filterInput: HTMLInputElement | null = null;
+	private dashSideBtn: HTMLElement | null = null;
 	/** onOpen's deferred first render, until setState renders first (it usually does). */
 	private firstSyncPending = false;
 	/** The note the cards on the wall were built for; another note starts from none. */
@@ -1153,6 +1154,14 @@ export class SectionCardsView extends ItemView {
 		this.toolbarEl = this.contentEl.createDiv({ cls: "section-cards-toolbar" });
 		// Attached once here, not in buildToolbar — the bar element survives rebuilds.
 		this.toolbarEl.addEventListener("contextmenu", (evt) => this.openToolbarMenu(evt));
+		// The pane layouts keep the pane itself still: anything that scrolls it anyway (a
+		// scroll position carried over from a wall layout, a scrollIntoView reaching past
+		// the inner scroller) would slide the toolbar up out of sight. Put it back.
+		this.registerDomEvent(this.contentEl, "scroll", () => this.pinPaneScroll());
+		// A narrower pane (a sidebar opening, a split) may no longer fit the compact bar.
+		const fit = new ResizeObserver(() => this.fitToolbar());
+		fit.observe(this.contentEl);
+		this.register(() => fit.disconnect());
 		// A narrow pane clips the toolbar's right end (the compact bar pans rather than
 		// wrapping): the wheel over it scrolls it sideways, so every button stays reachable.
 		this.registerDomEvent(
@@ -1801,6 +1810,26 @@ export class SectionCardsView extends ItemView {
 		else this.contentEl.removeEventListener("wheel", this.wheelPanHandler);
 	}
 
+	/**
+	 * Whether the pane is a fixed column — toolbar on top, an inner box scrolling below
+	 * it (Rolodex, Binder, Day Planner, Table, Tree, and the Calendar's week and day
+	 * ranges). Their CSS hides the pane's overflow, but code can still scroll it.
+	 */
+	private isFixedPane(): boolean {
+		const c = this.contentEl;
+		if (c.hasClass("has-maximized-card")) return false; // its overlay tracks the scroll
+		return ["is-layout-rolodex", "is-layout-binder", "is-layout-planner", "is-layout-table", "is-layout-tree", "is-cal-week", "is-cal-2weeks", "is-cal-day"].some((cls) => c.hasClass(cls));
+	}
+
+	/** A fixed pane scrolled by anything is put back at the top, toolbar showing. */
+	private pinPaneScroll(): void {
+		const c = this.contentEl;
+		if ((c.scrollTop !== 0 || c.scrollLeft !== 0) && this.isFixedPane()) {
+			c.scrollTop = 0;
+			c.scrollLeft = 0;
+		}
+	}
+
 	/** The layout lives as a class on the view root so CSS can restyle grid *and* scrolling. */
 	private applyLayoutClass(): void {
 		this.contentEl.toggleClass("is-tray-collapsed", this.plugin.getTrayCollapsed(this.filePath));
@@ -1863,6 +1892,8 @@ export class SectionCardsView extends ItemView {
 			}
 		}
 		this.updateWheelPan();
+		// A wall layout's scroll position doesn't carry into a fixed pane.
+		this.pinPaneScroll();
 	}
 
 	async onClose(): Promise<void> {
@@ -5029,6 +5060,7 @@ export class SectionCardsView extends ItemView {
 				},
 			});
 			this.addHelpButton(right);
+			this.fitToolbar();
 			return;
 		}
 
@@ -5212,38 +5244,34 @@ export class SectionCardsView extends ItemView {
 		newBtn.setAttr("aria-label", "Create a new section in this note (N)");
 		newBtn.addEventListener("click", () => this.promptNewCard());
 
-		// View mode: a three-way toggle for how the wall is grouped by the headings
-		// above the card level — one flat wall, drill-down hierarchy columns, or a
-		// collapsible divider bar per heading. The grouped modes keep whatever layout
-		// the dropdown says; neither is available on the Custom Grid canvas.
 		// View mode: one flat wall, hierarchy columns, or divider bars — a picker like the
-		// others. Not on the layouts that place everything themselves.
-		const modeWrap = cluster.createDiv({ cls: "section-cards-control section-cards-mode-control" });
-		const modesOff = this.layoutOwnsPlacement();
-		const modeBtn = this.buildPicker(modeWrap, {
-			cls: "section-cards-mode-btn",
-			ariaLabel: "View mode (V cycles)",
-			buttonIcon: "layout-panel-left",
-			value: this.hierarchyActive() ? "hier" : this.sectionsActive() ? "sections" : "default",
-			columns: 3,
-			options: [
-				{ value: "default", label: "Default view", hint: "One flat wall of cards, ungrouped", icon: "layout-grid", fallback: "grid" },
-				{ value: "hier", label: "Hierarchy view", hint: "Hierarchy columns: drill into the headings above the card level (V cycles)", icon: "list-tree", fallback: "list" },
-				{ value: "sections", label: "Divider view", hint: "Dividers: group the cards under the heading above the card level (V cycles)", icon: "rows-3", fallback: "rows" },
-			],
-			onPick: (value) => {
-				if (this.layoutOwnsPlacement()) return;
-				this.hierarchyOn = value === "hier";
-				this.sectionsOn = value === "sections"; // never both groupers at once
-				this.rememberView();
-				this.applyLayoutClass();
-				this.buildToolbar(); // the picker reflects the state
-				void this.refresh().then(() => this.app.workspace.requestSaveLayout());
-			},
-		});
-		if (modesOff) {
-			modeBtn.toggleAttribute("disabled", true);
-			modeBtn.setAttr("aria-label", "View modes aren't available on the canvas layouts, the Calendar, the Rolodex, or the Day Planner");
+		// others. The grouped modes keep whatever layout the picker says. Left out
+		// entirely on the layouts it can't act on: the ones that place everything
+		// themselves (canvases, Calendar, Heatmap, Rolodex, Day Planner) and the ones
+		// that draw the whole note (Table, Tree, Dashboard).
+		if (!this.layoutOwnsPlacement() && !this.isWholeNoteLayout()) {
+			const modeWrap = cluster.createDiv({ cls: "section-cards-control section-cards-mode-control" });
+			this.buildPicker(modeWrap, {
+				cls: "section-cards-mode-btn",
+				ariaLabel: "View mode (V cycles)",
+				buttonIcon: "layout-panel-left",
+				value: this.hierarchyActive() ? "hier" : this.sectionsActive() ? "sections" : "default",
+				columns: 3,
+				options: [
+					{ value: "default", label: "Default view", hint: "One flat wall of cards, ungrouped", icon: "layout-grid", fallback: "grid" },
+					{ value: "hier", label: "Hierarchy view", hint: "Hierarchy columns: drill into the headings above the card level (V cycles)", icon: "list-tree", fallback: "list" },
+					{ value: "sections", label: "Divider view", hint: "Dividers: group the cards under the heading above the card level (V cycles)", icon: "rows-3", fallback: "rows" },
+				],
+				onPick: (value) => {
+					if (this.layoutOwnsPlacement()) return;
+					this.hierarchyOn = value === "hier";
+					this.sectionsOn = value === "sections"; // never both groupers at once
+					this.rememberView();
+					this.applyLayoutClass();
+					this.buildToolbar(); // the picker reflects the state
+					void this.refresh().then(() => this.app.workspace.requestSaveLayout());
+				},
+			});
 		}
 
 		// Tooltips sit on the wrapper as well as the control, so hovering the text
@@ -5344,7 +5372,41 @@ export class SectionCardsView extends ItemView {
 		templateBtn.toggleClass("has-template", !!this.plugin.getTemplatePath(this.filePath));
 		templateBtn.addEventListener("click", (evt) => this.openTemplateMenu(evt, templateBtn));
 
+		// The dashboard sidebar: the Dashboard's panels in the right sidebar, beside any layout.
+		const dashBtn = cluster.createEl("button", { cls: "section-cards-icon-btn section-cards-dashside-btn" });
+		fastIcon(dashBtn, "panel-right");
+		dashBtn.addEventListener("click", () => void this.plugin.toggleDashSidebar());
+		this.dashSideBtn = dashBtn;
+		this.syncDashSidebarButton();
+
 		this.addHelpButton(right);
+		this.fitToolbar();
+	}
+
+	/**
+	 * The compact bar stays one line. When its controls don't fit the pane, it first
+	 * drops the text of the view pickers on the right (their icons and tooltips still
+	 * say what they are), then the layout and level pickers' too; only past that does
+	 * it pan sideways. Rechecked whenever the bar is rebuilt or the pane resizes.
+	 */
+	private fitToolbar(): void {
+		const bar = this.toolbarEl;
+		if (!bar) return;
+		bar.removeClass("is-squeezed", "is-squeezed-more");
+		if (!bar.hasClass("is-compact") || !bar.isShown()) return;
+		const over = () => bar.scrollWidth - bar.clientWidth > 1;
+		if (!over()) return;
+		bar.addClass("is-squeezed");
+		if (over()) bar.addClass("is-squeezed-more");
+	}
+
+	/** The dashboard sidebar button reads as on while the sidebar is open. */
+	syncDashSidebarButton(): void {
+		const btn = this.dashSideBtn;
+		if (!btn) return;
+		const open = this.plugin.dashSidebarOpen();
+		btn.toggleClass("is-active", open);
+		btn.setAttr("aria-label", open ? "Close the dashboard sidebar" : "Dashboard sidebar: this note at a glance, beside any layout");
 	}
 
 	/** The ? button ends every toolbar variant — full, compact, and the Deck's. */
@@ -5393,6 +5455,7 @@ export class SectionCardsView extends ItemView {
 			btn.setAttr("aria-label", hint);
 			host.setAttr("aria-label", hint);
 		}
+		this.fitToolbar();
 	}
 
 	/** Whether a plain-key view shortcut may run: no card editor open, and the key
@@ -6874,6 +6937,13 @@ export class SectionCardsView extends ItemView {
 	}
 
 	async refresh(): Promise<void> {
+		await this.renderPass();
+		// The dashboard sidebar follows whatever this pass showed: a new layout, level,
+		// or note, or an edit that landed.
+		this.plugin.dashSidebarsChanged(this);
+	}
+
+	private async renderPass(): Promise<void> {
 		if (!this.gridEl) return;
 
 		// A refresh rebuilds mid-edit cards from disk, so typed-but-unsaved work
@@ -10172,220 +10242,74 @@ export class SectionCardsView extends ItemView {
 		this.pendingMaximizeHeading = null;
 		this.gridEl.appendChild(this.canvasExtentEl); // clearAllCards emptied the grid
 
-		const todayIso = mo().format("YYYY-MM-DD");
-		const sum = summarizeNote(lines, sections, {
-			todayIso,
-			format,
-			detect,
-			dated: this.containsDates,
-			starEmoji: this.plugin.starEmoji(),
-		});
-		const n = (value: number) => value.toLocaleString();
-		const plural = (count: number, one: string, many: string) => `${n(count)} ${count === 1 ? one : many}`;
-		const reveal = (line: number) => void this.plugin.revealSection(file, line);
-
-		const wrap = this.gridEl.createDiv({ cls: "sc-dash" });
-		const head = wrap.createDiv({ cls: "sc-dash-head" });
-		head.createDiv({ cls: "sc-dash-title", text: file.basename });
-		const edited = (moment as unknown as (t: number) => { fromNow: () => string })(file.stat.mtime).fromNow();
-		head.createDiv({
-			cls: "sc-dash-sub",
-			text: [plural(sum.lines, "line", "lines"), plural(sum.words, "word", "words"), `edited ${edited}`].join(" · "),
-		});
-
-		// Tiles: the headline numbers. Ones that call for action wear an accent.
-		const tiles = wrap.createDiv({ cls: "sc-dash-tiles" });
-		const tile = (value: string, label: string, opts: { tone?: "warn" | "good"; hint?: string; onClick?: () => void } = {}) => {
-			const box = tiles.createDiv({ cls: "sc-dash-tile" });
-			if (opts.tone) box.addClass(`is-${opts.tone}`);
-			box.createDiv({ cls: "sc-dash-tile-value", text: value });
-			box.createDiv({ cls: "sc-dash-tile-label", text: label });
-			if (opts.hint) box.setAttr("title", opts.hint);
-			if (opts.onClick) {
-				box.addClass("is-clickable");
-				box.setAttr("role", "button");
-				box.tabIndex = 0;
-				box.addEventListener("click", opts.onClick);
-				box.addEventListener("keydown", (evt) => {
-					if (evt.key === "Enter" || evt.key === " ") {
-						evt.preventDefault();
-						opts.onClick?.();
-					}
-				});
-			}
-		};
-		tile(n(sum.sections), sum.sections === 1 ? "card" : "cards", {
-			hint: sum.emptySections ? `${plural(sum.emptySections, "card is", "cards are")} empty` : undefined,
-		});
-		tile(n(sum.open), "open tasks", { onClick: sum.open ? () => this.setLayout("tasks") : undefined, hint: "Show the Tasks layout" });
-		tile(n(sum.done), "done");
-		tile(n(sum.overdue.length), "overdue", { tone: sum.overdue.length ? "warn" : undefined });
-		tile(n(sum.dueToday.length), "due today", { tone: sum.dueToday.length ? "good" : undefined });
-		if (sum.starredSections) tile(n(sum.starredSections), sum.starredSections === 1 ? "starred card" : "starred cards");
-		tile(n(sum.tags.length), sum.tags.length === 1 ? "tag" : "tags");
-		tile(n(sum.wikilinks + sum.links), "links", { hint: `${plural(sum.wikilinks, "note", "notes")} linked, ${plural(sum.links, "web link", "web links")}` });
-		if (sum.images) tile(n(sum.images), sum.images === 1 ? "image" : "images", { onClick: () => this.setLayout("images"), hint: "Show the Images layout" });
-
-		// Task progress across the whole note.
-		const total = sum.open + sum.done;
-		if (total) {
-			const pct = Math.round((100 * sum.done) / total);
-			const prog = wrap.createDiv({ cls: "sc-dash-progress" });
-			const label = prog.createDiv({ cls: "sc-dash-progress-label" });
-			label.createSpan({ text: "Tasks complete" });
-			label.createSpan({ cls: "sc-dash-progress-pct", text: `${pct}% · ${n(sum.done)} of ${n(total)}` });
-			const bar = prog.createDiv({ cls: "sc-dash-bar", attr: { role: "progressbar", "aria-valuenow": String(pct), "aria-valuemin": "0", "aria-valuemax": "100" } });
-			bar.createDiv({ cls: "sc-dash-bar-fill" }).setCssStyles({ width: `${pct}%` });
-		}
-
-		const panels = wrap.createDiv({ cls: "sc-dash-panels" });
-		const panel = (title: string, icon: string, cls = "") => {
-			const box = panels.createDiv({ cls: `sc-dash-panel ${cls}`.trim() });
-			const h = box.createDiv({ cls: "sc-dash-panel-head" });
-			fastIcon(h.createSpan({ cls: "sc-dash-panel-icon" }), icon);
-			h.createSpan({ text: title });
-			return box.createDiv({ cls: "sc-dash-panel-body" });
-		};
-		const emptyNote = (el: HTMLElement, text: string) => el.createDiv({ cls: "sc-dash-empty", text });
-
-		// Needs attention: overdue, today, and the week ahead — each tickable in place.
-		const attention = panel("Needs attention", "alarm-clock", "is-wide");
-		const taskGroup = (label: string, tasks: DashTask[], tone: string) => {
-			if (!tasks.length) return;
-			attention.createDiv({ cls: `sc-dash-group is-${tone}`, text: `${label} (${tasks.length})` });
-			for (const task of tasks.slice(0, 12)) this.dashTaskRow(attention, file, sections, task, todayIso, reveal);
-			if (tasks.length > 12) attention.createDiv({ cls: "sc-dash-more", text: `and ${tasks.length - 12} more` });
-		};
-		taskGroup("Overdue", sum.overdue, "warn");
-		taskGroup("Due today", sum.dueToday, "good");
-		taskGroup("Next 7 days", sum.upcoming, "muted");
-		if (!sum.overdue.length && !sum.dueToday.length && !sum.upcoming.length) {
-			emptyNote(attention, sum.open ? "No open task has a due date in the coming week." : "No open tasks.");
-		}
-
-		// Ranked cards with a bar scaled to the leader.
-		const ranking = (title: string, icon: string, rows: DashSection[], measure: (r: DashSection) => number, unit: (v: number) => string, none: string) => {
-			const body = panel(title, icon);
-			if (!rows.length) {
-				emptyNote(body, none);
-				return;
-			}
-			const max = Math.max(1, ...rows.map(measure));
-			for (const row of rows) {
-				const item = body.createDiv({ cls: "sc-dash-rank", attr: { role: "button", tabindex: "0" } });
-				const top = item.createDiv({ cls: "sc-dash-rank-top" });
-				top.createSpan({ cls: "sc-dash-rank-title", text: row.title });
-				top.createSpan({ cls: "sc-dash-rank-value", text: unit(measure(row)) });
-				item.createDiv({ cls: "sc-dash-bar is-thin" }).createDiv({ cls: "sc-dash-bar-fill" }).setCssStyles({ width: `${(100 * measure(row)) / max}%` });
-				item.addEventListener("click", () => reveal(row.headingLine));
-				item.addEventListener("keydown", (evt) => {
-					if (evt.key === "Enter") reveal(row.headingLine);
-				});
-			}
-		};
-		ranking("Most open tasks", "list-todo", sum.busiest, (r) => r.open, (v) => `${n(v)} open`, "No card has an open task.");
-		ranking("Longest cards", "ruler", sum.longest, (r) => r.words, (v) => plural(v, "word", "words"), "Every card is empty.");
-
-		// Outline: headings per level; a click shows that level as cards.
-		const outline = panel("Outline", "list-tree");
-		const maxH = Math.max(1, ...sum.headings);
-		let anyHeading = false;
-		for (let level = 1; level <= 6; level++) {
-			const count = sum.headings[level];
-			if (!count) continue;
-			anyHeading = true;
-			const row = outline.createDiv({ cls: "sc-dash-level", attr: { role: "button", tabindex: "0" } });
-			row.setAttr("aria-label", `Show the H${level} headings as cards`);
-			row.toggleClass("is-current", level === this.headingLevel);
-			row.createSpan({ cls: "sc-dash-level-name", text: `H${level}` });
-			row.createDiv({ cls: "sc-dash-bar is-thin" }).createDiv({ cls: "sc-dash-bar-fill" }).setCssStyles({ width: `${(100 * count) / maxH}%` });
-			row.createSpan({ cls: "sc-dash-level-count", text: n(count) });
-			const pick = () => {
-				this.headingLevel = level;
-				this.setLayout("grid");
-			};
-			row.addEventListener("click", pick);
-			row.addEventListener("keydown", (evt) => {
-				if (evt.key === "Enter") pick();
-			});
-		}
-		if (!anyHeading) emptyNote(outline, "No headings yet.");
-
-		// Tags: a click shows the Grid filtered to the tag.
-		const tagBody = panel("Tags", "tag");
-		if (!sum.tags.length) emptyNote(tagBody, "No #tags in this note.");
-		const chips = tagBody.createDiv({ cls: "sc-dash-tags" });
-		for (const [tag, count] of sum.tags.slice(0, 30)) {
-			const chip = chips.createEl("button", { cls: "sc-dash-tag" });
-			chip.createSpan({ text: `#${tag}` });
-			chip.createSpan({ cls: "sc-dash-tag-count", text: n(count) });
-			chip.setAttr("aria-label", `Show the cards with #${tag}`);
-			chip.addEventListener("click", () => {
-				this.filterQuery = `#${tag}`;
-				this.setLayout("grid");
-			});
-		}
-		if (sum.tags.length > 30) tagBody.createDiv({ cls: "sc-dash-more", text: `and ${sum.tags.length - 30} more` });
-
-		// Dates: the span of dated cards, the streak, and today's card.
-		if (sum.dates) {
-			const d = sum.dates;
-			const body = panel("Days", "calendar-days");
-			const facts = body.createDiv({ cls: "sc-dash-facts" });
-			const fact = (label: string, value: string) => {
-				facts.createDiv({ cls: "sc-dash-fact-label", text: label });
-				facts.createDiv({ cls: "sc-dash-fact-value", text: value });
-			};
-			fact("First day", d.first);
-			fact("Last day", d.last);
-			fact("Days with cards", n(d.count));
-			fact("Current streak", plural(d.current, "day", "days"));
-			fact("Longest streak", plural(d.longest, "day", "days"));
-			const actions = body.createDiv({ cls: "sc-dash-actions" });
-			const todayBtn = actions.createEl("button", { cls: "mod-cta", text: d.todayLine !== null ? "Open today's card" : "Create today's card" });
-			todayBtn.addEventListener("click", () => {
-				if (d.todayLine !== null) reveal(d.todayLine);
-				else this.promptCreateDateCard(todayIso);
-			});
-			actions.createEl("button", { text: "Heatmap" }).addEventListener("click", () => this.setLayout("heatmap"));
-			actions.createEl("button", { text: "Calendar" }).addEventListener("click", () => this.setLayout("calendar"));
-		}
+		renderDashboard(this.gridEl, this.dashContext(file, lines, sections, format, detect, false));
 
 		this.rememberView();
 		this.syncLeafTitle();
 	}
 
-	/** One task row on the Dashboard: a checkbox that ticks it in the note, its text
-	 * (a click opens the note at it), and its due date and card underneath. */
-	private dashTaskRow(
-		parent: HTMLElement,
-		file: TFile,
-		sections: Section[],
-		task: DashTask,
-		todayIso: string,
-		reveal: (line: number) => void,
-	): void {
-		const row = parent.createDiv({ cls: "sc-dash-task" });
-		const box = row.createEl("input", { type: "checkbox", cls: "task-list-item-checkbox" });
-		box.setAttr("aria-label", `Mark “${task.text}” done`);
-		const section = sections.find((s) => task.line >= s.startLine && task.line < s.endLine && !s.properties);
-		const nth = section ? taskLineIndexes(section.body.split("\n")).indexOf(task.line - bodyStartLine(section)) : -1;
-		if (!section || nth < 0) box.disabled = true;
-		box.addEventListener("click", (evt) => {
-			evt.stopPropagation();
-			if (!section || nth < 0) return;
-			void this.toggleNthTask(file, section, nth, box, row);
-		});
-		const text = row.createDiv({ cls: "sc-dash-task-text", attr: { role: "button", tabindex: "0" } });
-		text.createDiv({ cls: "sc-dash-task-title", text: task.text || "(empty task)" });
-		const meta: string[] = [];
-		if (task.due) meta.push(task.due === todayIso ? "today" : task.due);
-		if (task.section) meta.push(`in ${task.section}`);
-		text.createDiv({ cls: "sc-dash-task-meta", text: meta.join(" · ") });
-		text.addEventListener("click", () => reveal(task.line));
-		text.addEventListener("keydown", (evt) => {
-			if (evt.key === "Enter") reveal(task.line);
-		});
+	/** What the Dashboard draws from, and what its clicks do in this view. The
+	 * Dashboard layout has no cards, so a level or a tag switches to the Grid; the
+	 * sidebar keeps the layout showing where that layout has cards to filter. */
+	private dashContext(file: TFile, lines: string[], sections: Section[], format: string, detect: string, vertical: boolean): DashContext {
+		const cardsShowing = () => this.layout !== "dashboard" && !this.isOutlineLayout() && !this.isDateLayout() && this.layout !== "images" && this.layout !== "links";
+		return {
+			file,
+			lines,
+			sections,
+			format,
+			detect,
+			dated: this.containsDates,
+			starEmoji: this.plugin.starEmoji(),
+			headingLevel: this.headingLevel,
+			vertical,
+			reveal: (line) => void this.plugin.revealSection(file, line),
+			showLayout: (layout) => {
+				if (layout !== this.layout) this.setLayout(layout);
+			},
+			showLevel: (level) => {
+				if (vertical && cardsShowing()) {
+					if (level !== this.headingLevel) void this.changeHeadingLevel(level);
+					return;
+				}
+				this.headingLevel = level;
+				this.setLayout("grid");
+			},
+			filterTag: (tag) => {
+				this.filterQuery = `#${tag}`;
+				if (vertical && (cardsShowing() || this.layout === "table")) {
+					this.buildToolbar(); // the filter box shows the query
+					this.applyFilter();
+					return;
+				}
+				this.setLayout("grid");
+			},
+			createDateCard: (iso) => this.promptCreateDateCard(iso),
+			toggleTask: (section, nth, box, row) => void this.toggleNthTask(file, section, nth, box, row),
+		};
+	}
+
+	/** The note this view shows, for the dashboard sidebar: null in the Deck. */
+	dashboardFile(): TFile | null {
+		return this.deckMode ? null : this.getFile();
+	}
+
+	/**
+	 * The dashboard sidebar's context for this view's note, read fresh from the vault:
+	 * the cards at this view's level, its date formats, and actions that act on this
+	 * view. Null in the Deck or when the note is missing.
+	 */
+	async sidebarDashContext(): Promise<DashContext | null> {
+		const file = this.dashboardFile();
+		if (!file) return null;
+		const content = await this.app.vault.cachedRead(file);
+		const lines = content.split(/\r?\n/);
+		const format = this.plugin.getNewCardFormat(file.path);
+		const detect = this.plugin.settings.dateDetectFormat;
+		const sections = parseCards(lines, this.headingLevel, this.plugin.unfiledTitle(), this.plugin.propertiesTitle());
+		const ctx = this.dashContext(file, lines, sections, format, detect, true);
+		ctx.dated = this.plugin.getContainsDates(file.path) ?? dateHeadingCounts(lines, format, detect)[this.headingLevel] > 0;
+		return ctx;
 	}
 
 	private renderHeatmapLayout(file: TFile, sections: Section[], format: string, detect: string): void {

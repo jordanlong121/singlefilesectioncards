@@ -132,7 +132,8 @@ settings:
 	min-height: 0;
 }
 
-.section-cards-view {
+.section-cards-view,
+.sc-dash-sidebar {
 	/* Masonry granularity: cards snap to a 4px vertical grid, so at most ~3px of
 	   rounding is added below any card. */
 	--sc-row-unit: 4px;
@@ -160,7 +161,8 @@ settings:
 /* Light: cards are frosted white (--mono-rgb-0 is the background color, so white here)
    with a light grey outline. These must be foreground-based (--mono-rgb-100 = black in
    light mode) or the border is white-on-white and the cards read as edgeless blocks. */
-.theme-light .section-cards-view {
+.theme-light .section-cards-view,
+.theme-light .sc-dash-sidebar {
 	--sc-surface: rgba(var(--mono-rgb-0), var(--sfsc-surface-alpha-light, 0.62));
 	--sc-surface-hover: rgba(var(--mono-rgb-0), calc(var(--sfsc-surface-alpha-light, 0.62) + 0.2));
 	--sc-header: rgba(var(--mono-rgb-100), 0.045);
@@ -506,6 +508,15 @@ body.is-phone .sfsc-picker-pop:not(.is-compact) {
 	display: none;
 }
 
+/* A compact bar too wide for its pane sheds picker text before it pans: first the
+   view pickers on the right (mode, sort, group, calendar range), then the layout and
+   level pickers. Their icons stay, and their tooltips still name them. */
+.section-cards-toolbar.is-squeezed .section-cards-cluster-right .sfsc-picker-btn-label,
+.section-cards-toolbar.is-squeezed .section-cards-calrange-btn .sfsc-picker-btn-label,
+.section-cards-toolbar.is-squeezed-more .sfsc-picker-btn-label {
+	display: none;
+}
+
 .section-cards-toolbar.is-compact::-webkit-scrollbar {
 	display: none;
 }
@@ -717,6 +728,11 @@ body.is-mobile .section-cards-toolbar .section-cards-filter-input {
 	color: var(--text-on-accent, #fff);
 	background-color: var(--interactive-accent);
 	box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+/* The dashboard sidebar button: accent-colored while the sidebar is open. */
+.section-cards-icon-btn.section-cards-dashside-btn.is-active {
+	color: var(--text-accent);
 }
 
 /* Hide future / past dates doesn't apply on the Day Planner (one day at a time, the
@@ -6909,4 +6925,51 @@ body.is-phone .section-cards-label {
 	flex-wrap: wrap;
 	gap: 6px;
 	margin-top: 6px;
+}
+
+/* The dashboard sidebar: the same panels, stacked for a narrow column. */
+.sc-dash-sidebar.view-content {
+	padding: 12px 10px 20px;
+}
+
+.sc-dash.is-vertical {
+	max-width: none;
+	margin: 0;
+	gap: 12px;
+}
+
+.sc-dash.is-vertical .sc-dash-title {
+	font-size: 1.15em;
+}
+
+.sc-dash.is-vertical .sc-dash-tiles {
+	grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+	gap: 6px;
+}
+
+.sc-dash.is-vertical .sc-dash-tile {
+	padding: 6px 8px;
+}
+
+.sc-dash.is-vertical .sc-dash-tile-value {
+	font-size: 1.25em;
+}
+
+.sc-dash.is-vertical .sc-dash-panels {
+	grid-template-columns: minmax(0, 1fr);
+	gap: 10px;
+}
+
+.sc-dash.is-vertical .sc-dash-panel-head {
+	padding: 6px 10px;
+}
+
+.sc-dash.is-vertical .sc-dash-panel-body {
+	padding: 6px 10px 8px;
+}
+
+.sc-dash-sidebar-empty {
+	padding: 12px 4px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
 }
