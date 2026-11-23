@@ -1,4 +1,4 @@
-import { addIcon, MarkdownView, Notice, Platform, Plugin, WorkspaceLeaf, TFile, TFolder, debounce, normalizePath, requestUrl } from "obsidian";
+import { addIcon, setIcon, MarkdownView, Notice, Platform, Plugin, WorkspaceLeaf, TFile, TFolder, debounce, normalizePath, requestUrl } from "obsidian";
 import {
 	VIEW_TYPE_SECTION_CARDS,
 	DECK_ICON,
@@ -34,7 +34,7 @@ import { PlannerSlot } from "./src/planner";
 import { DocumentLevels } from "./src/periods";
 import { CardRect, SavedCanvasLayout, snapshotCanvasLayout, applyCanvasLayout } from "./src/canvas";
 import { BACKGROUND_DIM_DEFAULT } from "./src/background";
-import { TextInputModal, NoteLibraryModal, ConfirmActionModal } from "./src/modals";
+import { TextInputModal, NoteLibraryModal, ConfirmActionModal, FileSuggestModal } from "./src/modals";
 import { SectionCardsSettingTab } from "./src/settings-tab";
 import { StructuredNoteModal, StructuredSpec, specFormat, structuredNoteContent, structuredPlacements, structuredNotePath } from "./src/structured";
 import { SectionCardsView } from "./src/view";
@@ -65,6 +65,13 @@ export * from "./src/modals";
 export * from "./src/settings-tab";
 export * from "./src/structured";
 export * from "./src/view";
+
+/** The parts of Obsidian's internal EmptyView (the New tab screen) used here. */
+interface EmptyViewLike {
+	leaf: WorkspaceLeaf;
+	actionListEl?: HTMLElement;
+	updateActions: () => void;
+}
 
 export default class SectionCardsPlugin extends Plugin {
 	settings: SectionCardsSettings = DEFAULT_SETTINGS;
@@ -342,6 +349,9 @@ export default class SectionCardsPlugin extends Plugin {
 		// tabs come and go; removed again when the setting turns off.
 		this.app.workspace.onLayoutReady(() => this.syncNoteActions());
 		this.registerEvent(this.app.workspace.on("layout-change", () => this.syncNoteActions()));
+		// The New tab screen's buttons gain the cards ones, in every empty tab.
+		this.app.workspace.onLayoutReady(() => this.syncNewTabActions());
+		this.registerEvent(this.app.workspace.on("layout-change", () => this.syncNewTabActions()));
 		// The toolbars' dashboard sidebar buttons follow the sidebar however it opens or closes.
 		this.registerEvent(
 			this.app.workspace.on("layout-change", () => {
@@ -411,6 +421,81 @@ export default class SectionCardsPlugin extends Plugin {
 		}
 	}
 
+	/** Obsidian's EmptyView.updateActions before it was wrapped, restored on unload. */
+	private emptyViewPatch: { proto: EmptyViewLike; original: (this: EmptyViewLike) => void } | null = null;
+
+	/**
+	 * Obsidian's New tab screen (the "empty" view) lists New note, Go to file, and so
+	 * on. There's no API for adding to it, so its list element gets our buttons
+	 * appended, and its updateActions — which empties and rebuilds the list when a core
+	 * plugin is toggled — is wrapped once to append them again.
+	 */
+	syncNewTabActions(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType("empty")) {
+			const view = leaf.view as unknown as EmptyViewLike;
+			if (!(view.actionListEl instanceof HTMLElement)) continue;
+			if (!this.emptyViewPatch && typeof view.updateActions === "function") {
+				const proto = Object.getPrototypeOf(view) as EmptyViewLike;
+				const original = proto.updateActions;
+				const addActions = (v: EmptyViewLike) => this.addNewTabActions(v);
+				proto.updateActions = function (this: EmptyViewLike) {
+					original.call(this);
+					addActions(this);
+				};
+				this.emptyViewPatch = { proto, original };
+			}
+			this.addNewTabActions(view);
+		}
+	}
+
+	private addNewTabActions(view: EmptyViewLike): void {
+		const list = view.actionListEl;
+		if (!(list instanceof HTMLElement)) return;
+		list.querySelectorAll(".sfsc-empty-state-action").forEach((el) => el.remove());
+		if (!this.settings.newTabActions) return;
+		const leaf = view.leaf;
+		const add = (label: string, icon: string, run: () => void, commandId?: string) => {
+			const btn = list.createDiv({
+				cls: "text-icon-button tappable mod-pill empty-state-action sfsc-empty-state-action",
+				attr: { tabindex: "0", role: "button", "aria-label": label },
+			});
+			setIcon(btn.createSpan({ cls: "text-button-icon" }), icon);
+			btn.createSpan({ cls: "text-button-label", text: label });
+			const hotkeys = (this.app as unknown as { hotkeyManager?: { printHotkeyForCommand?(id: string): string } }).hotkeyManager;
+			const hotkey = commandId && Platform.isDesktop ? hotkeys?.printHotkeyForCommand?.(`${this.manifest.id}:${commandId}`) : "";
+			if (hotkey) btn.createSpan({ cls: "empty-state-hotkey", text: " " + hotkey });
+			btn.addEventListener("click", run);
+			btn.addEventListener("keydown", (evt) => {
+				if (evt.key !== "Enter" && evt.key !== " ") return;
+				evt.preventDefault();
+				run();
+			});
+		};
+		add("Open section card file", DECK_ICON, () => {
+			new FileSuggestModal(this.app, this, (path) => void this.openCardsInLeaf(leaf, path), true).open();
+		});
+		const defaultPath = normalizePath(this.settings.filePath ?? "");
+		if (defaultPath && this.app.vault.getAbstractFileByPath(defaultPath) instanceof TFile) {
+			add("Open default note as cards", "calendar-check", () => void this.openCardsInLeaf(leaf, defaultPath), "open-section-cards");
+		}
+	}
+
+	/** Show `path` as cards in `leaf` — the New tab it was picked from — or a new tab if that one has closed. */
+	private async openCardsInLeaf(leaf: WorkspaceLeaf, path: string): Promise<void> {
+		const target = leaf.view?.getViewType() === "empty" ? leaf : this.mainWindowTab();
+		await target.setViewState({
+			type: VIEW_TYPE_SECTION_CARDS,
+			active: true,
+			state: {
+				filePath: path,
+				headingLevel: this.settings.headingLevel,
+				sortOrder: this.settings.sortOrder,
+				layout: this.settings.layout,
+			},
+		});
+		await this.app.workspace.revealLeaf(target);
+	}
+
 	/** Pending midnight-rollover timeout, cleared on unload. */
 	private midnightTimer: number | null = null;
 
@@ -441,6 +526,11 @@ export default class SectionCardsPlugin extends Plugin {
 
 	onunload(): void {
 		setNoteRecorder(null);
+		if (this.emptyViewPatch) {
+			this.emptyViewPatch.proto.updateActions = this.emptyViewPatch.original;
+			this.emptyViewPatch = null;
+		}
+		document.querySelectorAll(".sfsc-empty-state-action").forEach((el) => el.remove());
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			if (leaf.view instanceof MarkdownView) this.noteActions.get(leaf.view)?.remove();
 		}

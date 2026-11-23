@@ -44,6 +44,11 @@ export class SectionCardsSettingTab extends PluginSettingTab {
 				control: { type: "toggle", key: "noteCardsButton" },
 			},
 			{
+				name: "Section cards on the New tab screen",
+				desc: "Adds Open section card file and Open default note as cards to the buttons an empty tab shows.",
+				control: { type: "toggle", key: "newTabActions" },
+			},
+			{
 				type: "group",
 				heading: "What becomes a card",
 				items: [
@@ -502,6 +507,7 @@ export class SectionCardsSettingTab extends PluginSettingTab {
 		}
 		await super.setControlValue(key, value);
 		if (key === "noteCardsButton") this.plugin.syncNoteActions();
+		if (key === "newTabActions") this.plugin.syncNewTabActions();
 		if (key === "strikeNestedUnderDone") this.plugin.applyBodyClasses();
 		if (key === "toolbarStyle") this.plugin.applyToolbarStyle();
 		if (key === "fontScale" || key === "dividerFontScale") this.plugin.applyFontScale();

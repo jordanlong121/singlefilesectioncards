@@ -243,6 +243,8 @@ export interface SectionCardsSettings {
 	autoOpenCards: boolean;
 	/** An "Open as cards" button in every note's top-right, swapping that tab to the cards view. */
 	noteCardsButton: boolean;
+	/** "Open section card file" and "Open default note as cards" on Obsidian's New tab screen. */
+	newTabActions: boolean;
 	headingLevel: number;
 	/** Heading dropdown lists only the levels the open note contains (else always H1–H6). */
 	dynamicLevelOptions: boolean;
@@ -594,6 +596,7 @@ export const DEFAULT_SETTINGS: SectionCardsSettings = {
 	filePath: "Daily Notes 2026.md",
 	autoOpenCards: false,
 	noteCardsButton: true,
+	newTabActions: true,
 	headingLevel: 3,
 	dynamicLevelOptions: true,
 	sortOrder: "asc",
