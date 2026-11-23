@@ -44,6 +44,8 @@ export interface NoteSummary {
 	upcoming: DashTask[];
 	/** #tag → uses, most used first. */
 	tags: [string, number][];
+	/** #tag → uses on open task lines, most used first. */
+	openTaskTags: [string, number][];
 	starredSections: number;
 	images: number;
 	links: number;
@@ -110,6 +112,7 @@ export function summarizeNote(
 	const overdue: DashTask[] = [];
 	const dueToday: DashTask[] = [];
 	const upcoming: DashTask[] = [];
+	const openLines: string[] = [];
 	for (const i of taskLineIndexes(lines)) {
 		const m = TASK_RE.exec(lines[i]);
 		if (!m) continue;
@@ -118,6 +121,7 @@ export function summarizeNote(
 			continue;
 		}
 		open++;
+		openLines.push(lines[i]);
 		const due = DUE_DATE_RE.exec(m[4])?.[1] ?? null;
 		if (!due) continue;
 		const task = { text: taskText(lines[i]), line: i, due, section: owner(i) };
@@ -130,6 +134,7 @@ export function summarizeNote(
 	upcoming.sort(byDue);
 
 	const { words, tags } = bodyTextStats(lines);
+	const byUses = (a: [string, number], b: [string, number]) => b[1] - a[1] || a[0].localeCompare(b[0]);
 	const content = lines.join("\n");
 	const wikis = new Set<string>();
 	// An exec loop rather than matchAll: the latter is ES2020, past this project's lib.
@@ -181,7 +186,8 @@ export function summarizeNote(
 		overdue,
 		dueToday,
 		upcoming,
-		tags: Object.entries(tags).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
+		tags: Object.entries(tags).sort(byUses),
+		openTaskTags: Object.entries(bodyTextStats(openLines).tags).sort(byUses),
 		starredSections: sections.filter((s) => sectionHasStar(s.body.split("\n"), opts.starEmoji)).length,
 		images: imageLinksIn(content).length,
 		links: urlLinksIn(content).length,

@@ -2,7 +2,7 @@
 // narrow column, beside whatever layout a cards tab shows. It follows the cards tab
 // last in front and redraws whenever that view renders or its note changes on disk.
 
-import { ItemView, debounce, type WorkspaceLeaf } from "obsidian";
+import { ItemView, debounce, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { renderDashboard } from "./dashrender";
 import { SectionCardsView } from "./view";
 import { VIEW_TYPE_SECTION_CARDS } from "./settings";
@@ -14,6 +14,8 @@ export class DashSidebarView extends ItemView {
 	private target: SectionCardsView | null = null;
 	/** Bumped per draw: a slow read finishing after a newer one started is dropped. */
 	private generation = 0;
+	/** The Tags panel's "Incomplete" checkbox, kept with the pane's saved state. */
+	private tagsIncomplete = false;
 	/** Many triggers arrive together (a save is a modify plus the view's refresh). */
 	private readonly scheduleRender = debounce(() => void this.render(), 150, true);
 
@@ -32,6 +34,19 @@ export class DashSidebarView extends ItemView {
 
 	getIcon(): string {
 		return "gauge";
+	}
+
+	getState(): Record<string, unknown> {
+		return { ...super.getState(), tagsIncomplete: this.tagsIncomplete };
+	}
+
+	async setState(state: unknown, result: ViewStateResult): Promise<void> {
+		const on = (state as { tagsIncomplete?: unknown } | null)?.tagsIncomplete;
+		if (typeof on === "boolean" && on !== this.tagsIncomplete) {
+			this.tagsIncomplete = on;
+			this.scheduleRender();
+		}
+		await super.setState(state, result);
 	}
 
 	async onOpen(): Promise<void> {
@@ -110,6 +125,13 @@ export class DashSidebarView extends ItemView {
 			empty.createEl("p", { text: this.target ? "Pick a note to see its dashboard." : "Open a note as cards to see its dashboard here." });
 			return;
 		}
+		ctx.tagsIncomplete = {
+			on: this.tagsIncomplete,
+			set: (on) => {
+				this.tagsIncomplete = on;
+				this.app.workspace.requestSaveLayout();
+			},
+		};
 		renderDashboard(el, ctx);
 		el.scrollTop = scroll;
 	}

@@ -102,6 +102,7 @@ t("summarizeNote: outline, tasks by due date, tags, links, rankings, dates", () 
   assert.deepEqual(sum.dueToday.map((x) => x.text), ["today #work"]);
   assert.deepEqual(sum.upcoming.map((x) => x.text), ["soon"]);
   assert.deepEqual(sum.tags, [["work", 2], ["home", 1]]);
+  assert.deepEqual(sum.openTaskTags, [["work", 1]], "only the open task line's tag, not the image line's");
   assert.equal(sum.wikilinks, 1);
   assert.equal(sum.links, 1);
   assert.equal(sum.images, 1);

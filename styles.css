@@ -6748,6 +6748,21 @@ body.is-phone .section-cards-label {
 	color: var(--text-normal);
 }
 
+.sc-dash-panel-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin-left: auto;
+	font-size: var(--font-ui-smaller);
+	font-weight: normal;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.sc-dash-panel-toggle input {
+	margin: 0;
+}
+
 .sc-dash-panel-icon {
 	display: inline-flex;
 	color: var(--text-muted);

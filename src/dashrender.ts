@@ -30,6 +30,9 @@ export interface DashContext {
 	showLayout: (layout: Layout) => void;
 	showLevel: (level: number) => void;
 	filterTag: (tag: string) => void;
+	/** The Tags panel's "Incomplete" checkbox (shown only when given): list just the
+	 * tags on open tasks. `set` remembers the choice. */
+	tagsIncomplete?: { on: boolean; set: (on: boolean) => void };
 	createDateCard: (iso: string) => void;
 	/** Tick or untick a card's nth task; `box` and `row` get the immediate feedback. */
 	toggleTask: (section: Section, nth: number, box: HTMLInputElement, row: HTMLElement) => void;
@@ -172,16 +175,37 @@ export function renderDashboard(parent: HTMLElement, ctx: DashContext): HTMLElem
 
 	// Tags: a click shows the cards filtered to the tag.
 	const tagBody = panel("Tags", "tag");
-	if (!sum.tags.length) emptyNote(tagBody, "No #tags in this note.");
-	const chips = tagBody.createDiv({ cls: "sc-dash-tags" });
-	for (const [tag, count] of sum.tags.slice(0, 30)) {
-		const chip = chips.createEl("button", { cls: "sc-dash-tag" });
-		chip.createSpan({ text: `#${tag}` });
-		chip.createSpan({ cls: "sc-dash-tag-count", text: n(count) });
-		chip.setAttr("aria-label", `Show the cards with #${tag}`);
-		chip.addEventListener("click", () => ctx.filterTag(tag));
+	const drawTags = (incomplete: boolean) => {
+		tagBody.empty();
+		const list = incomplete ? sum.openTaskTags : sum.tags;
+		if (!list.length) emptyNote(tagBody, incomplete ? "No #tags on open tasks." : "No #tags in this note.");
+		const chips = tagBody.createDiv({ cls: "sc-dash-tags" });
+		for (const [tag, count] of list.slice(0, 30)) {
+			const chip = chips.createEl("button", { cls: "sc-dash-tag" });
+			chip.createSpan({ text: `#${tag}` });
+			chip.createSpan({ cls: "sc-dash-tag-count", text: n(count) });
+			chip.setAttr("aria-label", `Show the cards with #${tag}`);
+			chip.addEventListener("click", () => ctx.filterTag(tag));
+		}
+		if (list.length > 30) tagBody.createDiv({ cls: "sc-dash-more", text: `and ${list.length - 30} more` });
+	};
+	const incomplete = ctx.tagsIncomplete;
+	if (incomplete) {
+		const head = tagBody.parentElement?.querySelector(".sc-dash-panel-head");
+		const label = head?.createEl("label", { cls: "sc-dash-panel-toggle" });
+		if (label) {
+			label.createSpan({ text: "Incomplete" });
+			const box = label.createEl("input", { attr: { type: "checkbox" } });
+			box.setAttr("aria-label", "Show only the tags on incomplete tasks");
+			box.checked = incomplete.on;
+			box.addEventListener("change", () => {
+				incomplete.on = box.checked;
+				incomplete.set(box.checked);
+				drawTags(box.checked);
+			});
+		}
 	}
-	if (sum.tags.length > 30) tagBody.createDiv({ cls: "sc-dash-more", text: `and ${sum.tags.length - 30} more` });
+	drawTags(!!incomplete?.on);
 
 	// Dates: the span of dated cards, the streak, and today's card.
 	if (sum.dates) {
